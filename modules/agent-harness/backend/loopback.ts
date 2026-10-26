@@ -16,7 +16,7 @@ export class LoopbackChatExecutor implements Executor {
     ] });
     // http.request uses no environment proxy and follows no redirects. No Authorization is constructed.
     const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const request = http.request(url, { method: "POST", signal: context.signal, headers: { "content-type": "application/json" } }, res => {
+      const request = http.request(url, { method: "POST", agent: false, signal: context.signal, headers: { "content-type": "application/json" } }, res => {
         let received = "";
         res.setEncoding("utf8");
         res.on("data", chunk => { received += chunk; if (received.length > 1_000_000) request.destroy(new Error("mock response too large")); });

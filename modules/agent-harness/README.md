@@ -37,6 +37,23 @@ Auth modes are `none`, `bearer_ref`, `basic_ref`. Credential references look lik
 
 `LoopbackChatExecutor` only talks directly to a registered, synthetic HTTP loopback fixture, without proxy or redirect support. It is not a remote provider transport. Its string/URL validation does not prove production DNS, network or tenant isolation.
 
+### Connected compatible API path
+
+`createConfiguredAIhotExecutor` is the ready-to-call provider path, with **the real original `chatJson` function**, not an injected invoke stub. The caller selects only `profile_id`; the registered profile supplies endpoint/model/auth references and an explicit mapping to an original model/budget slot:
+
+```ts
+const executor = createConfiguredAIhotExecutor(registeredProfiles, {
+  "my-local-api": { model_key: "default", budget_policy_ref: "existing-owner:llm" },
+  "my-registered-remote": { model_key: "deepseek-flash", budget_policy_ref: "existing-owner:deepseek" },
+}, originalTaskAndReceiptLookup);
+// Original worker: harness.submit(await originalOwnerAccept({ ...boundTask, profile_id: "my-local-api" }));
+// Host.executor returns executor; the original worker calls harness.dispatch(project, task_id).
+```
+
+The call chain is profile selection → `createConfiguredAIhotExecutor` → original `chatJson` → original `paidRequest` callback → HTTP transport. An explicit keyless HTTP loopback profile overrides endpoint/model per request without changing process globals or reading a key. It sends no Authorization, follows no redirects and uses no proxy. A bearer-authenticated remote profile must match its existing registered model's current endpoint/model/credential reference; it follows the original provider path and key rules. New remote endpoints are registered through the existing Owner configuration, not accepted from task input. Actual remote service use remains HOLD.
+
+`profile-http.standalone.test.ts` tests this real call chain with a local fake HTTP server and only receipt DB operations mocked. Two selected profiles reach different endpoints/models, preserve original source metadata and null costs, and produce distinct receipt identities. A third in-flight request is aborted through the original LLM transport and stays UNKNOWN/unsupported rather than claiming remote cancellation. No real API key or external request is used. This verifies HTTP adapter code, not production budget/DB integration or a real provider account.
+
 ## Four operations and evidence
 
 - `submit`: accept the task established/restored by the original Owner. Match the project, original business task/attempt, idempotency key, input, complete source binding, role and profile fingerprint. A new UUID/key cannot bypass the same-business-task guard.
@@ -52,7 +69,7 @@ Canonical identity supports ASCII keys, Unicode strings without normalization, b
 
 `createHarnessModule`/`registerHarnessRoutes` requires the original session+CSRF guard and an original atomic accept/restore callback. `Host.claim`, `Host.cancelAccepted`, `Host.authorize` and `Host.persist` are original-Owner hooks; the demo's in-memory hooks are **only a synthetic oracle**, not production concurrency or persistence guarantees. No module queue is declared and the module is not enabled in `site/modules`.
 
-`createAIhotExecutor` accepts the existing `chatJson` function, a snapshot-checked registered model binding and the original task/receipt lookup. It passes the per-task abort signal through the original provider path, includes the profile/source/task identity in the receipt prompt version, uses no implicit fallback, and returns local abort as uncertainty rather than remote cancellation. The only shared-engine delta is optional `ChatJsonOptions.signal`, combined with the existing timeout. No existing key rule is relaxed. An Owner budget/network refusal before dispatch is recorded as NOT_SENT; actual unknown execution keeps its liability with the original Owner.
+`createAIhotExecutor` also supports dependency injection for isolated tests. Both forms pass the per-task abort signal through the original provider path, include profile/source/task identity in receipts, use no implicit fallback, and return local abort as uncertainty rather than remote cancellation. Shared-engine deltas are optional task signal handling and the explicitly registered `loopbackProfile` path; the existing remote key rule is unchanged. An Owner budget/network refusal before dispatch is recorded as NOT_SENT; actual unknown execution keeps its liability with the original Owner.
 
 Production pg-boss and DB receipt integration is not activated or tested here. The Owner must bind these hooks to existing atomic task transactions and budget/receipt persistence before enabling the module. This candidate must not be installed by substituting an identity guard or another task store.
 
@@ -68,4 +85,4 @@ The parent supplied the frozen specification as new text; its Owner-reported UTF
 
 No third-party source/binary or new SDK is bundled. This original code uses the repository MIT license; host adapters use already-installed Fastify/zod and the existing AIHOT engine under their existing licenses. No OpenCode/Vercel SDK is vendored or dynamically installed.
 
-The packer emits source files, MIT license, an A2A entry and SHA256 manifest. Consumers must read the files and verify hashes in their own environment; a local output path is not a delivery receipt. Existing Library upload 401, Actions permissions 403 and private database DENIED remain stopped. The older private ZIP is unchanged and does not contain this candidate.
+The packer emits standalone core source, MIT license, A2A entry, SHA256 manifest, and `host-integration/changes.patch` containing the actual AIHOT adapter/provider/test delta against `6ec842f`. In that original repository checkout, first run `git apply --check <package>/host-integration/changes.patch`; applying the patch and production activation are separate Owner actions. Consumers must read the files and verify hashes in their own environment; a local output path is not a delivery receipt. Existing Library upload 401, Actions permissions 403 and private database DENIED remain stopped. The older private ZIP is unchanged and does not contain this candidate.

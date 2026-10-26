@@ -3,6 +3,7 @@
 // site, an environment variable or the admin's model page picks one of the site's named presets
 // (site/models.ts).
 import type { z } from "zod";
+import http from "node:http";
 import type { ModelPreset } from "@aihot/contracts/site-config";
 import { PRESETS } from "@aihot/site/models";
 import { config, credential } from "../config.ts";
@@ -50,6 +51,8 @@ export type ContentPart = { type: "text"; text: string } | { type: "image_url"; 
 
 export interface ChatJsonOptions<S extends z.ZodType> {
   model: string;
+  /** A backend-registered, explicitly keyless literal-loopback profile. Never populate from raw task input. */
+  loopbackProfile?: { baseUrl: string; model: string; profileFingerprint: string };
   /** One independently operated, evaluated backup. Only availability failures switch providers. */
   fallbackModel?: string;
   purpose: string;
@@ -123,7 +126,8 @@ function requestFor<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSp
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
   const request: ReceiptRequest = {
     service: spec.service, model: spec.model, purpose: opts.purpose, subject: opts.subject,
-    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null },
+    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null,
+      ...(opts.loopbackProfile ? { loopbackProfile: opts.loopbackProfile } : {}) },
     requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
     attemptTag: opts.attemptTag,
   };
@@ -148,6 +152,7 @@ const FAILOVER_TIMEOUT_MS = 30_000;
  */
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
   opts.signal?.throwIfAborted();
+  if (opts.loopbackProfile && opts.fallbackModel) throw new ModelUnavailableError("A selected loopback profile cannot implicitly fail over");
   if (!opts.fallbackModel) return chatOnce(opts);
   const backupOpts = { ...opts, model: opts.fallbackModel };
   const fallbackFor = logicalKeyFor(requestFor(opts, MODELS[opts.model]!).request);
@@ -165,12 +170,17 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
 }
 
 async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit = false, fallbackFor?: string): Promise<ChatJsonResult<z.infer<S>>> {
-  const spec = MODELS[opts.model];
-  if (!spec) throw new Error(`Unknown model ${opts.model}`);
+  const registered = MODELS[opts.model];
+  if (!registered) throw new Error(`Unknown model ${opts.model}`);
+  const spec = opts.loopbackProfile ? { ...registered, model: opts.loopbackProfile.model } : registered;
   if (!config.modelCallsEnabled) throw new ModelUnavailableError("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const baseUrl = credential("models", spec.baseUrlEnv);
-  const apiKey = credential("models", spec.apiKeyEnv);
-  if (!baseUrl || !apiKey || !spec.model) throw new ModelUnavailableError(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
+  if (opts.loopbackProfile) {
+    const url = new URL(opts.loopbackProfile.baseUrl);
+    if (url.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(url.hostname) || url.username || url.password || url.search || url.hash || url.pathname.endsWith("/chat/completions") || !/^[a-f0-9]{64}$/.test(opts.loopbackProfile.profileFingerprint)) throw new ModelUnavailableError("Invalid explicitly registered keyless loopback profile");
+  }
+  const baseUrl = opts.loopbackProfile?.baseUrl ?? credential("models", spec.baseUrlEnv);
+  const apiKey = opts.loopbackProfile ? null : credential("models", spec.apiKeyEnv);
+  if (!baseUrl || (!opts.loopbackProfile && !apiKey) || !spec.model) throw new ModelUnavailableError(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
   const { request, temperature, maxTokens, userText } = requestFor(opts, spec);
   const timeoutMs = opts.timeoutMs ?? (circuit ? FAILOVER_TIMEOUT_MS : TIMEOUT_MS);
@@ -196,11 +206,12 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
       let res: Response;
       let text: string;
       try {
-        res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+        res = opts.loopbackProfile ? await keylessLoopbackChat(baseUrl, JSON.stringify(body), signal) : await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
-          signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
+          signal,
         });
         text = await res.text();
         assertAccepted(spec.service, res.status, text);
@@ -244,4 +255,24 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
     throw new ModelOutputError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${detail.slice(0, 300)}`, receipt.receiptId);
   }
   return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: response.usage ?? null };
+}
+
+/** Literal IP only: no DNS, Authorization, environment proxy, redirect or automatic retry. Still called inside paidRequest. */
+async function keylessLoopbackChat(baseUrl: string, body: string, signal: AbortSignal): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const request = http.request(`${baseUrl.replace(/\/$/, "")}/chat/completions`, { method: "POST", agent: false, signal, headers: { "content-type": "application/json" } }, response => {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      response.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes > 8 * 1024 * 1024) request.destroy(new Error("loopback response exceeds limit")); else chunks.push(chunk); });
+      response.on("end", () => {
+        try {
+          const status = response.statusCode ?? 500;
+          resolve(new Response([204, 205, 304].includes(status) ? null : Buffer.concat(chunks), { status, headers: { "x-request-id": String(response.headers["x-request-id"] ?? "") } }));
+        } catch (error) { reject(error); }
+      });
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end(body);
+  });
 }
