@@ -62,6 +62,8 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   maxTokens?: number;
   attemptTag?: string;
   timeoutMs?: number;
+  /** Original worker's per-task cancellation request; aborting transport does not prove remote termination. */
+  signal?: AbortSignal;
   /** false: the model answers in its own text format (no JSON mode); `parse` turns it into the schema's input. */
   json?: boolean;
   parse?: (content: string) => unknown;
@@ -145,6 +147,7 @@ const FAILOVER_TIMEOUT_MS = 30_000;
  * followed by a second paid request.
  */
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
+  opts.signal?.throwIfAborted();
   if (!opts.fallbackModel) return chatOnce(opts);
   const backupOpts = { ...opts, model: opts.fallbackModel };
   const fallbackFor = logicalKeyFor(requestFor(opts, MODELS[opts.model]!).request);
@@ -154,6 +157,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   try {
     return await chatOnce(opts, true);
   } catch (error) {
+    if (opts.signal?.aborted) throw error;
     const kind = failureKind(error);
     if (kind !== "unknown" && kind !== "outage") throw error;
     return chatOnce(backupOpts, true, fallbackFor);
@@ -196,7 +200,7 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
         });
         text = await res.text();
         assertAccepted(spec.service, res.status, text);
