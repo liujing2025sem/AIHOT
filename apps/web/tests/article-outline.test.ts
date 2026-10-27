@@ -38,12 +38,13 @@ test("a short laptop window keeps several outline entries and can reach the last
 });
 
 // WebKit can send Home/End to the page even when an overflowing outline contains CSS overscroll.
-test("outline keyboard scrolling stays inside its boundary in WebKit", async () => {
+test("outline keyboard scrolling stays inside its boundary in WebKit", async (t) => {
   const outline = Array.from({ length: 40 }, (_, i) => ({ id: `section-${i}`, level: 2, text: `Section ${i}` }));
   const item = itemDetail({ id: "outline-keys", title: "键盘目录检查", outline,
     body: { zh: outline.map(o => `<h2 id="${o.id}">${o.text}</h2><p>${"固定正文。".repeat(100)}</p>`).join(""), original: null, zhKind: "original", complete: true },
   });
   const web = await startWebServer(fakeApi(url => url.pathname === "/api/site/items/outline-keys" ? item : undefined));
+  t.after(() => web.stop());
   const browser = await webkit.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1366, height: 768 }, reducedMotion: "reduce" });
@@ -69,6 +70,5 @@ test("outline keyboard scrolling stays inside its boundary in WebKit", async () 
     await expect.poll(() => nav.evaluate(n => n.scrollTop)).toBeGreaterThan(0);
   } finally {
     await browser.close();
-    await web.stop();
   }
 });

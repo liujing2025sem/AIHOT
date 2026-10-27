@@ -1,0 +1,7 @@
+{
+  "name": "@aihot/agent-harness",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": { ".": "./backend/core.ts", "./mock": "./backend/mock.ts", "./server": "./server.ts" }
+}

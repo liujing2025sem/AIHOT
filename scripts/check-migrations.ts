@@ -9,8 +9,8 @@ const isMigration = (file: string) => /^(database\/migrations|modules\/[^/]+\/mi
 
 export function checkMigrations(root: string, base: string): string[] {
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-  const before = new Set(git("ls-tree", "-r", "--name-only", base).split("\n").filter(isMigration));
-  const current = git("ls-files", "--cached", "--others", "--exclude-standard").split("\n").filter((file) => isMigration(file) && existsSync(path.join(root, file)));
+  const before = new Set(git("ls-tree", "-r", "-z", "--name-only", base).split("\0").filter(isMigration));
+  const current = git("ls-files", "-z", "--cached", "--others", "--exclude-standard").split("\0").filter((file) => isMigration(file) && existsSync(path.join(root, file)));
   const problems: string[] = [];
   for (const file of before) {
     if (!existsSync(path.join(root, file)) || readFileSync(path.join(root, file), "utf8") !== git("show", `${base}:${file}`)) problems.push(`${file}: deployed migrations are immutable; add a new migration`);
