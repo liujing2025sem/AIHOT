@@ -74,6 +74,13 @@ export const TAG_SYNONYMS: Readonly<Record<string, string>> = {
  * 所有这些名字都用来认出说的是哪家公司，比如把事实的主体对到发布方。
  */
 export const ENTITIES: Record<string, { name: string; displayTag: string | null; aliases: string[]; orgNames?: string[]; otherNames?: string[] }> = {
+  chipshow: { name: "Chipshow / 齐普", displayTag: null, aliases: ["Chipshow", "齐普光电", "齐普"], orgNames: ["Chipshow", "齐普光电", "齐普"] },
+  novastar: { name: "NovaStar / 诺瓦星云", displayTag: null, aliases: ["NovaStar", "诺瓦星云"], orgNames: ["NovaStar", "诺瓦星云"] },
+  nationstar: { name: "Nationstar / 国星光电", displayTag: null, aliases: ["Nationstar", "国星光电"], orgNames: ["Nationstar", "国星光电"] },
+  kinglight: { name: "Kinglight / 晶台光电", displayTag: null, aliases: ["Kinglight", "晶台光电"], orgNames: ["Kinglight", "晶台光电"] },
+  macroblock: { name: "Macroblock / 聚积科技", displayTag: null, aliases: ["Macroblock", "聚积科技", "聚積科技"], orgNames: ["Macroblock", "聚积科技", "聚積科技"] },
+  meanwell: { name: "MEAN WELL / 明纬", displayTag: null, aliases: ["MEAN WELL", "MEANWELL", "明纬", "明緯"], orgNames: ["MEAN WELL", "明纬", "明緯"] },
+  daktronics: { name: "Daktronics / 达科", displayTag: null, aliases: ["Daktronics", "达科电子"], orgNames: ["Daktronics", "达科电子"] },
   "world-labs": { name: "World Labs", displayTag: null, aliases: ["World Labs"] },
   "thinking-machines": { name: "Thinking Machines Lab", displayTag: null, aliases: ["Thinking Machines"] },
   amd: { name: "AMD", displayTag: null, aliases: ["AMD", "Advanced Micro Devices"] },
@@ -99,6 +106,13 @@ export const ENTITIES: Record<string, { name: string; displayTag: string | null;
  * 行业没有这个问题时可以留空数组。
  */
 export const IDENTITY_LEXICON: ReadonlyArray<{ id: string; name: string; patterns: RegExp[] }> = [
+  { id: "chipshow", name: "Chipshow / 齐普", patterns: [/\bchipshow\b/i, /齐普光电|齐普/u] },
+  { id: "novastar", name: "NovaStar / 诺瓦星云", patterns: [/\bnovastar\b/i, /诺瓦星云/u] },
+  { id: "nationstar", name: "Nationstar / 国星光电", patterns: [/\bnationstar\b/i, /国星光电/u] },
+  { id: "kinglight", name: "Kinglight / 晶台光电", patterns: [/\bkinglight\b/i, /晶台光电/u] },
+  { id: "macroblock", name: "Macroblock / 聚积科技", patterns: [/\bmacroblock\b/i, /聚[积積]科技/u] },
+  { id: "meanwell", name: "MEAN WELL / 明纬", patterns: [/\bmeanwell\b/i, /\bMEAN\s+WELL\b/, /\bMean\s+Well\b/, /明[纬緯]/u] },
+  { id: "daktronics", name: "Daktronics / 达科", patterns: [/\bdaktronics\b/i, /达科电子/u] },
   { id: "openai", name: "OpenAI", patterns: [/openai|chatgpt|\bgpt-?[o\d]|\bsora\b|\bcodex\b/i] },
   { id: "anthropic", name: "Anthropic", patterns: [/anthropic|\bclaude\b/i, /\b(?:opus|sonnet|haiku)\s*\d+(?:[.\-]\d+)*\b/i, /\bfable\s*\d+(?:[.\-]\d+)*\b|\bmythos\b/i] },
   { id: "google", name: "Google / Gemini", patterns: [/google|deepmind|\bgemini\b|notebooklm|\bveo\s?\d|\bAlphaFold\b|\bAMIE\b/i] },
@@ -135,6 +149,12 @@ export const IDENTITY_LEXICON: ReadonlyArray<{ id: string; name: string; pattern
 
 /** 这些域名上的文章，发布方就是对应的公司（托管平台如 GitHub、arXiv 不算）。 */
 export const PUBLISHER_DOMAINS: ReadonlyArray<{ entityId: string; domains: readonly string[] }> = [
+  { entityId: "novastar", domains: ["novastar.tech"] },
+  { entityId: "nationstar", domains: ["nationstar.com"] },
+  { entityId: "kinglight", domains: ["kinglight.com"] },
+  { entityId: "macroblock", domains: ["mblock.com.tw"] },
+  { entityId: "meanwell", domains: ["meanwell.com"] },
+  { entityId: "daktronics", domains: ["daktronics.com"] },
   { entityId: "openai", domains: ["openai.com"] },
   { entityId: "anthropic", domains: ["anthropic.com", "claude.com"] },
   { entityId: "google", domains: ["deepmind.google", "ai.google", "blog.google"] },

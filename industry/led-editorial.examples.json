@@ -1,0 +1,92 @@
+{
+  "status": "synthetic_review_examples_not_news_or_engineering_evidence",
+  "purpose": "人工审稿边界讨论；不用于证明采集、质量、产品参数或真实发布",
+  "cases": [
+    {
+      "id": "sample-stage-and-variant",
+      "source": "Example LEDCo demonstrated X-HB. Only the HB variant reaches 10,000 nits in the manufacturer test. Samples are expected in Q4.",
+      "acceptable": "Example LEDCo 展示 X-HB，厂商测试中仅 HB 子型号达到 10,000 nits，预计 Q4 送样。",
+      "reject": "Example LEDCo 已量产全系列 10,000 nits 显示屏。",
+      "check": [
+        "厂商归属",
+        "仅 HB",
+        "测试条件",
+        "预计送样"
+      ]
+    },
+    {
+      "id": "power-basis",
+      "source": "Example LEDCo lists 600 W/m² as maximum AC input. A separate module test reports typical DC input at 200 W/m² under its test image.",
+      "acceptable": "Example LEDCo 列出整机交流最大输入为 600 W/m²，另一次模组测试给出特定图像下的直流典型输入为 200 W/m²。",
+      "reject": "该屏平均功耗 200 W/m²，比 600 W/m² 方案节省三分之二电费。",
+      "check": [
+        "AC/DC",
+        "模组/整机",
+        "最大/典型",
+        "不跨口径计算"
+      ]
+    },
+    {
+      "id": "camera-condition",
+      "source": "Example LEDCo measured a 3,840 Hz refresh setting with controller C and scan configuration S. The release does not report camera testing.",
+      "acceptable": "Example LEDCo 在控制器 C 和扫描配置 S 下记录了 3,840 Hz 刷新设置。",
+      "reject": "该屏在任何相机和配置下都不会有扫描纹。",
+      "check": [
+        "配置归属",
+        "不从刷新率推拍摄结论"
+      ]
+    },
+    {
+      "id": "brand-attribution",
+      "source": "Example PowerCo announced a power-supply revision. Example LEDCo is named as a participant in the same exhibition.",
+      "acceptable": "Example PowerCo 宣布电源改版。",
+      "reject": "Chipshow 推出新电源并实现原厂宣称的节能效果。",
+      "check": [
+        "发布主体",
+        "展会提及不转移能力",
+        "不编造齐普参数"
+      ]
+    },
+    {
+      "id": "catalog-date",
+      "source": "The catalog was updated on 2026-10-20. The listed product originally launched in 2024. No new release action is described.",
+      "acceptable": "可作为既有产品资料线索；不能生成本次新发布的 fact。",
+      "reject": "厂商于 2026-10-20 发布了该产品。",
+      "check": [
+        "页面更新非事件日期",
+        "旧目录不当新发布"
+      ]
+    },
+    {
+      "id": "component-certificate",
+      "source": "Example PowerCo reports a test completed for power-supply model P-1. The source gives no completed display-system test.",
+      "acceptable": "Example PowerCo 公布 P-1 电源型号的一项测试完成情况。",
+      "reject": "采用该电源的齐普所有整屏均已通过全部认证。",
+      "check": [
+        "元件/整屏",
+        "型号范围",
+        "测试/认证阶段"
+      ]
+    },
+    {
+      "id": "non-display-lighting",
+      "source": "Example LightCo introduces a decorative LED ceiling lamp for homes. The material discusses room illumination only.",
+      "acceptable": "预筛 BLOCK，正文明确属于家用照明且没有显示相关信息。",
+      "reject": "仅因有 LED 或来自熟悉厂商就当成显示行业新闻。",
+      "check": [
+        "实际显示相关性"
+      ]
+    },
+    {
+      "id": "reading-value-without-cta",
+      "source": "Example Integrator describes how it diagnosed intermittent display faults, including the observed symptoms, test sequence and confirmed cause.",
+      "acceptable": "概括故障现象、排查方法和确认结果，保留适用条件；可以没有采购建议。",
+      "reject": "删去工程经验，只写联系我们获取报价。",
+      "check": [
+        "阅读价值",
+        "工程经验",
+        "不强制CTA"
+      ]
+    }
+  ]
+}
