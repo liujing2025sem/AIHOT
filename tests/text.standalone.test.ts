@@ -1,8 +1,36 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { looksZh } from "@aihot/backend/editorial/writing";
+import { finalizeCopy, looksZh } from "@aihot/backend/editorial/writing";
 import { isChineseBody, exportTranslation } from "@aihot/backend/publication/items";
 import { stripTags } from "@aihot/backend/lib/text";
+
+// 合成回归样例，借用公开材料中“性能在前、样品阶段与配置条件在后”的结构，非新闻摘录。
+// https://www.mblock.com.tw/en/news/detail/LED_Display_Symposium_LED_Driver_IC
+test("finalizing copy preserves later model, availability and configuration conditions", () => {
+  const summaryZh = "某器件供应商公布一款驱动芯片的方案，称刷新率可达 15,360 Hz，并介绍这项设计如何服务于更细间距的显示应用，以及与现有控制、供电、模组布线和检测流程衔接时需要核对的工程资料。" +
+    "报道还介绍了现场展示的不同方案，涉及画面质量、拍摄效果以及后续验证安排，采购方需要结合实际项目核对适用范围，不能只凭宣传中的一个数字完成器件替换或采购选型。\n" +
+    "上述性能仅针对示例型号 D64 的完整 64 扫描配置；供应商预计第四季度提供样品，尚未确认量产供货日期。";
+  assert.ok(summaryZh.length > 200, "the old length guard would compact this copy");
+  for (const sourceKind of ["rss", "x_search"]) {
+    const input = { title: "驱动芯片方案与供货计划", text: summaryZh, mainText: summaryZh, sourceKind };
+    const copy = { titleZh: input.title, summaryZh };
+    assert.deepEqual(finalizeCopy(input, copy), {
+      ...copy,
+      identityGuard: { outcome: "pass", unsupportedTitleEntityIds: [], unsupportedSummaryEntityIds: [] },
+    });
+  }
+});
+
+test("finalizing complete copy still rejects a company introduced only in its tail", () => {
+  const input = { title: "某实验室公布测试结果", text: "某实验室公布了测试方法和结果，未披露任何合作企业。", sourceKind: "rss" };
+  const summaryZh = "某实验室公布测试结果，并介绍测量条件、样品准备、重复实验与结果复核方法。".repeat(6) + "OpenAI 将提供这些样品。";
+  assert.ok(summaryZh.indexOf("OpenAI") > 200);
+  const result = finalizeCopy(input, { titleZh: input.title, summaryZh });
+  assert.equal(result.titleZh, input.title);
+  assert.equal(result.summaryZh, "");
+  assert.equal(result.identityGuard.outcome, "fallback");
+  assert.deepEqual(result.identityGuard.unsupportedSummaryEntityIds, ["openai"]);
+});
 
 // Regression coverage for HTML attributes that contain `>` in real source pages.
 test("stripTags ignores > inside quoted HTML attributes", () => {

@@ -226,45 +226,11 @@ export function enforceIdentity(input: TranslateInput, copy: { titleZh: string; 
   };
 }
 
-// Answer-first summary length
-
-export function compactAnswerFirstSummary(summary: string, maxChars = 190): string {
-  const text = summary.trim().replace(/\s*\n+\s*/g, " ");
-  if (text.length <= maxChars) return text;
-  const sentences = text.match(/[^。！？!?]+[。！？!?]?/gu) ?? [text];
-  let result = "";
-  for (const sentence of sentences) {
-    if ((result + sentence).length > maxChars) break;
-    result += sentence;
-    if (result.length >= 80) break;
-  }
-  // Whole sentences, even a short one, read better than half of the next.
-  if (result) return result.trim();
-  // The first sentence alone is too long: cut at a clause boundary, never inside a name, number or enumeration.
-  const clauses = text.match(/[^，；,;]+[，；,;]?/gu) ?? [text];
-  for (const clause of clauses) {
-    if ((result + clause).length + 1 > maxChars) break;
-    result += clause;
-    if (result.length >= 80) break;
-  }
-  return result.length >= 50 ? `${result.replace(/[，；,;]$/u, "")}。` : text;
-}
-
-function answerFirstSummaryLengthOk(summary: string, input: TranslateInput): boolean {
-  const trimmed = summary.trim();
-  const sourceLength = (input.sourceKind === "x_search" ? input.text : cleanArticleTextForLLM(input.text)).trim().length;
-  const sentences = trimmed.split(/[。！？!?]+/u).map((p) => p.trim()).filter(Boolean).length;
-  const rich = sourceLength >= 500;
-  return trimmed.length <= 200 && trimmed.length >= (rich ? 80 : 50) && sentences <= 3 && (!rich || sentences >= 2);
-}
-
 export const isShortTweetInput = (input: TranslateInput) => input.sourceKind === "x_search" && isShortTweet(input.mainText || input.title);
 
-/** The length rule (compacted without another call) and the identity guard, for any writing model. */
+/** Keep the complete summary: later sentences may qualify earlier claims. Cards clip only their display. */
 export function finalizeCopy(input: TranslateInput, copy: { titleZh: string; summaryZh: string }) {
-  let summaryZh = copy.summaryZh;
-  if (!isShortTweetInput(input) && summaryZh && !answerFirstSummaryLengthOk(summaryZh, input)) summaryZh = compactAnswerFirstSummary(summaryZh);
-  return enforceIdentity(input, { titleZh: copy.titleZh, summaryZh });
+  return enforceIdentity(input, copy);
 }
 
 // Title/summary prompts for items the content understanding does not write
