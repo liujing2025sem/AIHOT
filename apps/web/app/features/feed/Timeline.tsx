@@ -41,7 +41,7 @@ function fromResponse(r: TimelineResponse, unreadOnly = false): ListState {
  * whole bar is the fold button).
  */
 export function DayHeader({ day, today, count, collapsed, onToggle, aside, asideOnPhone = true }: { day: string; today: string; count: number | null; collapsed?: boolean; onToggle?: () => void; aside?: React.ReactNode; asideOnPhone?: boolean }) {
-  const date = monthDay(day);
+  const date = monthDay(day, today);
   const weekday = beijingWeekday(day);
   const short = weekdayShort(day);
   const phoneRow = (
