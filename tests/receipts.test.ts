@@ -85,6 +85,40 @@ test("an answer already received is reused instead of bought again", async () =>
   assert.equal(second.receiptId, first.receiptId);
 });
 
+test('coding sessions reach the provider and bind reuse without losing reported billing fields', async () => {
+  const seen: Array<string | undefined> = [];
+  const coding = await stub((_hit, request) => {
+    seen.push(request.headers['x-opencode-session'] as string | undefined);
+    return { model: 'deepseek-v4.1-flash', choices: [{ message: { content: '{"ok":true}' } }], usage: { ...usage, cost: 0, opencode: { billing_source: 'go', allowance: 0.001 } } };
+  });
+  const previous = process.env.DEEPSEEK_BASE_URL;
+  process.env.DEEPSEEK_BASE_URL = `${coding.url}/v1`;
+  const options = { model: 'deepseek-flash', purpose: 'coding_test', subject: `coding-${tag()}`, promptVersion: 'v1', system: 'Review TypeScript', user: 'return null', schema: z.object({ ok: z.boolean() }) };
+  try {
+    const first = await chatJson({ ...options, sessionId: 'coding-session-a' });
+    const replay = await chatJson({ ...options, sessionId: 'coding-session-a' });
+    const other = await chatJson({ ...options, sessionId: 'coding-session-b' });
+    assert.equal(first.receiptId, replay.receiptId);
+    assert.notEqual(first.receiptId, other.receiptId);
+    assert.deepEqual(seen, ['coding-session-a', 'coding-session-b']);
+    assert.deepEqual(first.usage?.opencode, { billing_source: 'go', allowance: 0.001 });
+  } finally { process.env.DEEPSEEK_BASE_URL = previous; await coding.close(); }
+});
+
+test('Go refuses editorial calls without a coding session and implicit fallback before any request', async () => {
+  const prior = { base: process.env.LLM_BASE_URL, key: process.env.LLM_API_KEY, model: process.env.LLM_MODEL };
+  Object.assign(process.env, { LLM_BASE_URL: 'https://opencode.ai/inference/go/openai/v1', LLM_API_KEY: 'synthetic-not-a-key', LLM_MODEL: 'deepseek-v4.1-flash' });
+  const subject = `go-not-sent-${tag()}`;
+  const options = { model: 'default', purpose: 'invariant_test', subject, promptVersion: 'v1', system: 's', user: 'u', schema: z.object({ ok: z.boolean() }) };
+  try {
+    await assert.rejects(chatJson(options), /persisted coding session/);
+    await assert.rejects(chatJson({ ...options, sessionId: 'coding-session', fallbackModel: 'deepseek-flash' }), /cannot implicitly/);
+    assert.equal((await sql`SELECT 1 FROM receipts WHERE subject=${subject}`).length, 0);
+  } finally {
+    for (const [key, value] of Object.entries({ LLM_BASE_URL: prior.base, LLM_API_KEY: prior.key, LLM_MODEL: prior.model })) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
+
 test("stale recovery waiting on a response transaction preserves its committed answer and attempt", async () => {
   const request = { service: "invariant-recovery-race", purpose: "invariant_test", identity: { race: tag() } };
   const asked = gate();

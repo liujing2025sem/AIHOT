@@ -62,6 +62,8 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   maxTokens?: number;
   attemptTag?: string;
   timeoutMs?: number;
+  /** Persisted coding conversation identity. News/translation calls do not supply this. */
+  sessionId?: string;
   /** false: the model answers in its own text format (no JSON mode); `parse` turns it into the schema's input. */
   json?: boolean;
   parse?: (content: string) => unknown;
@@ -115,13 +117,28 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
+const USER_AGENT = 'aihot-local-coding-harness/0.1';
+function transportHeaders<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec, baseUrl: string): Record<string, string> {
+  if (opts.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(opts.sessionId)) throw new ModelUnavailableError('Invalid coding sessionId');
+  const url = new URL(baseUrl);
+  if (url.hostname === 'opencode.ai' && url.pathname.startsWith('/inference/go')) {
+    if (url.protocol !== 'https:' || url.port || url.username || url.password || url.search || url.hash || url.pathname.replace(/\/$/, '') !== '/inference/go/openai/v1') throw new ModelUnavailableError('Use the exact OpenCode Go HTTPS API base');
+    if (spec.model !== 'deepseek-v4.1-flash') throw new ModelUnavailableError('This local Go configuration supports deepseek-v4.1-flash');
+    if (!opts.sessionId) throw new ModelUnavailableError('OpenCode Go needs a persisted coding session; use the Codex file handoff for editorial work');
+    if (opts.fallbackModel) throw new ModelUnavailableError('OpenCode Go cannot implicitly change model or billing endpoint');
+    if (spec.extra && ['model', 'messages'].some(key => Object.hasOwn(spec.extra!, key))) throw new ModelUnavailableError('Go extra JSON cannot replace model or messages');
+  }
+  return { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(opts.sessionId ? { 'x-opencode-session': opts.sessionId } : {}) };
+}
+
 function requestFor<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec) {
   const temperature = opts.temperature ?? 0.2;
   const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.reasoningTokens ?? 0);
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
   const request: ReceiptRequest = {
     service: spec.service, model: spec.model, purpose: opts.purpose, subject: opts.subject,
-    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null },
+    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null,
+      ...(opts.sessionId ? { client: { userAgent: USER_AGENT, sessionId: opts.sessionId } } : {}) },
     requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
     attemptTag: opts.attemptTag,
   };
@@ -145,6 +162,9 @@ const FAILOVER_TIMEOUT_MS = 30_000;
  * followed by a second paid request.
  */
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
+  const primary = MODELS[opts.model];
+  const base = primary && credential('models', primary.baseUrlEnv);
+  if (base) transportHeaders(opts, primary!, base);
   if (!opts.fallbackModel) return chatOnce(opts);
   const backupOpts = { ...opts, model: opts.fallbackModel };
   const fallbackFor = logicalKeyFor(requestFor(opts, MODELS[opts.model]!).request);
@@ -165,6 +185,7 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
   if (!spec) throw new Error(`Unknown model ${opts.model}`);
   if (!config.modelCallsEnabled) throw new ModelUnavailableError("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
   const baseUrl = credential("models", spec.baseUrlEnv);
+  const headers = baseUrl ? transportHeaders(opts, spec, baseUrl) : {};
   const apiKey = credential("models", spec.apiKeyEnv);
   if (!baseUrl || !apiKey || !spec.model) throw new ModelUnavailableError(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
@@ -194,7 +215,7 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
       try {
         res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+          headers: { ...headers, authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(timeoutMs),
         });

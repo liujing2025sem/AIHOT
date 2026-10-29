@@ -44,7 +44,7 @@ pwsh -NoProfile -File scripts/start-local.ps1 -NodePath D:/dev/tools/node-v24.22
 
 ## 自动采编仍缺的证据
 
-当前没有真实模型 API 连接、连续多日生成样本、原 News Hub 完整源码验收、中文审核→英文交付→精确版本批准→WordPress 回写验收，亦无同事第二台机器的回执。
+2026-10-29 已用 OpenCode DeepSeek V4.1 Flash 完成一次真实编码 API 调用，并完成两次无原聊天上下文的 Codex 文件采编接棒，见 `editorial-pilot.md`。这不是资讯后台自动采编：连续多日生成样本、原 News Hub 完整源码、中文审核→英文交付→精确版本批准→WordPress 回写，以及同事第二台机器仍未验收。原生 OpenCode 客户端启动被平台自动审批拒绝，不能计为通过。
 
 三份 LED 素材由当前 Codex 会话制作，可作为人工参照；没有将它们记为 AIHOT 自动生成。外部厂商声明不构成 Chipshow 性能证据。模型账户和费用由既有 Owner 配置，不能从本机 Codex 登录中自动取得或转移。
 
