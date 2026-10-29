@@ -8,6 +8,7 @@
 import "./setup.ts";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import { after, test } from "node:test";
 import { config } from "@aihot/backend/config";
 import { extractFromUrl, pageRules } from "@aihot/backend/content/extract";
@@ -17,8 +18,11 @@ import { fetchDetail, fetchWebList, fromHtml, fromMarkdown } from "@aihot/backen
 import { fetchRss } from "@aihot/backend/sources/rss";
 import { fetchJsonList } from "@aihot/backend/sources/json-list";
 import { noiseFiltered } from "@aihot/backend/sources/filters";
+import type { SourceRow } from "@aihot/backend/sources/types";
 
 const source = (config: Record<string, unknown>) => ({ id: "test-list", config }) as never;
+
+const ledSources = JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8")).sources as Array<SourceRow & { site_fulltext: boolean; syndicate_fulltext: boolean }>;
 
 const pages: Record<string, () => string> = {
   // A news site's feed: a teaser that ends in "Read the full story", next to a post whose feed carries it whole.
@@ -281,4 +285,73 @@ test("a source's language is an Accept-Language value, refused by kinds that rea
     }
   }
   for (const kind of ["x_search", "mp_account", "external"] as const) assert.deepEqual(unsupportedConfig(kind, { acceptLanguage: "en" }), ["acceptLanguage"], kind);
+});
+
+test("LED candidates use supported config and do not start collection or full-text republication", () => {
+  assert.ok(ledSources.length > 0);
+  for (const s of ledSources) {
+    assert.deepEqual(unsupportedConfig(s.kind, s.config), [], s.id);
+    assert.equal(s.enabled, false, s.id);
+    assert.equal(s.site_fulltext, false, s.id);
+    assert.equal(s.syndicate_fulltext, false, s.id);
+  }
+});
+
+test("LED source configs read article cards, exclude navigation and keep date precision", () => {
+  // Structural excerpts checked against the official pages on 2026-10-27; titles and slugs below
+  // are synthetic. No vendor article body or image is redistributed with the fixture.
+  const fixtures = [
+    {
+      id: "web-macroblock-news", path: "/en/news/detail/fixture-driver", day: null,
+      html: `<a href="/en/news">News</a><ul><li class="alldata"><div class="news_box">
+        <div class="mmdd"><h4>21</h4><h5>September</h5></div><div class="txt"><p>Fixture driver update</p>
+        <div class="btn"><a href="/en/news/detail/fixture-driver"><p>More details</p></a></div></div></div></li></ul>`,
+    },
+    {
+      id: "web-kinglight-news", path: "/blog/fixture-driver.html", day: "2026-10-23",
+      html: `<a href="/blog/navigation.html">Navigation</a><section id="news-page"><div class="top">
+        <div class="left"><a href="/blog/fixture-driver.html"><img alt="Teaser"></a></div>
+        <div class="right"><a href="/blog/fixture-driver.html"><div class="top-news-con">
+        <h2>Fixture driver update</h2><p class="time news">2026-10-23</p></div></a></div></div>
+        <div class="bottom"><div class="list"><div class="con"><a href="/blog/fixture-driver.html">
+        <h2>Duplicate card</h2><p class="time news">2026-10-23</p></a></div></div></div></section>`,
+    },
+    {
+      id: "web-nationstar-product-news", path: "/nationstar/content/fixture-driver", day: "2026-05-15",
+      html: `<a href="/nationstar/content/navigation">Navigation</a><ul class="mar_list"><li class="item clearfix">
+        <div class="info fr"><a class="title" href="/nationstar/content/fixture-driver">Fixture driver update</a>
+        <div class="bot"><span class="tag">Published: 2026-05-15</span><span class="tag">Views: 557</span>
+        <a class="more" href="/nationstar/content/fixture-driver">Read more</a></div></div></li></ul>`,
+    },
+  ];
+  for (const fixture of fixtures) {
+    const s = ledSources.find((entry) => entry.id === fixture.id)!;
+    const rows = fromHtml(fixture.html, s.config.url, s);
+    assert.equal(rows.length, 1, s.id);
+    assert.equal(rows[0]!.url, new URL(fixture.path, s.config.url).href, s.id);
+    assert.equal(rows[0]!.title, "Fixture driver update", s.id);
+    assert.equal(rows[0]!.publicationTime, fixture.day, s.id);
+    if (fixture.day === null) assert.equal(rows[0]!.publishedAt, null, "month/day without a year must stay unknown");
+    else assert.equal(rows[0]!.publishedAt?.toISOString(), new Date(`${fixture.day}T00:00:00+08:00`).toISOString(), s.id);
+
+    const undated = fromHtml(fixture.html.replaceAll(fixture.day ?? "September", "Date unavailable"), s.config.url, s);
+    assert.equal(undated[0]!.publishedAt, null, s.id);
+    assert.equal(undated[0]!.publicationTime, null, s.id);
+  }
+});
+
+test("Macroblock detail takes the publication day from JSON-LD and does not substitute update time", async () => {
+  const s = ledSources.find((entry) => entry.id === "web-macroblock-news")!;
+  const head = `<html><head><meta property="article:modified_time" content="2026-10-27T10:00:00Z"></head><body>`;
+  const title = `<h1>Vendor brand</h1><article class="news_title"><h4>21</h4><p>2026.September</p><h5>Fixture driver update</h5></article>`;
+  pages["/led-driver-dated"] = () => `${head}${title}<script type="application/ld+json">{"@type":"Article","datePublished":"2026-09-21","dateModified":"2026-10-27"}</script></body></html>`;
+  pages["/led-driver-undated"] = () => `${head}${title}<script type="application/ld+json">{"@type":"Article","dateModified":"2026-10-27"}</script></body></html>`;
+  const need = { date: true, title: true, summary: false, body: false };
+  const dated = await fetchDetail(`${site}/led-driver-dated`, s, need);
+  assert.equal(dated.title, "Fixture driver update");
+  assert.equal(dated.publicationTime, "2026-09-21");
+  assert.equal(dated.publishedAt?.toISOString(), "2026-09-20T16:00:00.000Z");
+  const undated = await fetchDetail(`${site}/led-driver-undated`, s, need);
+  assert.equal(undated.publishedAt, null);
+  assert.equal(undated.publicationTime, null);
 });
