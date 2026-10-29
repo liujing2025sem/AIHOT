@@ -15,6 +15,7 @@ import { extractFromUrl, pageRules } from "@aihot/backend/content/extract";
 import { sanitizeBody, trimTrailingChrome } from "@aihot/backend/content/sanitize";
 import { unsupportedConfig } from "@aihot/backend/sources/config-keys";
 import { fetchDetail, fetchWebList, fromHtml, fromMarkdown } from "@aihot/backend/sources/web-list";
+import { enrichDetails, listingEntries } from "@aihot/backend/sources/collect";
 import { fetchRss } from "@aihot/backend/sources/rss";
 import { fetchJsonList } from "@aihot/backend/sources/json-list";
 import { noiseFiltered } from "@aihot/backend/sources/filters";
@@ -22,7 +23,8 @@ import type { SourceRow } from "@aihot/backend/sources/types";
 
 const source = (config: Record<string, unknown>) => ({ id: "test-list", config }) as never;
 
-const ledSources = JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8")).sources as Array<SourceRow & { site_fulltext: boolean; syndicate_fulltext: boolean }>;
+const ledSourceIds = new Set(["web-macroblock-news", "web-kinglight-news", "web-nationstar-product-news"]);
+const ledSources = (JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8")).sources as Array<SourceRow & { site_fulltext: boolean; syndicate_fulltext: boolean }>).filter(s => ledSourceIds.has(s.id));
 
 const pages: Record<string, () => string> = {
   // A news site's feed: a teaser that ends in "Read the full story", next to a post whose feed carries it whole.
@@ -288,7 +290,7 @@ test("a source's language is an Accept-Language value, refused by kinds that rea
 });
 
 test("LED candidates use supported config and do not start collection or full-text republication", () => {
-  assert.ok(ledSources.length > 0);
+  assert.deepEqual(new Set(ledSources.map(s => s.id)), ledSourceIds);
   for (const s of ledSources) {
     assert.deepEqual(unsupportedConfig(s.kind, s.config), [], s.id);
     assert.equal(s.enabled, false, s.id);
@@ -354,4 +356,26 @@ test("Macroblock detail takes the publication day from JSON-LD and does not subs
   const undated = await fetchDetail(`${site}/led-driver-undated`, s, need);
   assert.equal(undated.publishedAt, null);
   assert.equal(undated.publicationTime, null);
+});
+
+test("Kinglight pinned listing dates give way to the article's original publication day", async () => {
+  // Live check 2026-10-29: the pinned card said 2026-10-23, its article byline 2024-03-20.
+  const configured = ledSources.find(entry => entry.id === "web-kinglight-news")!;
+  const s = { ...configured, config: { ...configured.config, allowUrlPrefixes: [site] } };
+  pages["/led-kinglight-pinned"] = () => `<html><body><section id="newsshow"><div class="top">
+    <h1 class="news-tit">Fixture service announcement</h1><div class="tnh"><span>2024-03-20</span></div>
+    </div></section></body></html>`;
+  pages["/led-kinglight-undated"] = () => `<html><head><meta property="article:modified_time" content="2026-10-23T00:00:00Z"></head>
+    <body><section id="newsshow"><div class="top"><div class="tnh"><span>Date unavailable</span></div></div></section></body></html>`;
+  const candidates = await listingEntries(s, [{ url: `${site}/led-kinglight-pinned`, title: "Fixture service...",
+    publishedAt: new Date("2026-10-22T16:00:00Z"), publicationTime: "2026-10-23" }]);
+  const listedPublishedAt = candidates[0]!.publishedAt;
+  assert.equal(listedPublishedAt, null, "a promoted card cannot establish publication time");
+  const reads = await enrichDetails(candidates, s, new Map(), { budget: 1, datedOut: {}, admits: () => true });
+  assert.equal(reads.attempts, 1, "the already dated listing must still read the byline");
+  assert.equal(candidates[0]!.title, "Fixture service announcement", "a shortened card uses the full article heading");
+  assert.equal(candidates[0]!.publicationTime, "2024-03-20");
+  assert.equal(candidates[0]!.publishedAt?.toISOString(), "2024-03-19T16:00:00.000Z");
+  const undated = await fetchDetail(`${site}/led-kinglight-undated`, s, { date: true, title: false, summary: false });
+  assert.equal(undated.publishedAt, null, "an update time cannot replace a missing publication byline");
 });

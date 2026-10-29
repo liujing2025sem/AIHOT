@@ -19,6 +19,7 @@ import { computeHotRanking } from "@aihot/backend/events/hot";
 import { latestHotRanking } from "@aihot/backend/publication/hot";
 import { loadItemShare } from "@aihot/backend/publication/og";
 import { buildApp } from "../apps/api/src/app.ts";
+import { finalizeCopy } from "@aihot/backend/editorial/writing";
 
 const T = tag();
 const SOURCE = `test-publication-${T}`;
@@ -64,6 +65,26 @@ async function get(url: string, headers: Record<string, string> = {}) {
   const res = await app.inject({ method: "GET", url, headers });
   return { status: res.statusCode, body: res.body, etag: res.headers.etag as string | undefined };
 }
+
+test("a long technical summary retains its final conditions through storage and public exports", async () => {
+  const id = await article();
+  const conditions = "条件：X-HB 型号，整屏 AC 输入平均 200 W/m²，图像 T，预计 Q4 供样，量产尚未确认。";
+  const summary = "这是明确标注为合成的显示技术测试说明，用于核验长摘要保存与读取。".repeat(14) + conditions;
+  const copy = finalizeCopy({ title: "Technical sample", documentUrl: "https://example.com/sample", text: summary, sourceKind: "rss" }, { titleZh: "长摘要条件核验", summaryZh: summary });
+  assert.equal(copy.summaryZh, summary);
+  await sql`UPDATE analyses SET summary_zh = ${copy.summaryZh} WHERE article_id = ${id}`;
+  await sql`UPDATE articles SET grouping_status = 'complete' WHERE id = ${id}`;
+  await publishArticle(id, released());
+  assert.equal((await sql`SELECT summary_zh FROM analyses WHERE article_id = ${id}`)[0]!.summary_zh, summary);
+  assert.equal(JSON.parse((await get(`/api/site/items/${id}`)).body).summary, summary);
+  const list = JSON.parse((await get(`/api/v1/items?mode=all&limit=30`)).body).items;
+  assert.equal(list.find((item: { id: string }) => item.id === id)?.summary, summary);
+  for (const url of ["/feed.xml", `/items/${id}/markdown`]) {
+    const response = await get(url);
+    assert.equal(response.status, 200, url);
+    assert.ok(response.body.includes(conditions), `${url} retains the final engineering conditions`);
+  }
+});
 
 // Failure modes: a revoked score falls back to the erroneous model score, zero is treated as
 // missing, republishing loses a correction, invalid scores or stale edits alter public state,
