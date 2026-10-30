@@ -9,6 +9,9 @@ import type { Screen } from "../components/shell/screens";
 import { Timeline } from "../features/feed/Timeline";
 import { HotTopics } from "../features/feed/HotTopics";
 import { ActiveFilters, CategoryTabs, FeedBar, SearchField } from "../features/feed/Filters";
+import { SITE } from "@aihot/site";
+import { ReadingLayout } from "../components/ui/Page";
+import { StudioRail } from "../features/studio/StudioRail";
 
 export const handle: Screen = { tab: "featured", name: "精选" };
 export { pageHeaders as headers } from "../lib/api.server";
@@ -35,12 +38,14 @@ export default function Home() {
   const { data, filters } = useLoaderData<typeof loader>();
   const title = filters.tag ? `#${filters.tag}` : "精选";
   return (
-    <div className="pb-6">
+    <ReadingLayout aside={<StudioRail />}>
       {/* Phones: the bar (精选 | 全部, filter, search), the filter in use, today's hot topics, the feed. */}
       <FeedBar base="/" category={filters.category} channel={filters.channel} />
       <ActiveFilters base="/" category={filters.category} channel={filters.channel} tag={filters.tag} />
       <div className="hidden lg:block">
-        <h1 className="text-[24px] font-semibold leading-[1.3] text-ink">{title}</h1>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">LED 商显 · 本机工作台</p>
+        <h1 className="text-[24px] font-semibold leading-[1.3] text-ink">{filters.tag ? title : SITE.name}</h1>
+        <p className="mt-2 text-[13px] leading-relaxed text-ink-3">读行业资讯，核对原文，把有用的内容留给下一次运营。</p>
         <div className="mb-5 mt-4 flex items-center justify-between gap-4">
           <CategoryTabs base="/" category={filters.category} channel={filters.channel} layoutId="home-cat-desk" className="min-w-0" />
           <SearchField keep={{ category: filters.category }} />
@@ -50,6 +55,6 @@ export default function Home() {
       {data.hot && inNav("/hot") && <HotTopics entries={data.hot} />}
 
       <Timeline initial={data} filters={data.filters} />
-    </div>
+    </ReadingLayout>
   );
 }

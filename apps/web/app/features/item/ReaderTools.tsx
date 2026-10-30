@@ -42,7 +42,7 @@ function useReadingDown(): boolean {
 function Tool({ icon, label, onClick, href, pressed }: { icon: ReactNode; label: string; onClick?: () => void; href?: string; pressed?: boolean }) {
   const cls = `flex flex-col items-center justify-center gap-[2px] text-[10.5px] transition-colors active:opacity-50 disabled:opacity-40 ${pressed ? "font-semibold text-accent" : "text-ink-3"}`;
   return href ? (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={cls}>
+    <a href={href} target={href.startsWith("#") ? undefined : "_blank"} rel="noopener noreferrer" className={cls}>
       {icon}
       {label}
     </a>

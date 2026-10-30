@@ -320,7 +320,11 @@ function ItemView({ item }: { item: SiteItemDetail }) {
   const timeLabel = item.publishedAt ? "发布时间" : "收录时间";
   const summaryOnly = item.readingMode === "summary-only";
   const showOutline = item.outline.length >= 3;
-  const originalLabel = isX ? "在 X 查看原推" : "打开原文";
+  // Imported local drafts can point back to themselves; their actual citations live in the body.
+  const sourceUrl = new URL(item.links.original, siteUrl());
+  const selfOriginal = sourceUrl.origin === new URL(siteUrl()).origin && sourceUrl.pathname === `/items/${item.id}`;
+  const originalHref = selfOriginal ? "#item-body" : item.links.original;
+  const originalLabel = selfOriginal ? "引用来源" : isX ? "在 X 查看原推" : "打开原文";
 
   const related = item.relatedStories.filter((s) => s.publicId !== item.story?.publicId);
 
@@ -367,8 +371,8 @@ function ItemView({ item }: { item: SiteItemDetail }) {
   const actions = (
     <div className="flex items-center gap-1">
       <a
-        href={item.links.original}
-        target="_blank"
+        href={originalHref}
+        target={selfOriginal ? undefined : "_blank"}
         rel="noopener noreferrer"
         className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-ink-4 hover:text-ink"
       >
@@ -528,7 +532,7 @@ function ItemView({ item }: { item: SiteItemDetail }) {
           {summaryOnly && <p className="mt-7 rounded-control bg-bg-sunk px-4 py-3 text-[13.5px] leading-relaxed text-ink-3">应来源方要求，这里只提供摘要与原文入口。完整内容请阅读原文。</p>}
 
           {item.body && bodyHtml && (
-            <section className="mt-9 border-t border-line pt-4 xl:mt-10">
+            <section id="item-body" className="mt-9 scroll-mt-[calc(var(--bar-h)+1rem)] border-t border-line pt-4 xl:mt-10">
               <div className="mb-6 flex items-center justify-between gap-3">
                 <span className="text-[12px] text-ink-4">{bodyLabel}</span>
                 {hasTranslation && (
@@ -554,13 +558,13 @@ function ItemView({ item }: { item: SiteItemDetail }) {
           {isX && item.x!.media.length > 0 && <MediaGallery media={item.x!.media} postUrl={item.links.original} />}
           {isX && item.x!.quoted?.text && <QuotedPost quoted={item.x!.quoted} original={lang === "original"} />}
 
-          <p className="mt-8 text-[13px] text-ink-4">
+          {selfOriginal ? <p className="mt-8 text-[13px] text-ink-4">本机编辑试验稿 · 引用来源见正文中的原始资料链接。</p> : <p className="mt-8 text-[13px] text-ink-4">
             来源：
             <a href={item.links.original} target="_blank" rel="noopener noreferrer" className="text-ink-3 hover:text-accent">
               {isX ? item.x!.authorName : item.source.name}
             </a>
             <span> · {hostOf(item.links.original)}</span>
-          </p>
+          </p>}
 
           {(item.topics.length > 0 || item.tags.length > 0) && (
             <div className="mt-4 flex flex-wrap gap-1.5 lg:hidden">
@@ -598,8 +602,8 @@ function ItemView({ item }: { item: SiteItemDetail }) {
 
       <ReaderToolbar
         item={item}
-        originalUrl={item.links.original}
-        originalLabel={isX ? "原推" : "原文"}
+        originalUrl={originalHref}
+        originalLabel={selfOriginal ? "引用来源" : isX ? "原推" : "原文"}
         onOutline={showOutline ? () => setOutlineOpen(true) : undefined}
         onShare={() => void share()}
       />

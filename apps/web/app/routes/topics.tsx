@@ -108,6 +108,7 @@ export default function TopicsPage() {
           <span className="num">{topics.length}</span> 个主题，追踪最新精选与重要进展。
         </p>
       </header>
+      <p role="note" className="mt-4 rounded-control border border-line bg-accent-softer px-4 py-3 text-[13px] leading-relaxed text-ink-3">当前目录保留框架的 AI 示例主题，尚未配置为 LED 商显行业目录。下方主题可浏览，但不代表已接入相应 LED 商显跟踪。</p>
       {groups.map((g) => (
         <section key={g.key} aria-labelledby={`topics-${g.key}`} className="pt-8">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
