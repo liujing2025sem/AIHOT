@@ -7,7 +7,10 @@ import sanitizeHtml from 'sanitize-html';
 import { sql, type Db } from '../db.ts';
 import { audit, auditHistory, Conflict } from '../audit.ts';
 import { collectSource } from '../sources/collect.ts';
-import { extractArticleBody } from '../content/extract.ts';
+import { pageFetchable } from '../content/extract.ts';
+import { contentHash, fillPublicationTime, reviseMaterial } from '../content/materials.ts';
+import { fetchDetail } from '../sources/web-list.ts';
+import type { SourceRow } from '../sources/types.ts';
 import { chatJson } from '../providers/llm.ts';
 import { resolveChannel } from '../providers/channel.ts';
 import { config, credential } from '../config.ts';
@@ -26,8 +29,12 @@ export async function studioOverview(f: { q?: string; source?: string; quality?:
       OR (${f.quality ?? ''} = 'missing-body' AND (a.body_status <> 'ok' OR a.body_text IS NULL))
       OR (${f.quality ?? ''} = 'missing-date' AND a.published_at IS NULL))`;
   const [rows, count, stats, sources, tasks, drafts] = await Promise.all([
-    sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.published_at,a.discovered_at,a.body_status,
-      length(a.body_text) AS body_length,a.revision FROM articles a JOIN sources s ON s.id=a.source_id
+    sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.published_at,a.publication_time,a.discovered_at,a.body_status,
+      length(a.body_text) AS body_length,a.revision,
+      (SELECT jsonb_build_object('state',l.after->>'state','notice',l.after->>'notice','at',l.created_at)
+        FROM audit_log l WHERE l.subject='content:' || a.id AND l.action='studio.material.extract'
+        ORDER BY l.created_at DESC,l.id DESC LIMIT 1) AS last_extraction
+      FROM articles a JOIN sources s ON s.id=a.source_id
       WHERE ${where} ORDER BY a.published_at DESC NULLS LAST,a.discovered_at DESC,a.id LIMIT 30 OFFSET ${(page - 1) * 30}`,
     sql`SELECT count(*)::int AS n FROM articles a WHERE ${where}`,
     sql`SELECT (SELECT count(*)::int FROM articles) AS materials,
@@ -35,9 +42,11 @@ export async function studioOverview(f: { q?: string; source?: string; quality?:
       (SELECT count(*)::int FROM articles WHERE published_at IS NULL) AS undated,
       (SELECT count(*)::int FROM studio_drafts WHERE status='in_review') AS review,
       (SELECT count(*)::int FROM studio_drafts WHERE status='approved') AS approved`,
-    sql`SELECT s.id,s.name,s.kind,s.enabled,s.health,
-      (SELECT max(started_at) FROM fetch_runs f WHERE f.source_id=s.id) AS last_fetch,
-      (SELECT count(*)::int FROM articles a WHERE a.source_id=s.id) AS materials FROM sources s ORDER BY s.name`,
+    sql`SELECT s.id,s.name,s.kind,s.enabled,s.health,f.started_at AS last_fetch,
+      f.status AS last_fetch_status,f.error AS last_fetch_error,
+      (SELECT count(*)::int FROM articles a WHERE a.source_id=s.id) AS materials
+      FROM sources s LEFT JOIN LATERAL (SELECT started_at,status,error FROM fetch_runs
+        WHERE source_id=s.id ORDER BY started_at DESC,id DESC LIMIT 1) f ON true ORDER BY s.name`,
     sql`SELECT id,state,created_at,received_at,jsonb_array_length(request->'articles') AS materials FROM studio_tasks ORDER BY created_at DESC LIMIT 30`,
     sql`SELECT id,task_id,article_id,status,version,document->>'title_zh' AS title_zh,document->>'title_en' AS title_en,updated_at FROM studio_drafts ORDER BY updated_at DESC LIMIT 100`,
   ]);
@@ -45,7 +54,10 @@ export async function studioOverview(f: { q?: string; source?: string; quality?:
 }
 
 export async function studioMaterial(id: string) {
-  const [a] = await sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.revision,a.published_at,a.body_status,a.body_text,a.discovered_at
+  const [a] = await sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.revision,a.published_at,a.publication_time,a.body_status,a.body_text,a.discovered_at,
+    (SELECT jsonb_build_object('state',l.after->>'state','notice',l.after->>'notice','at',l.created_at)
+      FROM audit_log l WHERE l.subject='content:' || a.id AND l.action='studio.material.extract'
+      ORDER BY l.created_at DESC,l.id DESC LIMIT 1) AS last_extraction
     FROM articles a JOIN sources s ON a.source_id=s.id WHERE a.id=${id}`;
   return a ?? null;
 }
@@ -194,8 +206,54 @@ export async function collectStudioSource(id: string, actor: string) {
   return result;
 }
 export async function extractStudioMaterial(id: string, actor: string) {
-  if (!await studioMaterial(id)) return null;
-  const state = await extractArticleBody(id);
-  await audit(actor, 'studio.material.extract', `content:${id}`, '管理员补采正文', null, { state });
-  return { state, material: await studioMaterial(id) };
+  const before = await studioMaterial(id);
+  if (!before) return null;
+  type State = 'ok' | 'partial' | 'unconfirmed' | 'skipped' | 'conflict' | 'unsupported' | 'failed';
+  const record = async (state: State, notice: string, changes = { body: false, date: false }, db: Db = sql) => {
+    const result = { state, notice, changes };
+    await audit(actor, 'studio.material.extract', `content:${id}`, '管理员补齐正文与发布日期', null, result, { db });
+    return result;
+  };
+  const respond = async (result: Awaited<ReturnType<typeof record>>) => ({ ...result, material: await studioMaterial(id) });
+  const needsBody = before.body_status !== 'ok' || !before.body_text?.trim();
+  if (!needsBody && before.published_at) return respond(await record('skipped', '正文和发布日期已齐，无需重复补采。'));
+  const [source] = await sql<SourceRow[]>`SELECT * FROM sources WHERE id=${before.source_id}`;
+  if (!source || !pageFetchable(before.url, source.kind) || String(source.config.url ?? '').startsWith('https://r.jina.ai/')) {
+    return respond(await record('unsupported', '此来源需要专用采集方式，请到信源设置处理；本次未触发付费抓取。'));
+  }
+  let detail: Awaited<ReturnType<typeof fetchDetail>>;
+  try {
+    // The same HTML supplies the body and the source's explicit date rule. Manual repair does not
+    // spend a Jina call or replace an already readable body merely to fill a missing date.
+    detail = await fetchDetail(before.url, source, { date: true, title: false, summary: false, body: needsBody });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '请求未完成';
+    return respond(await record('failed', `原文请求失败：${message.slice(0, 300)}。已有内容保留，可稍后重试。`));
+  }
+  const result = await sql.begin(async tx => {
+    const [current] = await tx`SELECT * FROM articles WHERE id=${id} FOR UPDATE`;
+    if (!current || current.revision !== before.revision) {
+      return record('conflict', '补采期间素材已更新，本次结果未覆盖新内容，请刷新后重试。', undefined, tx);
+    }
+    const time = await fillPublicationTime(tx, id, detail.publishedAt, undefined, detail.publicationTime);
+    const got = needsBody ? detail.body : null;
+    const bodyText = got?.text ?? current.body_text;
+    const hash = contentHash({ title: current.title, bodyText, excerpt: current.excerpt });
+    const bodyStatus = got ? 'ok' : needsBody ? 'unconfirmed' : current.body_status;
+    const set: ReturnType<typeof sql> = got
+      ? sql`body_html=${got.html},body_text=${got.text},body_status='ok',
+          media=CASE WHEN jsonb_array_length(media)=0 THEN ${tx.json(got.images as never)}::jsonb ELSE media END`
+      : sql`body_status=${bodyStatus}`;
+    if (time || (got && hash !== current.content_hash)) {
+      await reviseMaterial(tx, id, { set, hash, title: current.title, bodyText });
+    } else if (needsBody) {
+      await tx`UPDATE articles SET ${set},updated_at=now() WHERE id=${id}`;
+    }
+    const changes = { body: !!got, date: !!time };
+    const hasBody = bodyStatus === 'ok' && !!bodyText?.trim();
+    const hasDate = !!current.published_at || !!time;
+    const notes = [got ? '已补齐正文' : '', time ? '已补齐发布日期' : '', !hasBody ? '尚未取得可读正文' : '', !hasDate ? '原文中未找到可核实的发布日期' : ''].filter(Boolean);
+    return record(hasBody && hasDate ? 'ok' : hasBody || hasDate ? 'partial' : 'unconfirmed', `${notes.join('；')}。`, changes, tx);
+  });
+  return respond(result);
 }
