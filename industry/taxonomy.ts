@@ -46,6 +46,7 @@ export const CATEGORY_TAGS = [
 
 /** 可选的主题标签。 */
 export const TOPIC_TAGS = [
+  "LED控制系统", "LED封装", "LED驱动IC", "LED电源", "户外LED显示", "LED采购选型", "LED项目案例", "LED安装维护",
   "Agent", "编码", "推理", "多模态", "语音", "视频", "图像生成", "RAG", "端侧", "数据/训练", "搜索", "部署/工程", "开源生态", "具身智能", "MCP/工具调用",
 ] as const;
 

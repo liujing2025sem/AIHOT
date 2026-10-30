@@ -3,11 +3,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { DEPLOYMENT, SITE } from "@aihot/site";
 
 export const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 
 const env = process.env;
+let modelCallsOverride: boolean | undefined;
 
 function str(name: string, fallback?: string): string {
   const value = env[name];
@@ -56,7 +59,8 @@ export const config = {
   environmentName: str("AIHOT_ENVIRONMENT", isProduction ? "production" : "development"),
   // External-action valve: off unless the environment turns it on, like COLLECT_ENABLED (read by the
   // worker).
-  modelCallsEnabled: bool("MODEL_CALLS_ENABLED", false),
+  get modelCallsEnabled(): boolean { return modelCallsOverride ?? (channelCredential("MODEL_CALLS_ENABLED") === "true"); },
+  set modelCallsEnabled(value: boolean) { modelCallsOverride = value; },
   devAdmin: env.DEV_AUTH_ROLE === "admin" ? { displayName: env.DEV_AUTH_DISPLAY_NAME || "Dev Admin" } : null,
   /** The admin password (at least 12 characters). Feishu sign-in below is optional. */
   adminPassword: env.ADMIN_PASSWORD || null,
@@ -91,6 +95,50 @@ export function credentials(group: CredentialGroup): Record<string, string> {
 export function credential(group: CredentialGroup, name: string): string | null {
   const value = env[name] ?? credentials(group)[name];
   return value && value.trim() !== "" ? value : null;
+}
+
+/** Channel keys stay in the existing models dotenv file, or the deployment's original .env. */
+export function modelCredentialFile(): string {
+  return config.credentialsDir ? path.join(config.credentialsDir, groupFile("models")) : path.join(REPO_ROOT, ".env");
+}
+
+/** Read the file each time so a separate worker sees saved or cleared keys without restarting. */
+export function channelCredential(name: string): string | null {
+  const file = modelCredentialFile();
+  const parsed = existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {};
+  const value = Object.hasOwn(parsed, name) ? parsed[name] : credential("models", name);
+  return value?.trim() || null;
+}
+
+export function channelCredentialSource(name: string): "environment" | "credential-file" | "missing" {
+  if (!channelCredential(name)) return "missing";
+  const file = modelCredentialFile();
+  return existsSync(file) && Object.hasOwn(parseEnv(readFileSync(file, "utf8")), name) ? "credential-file" : "environment";
+}
+
+/** A blank assignment deliberately shadows old process.env values after an explicit key deletion. */
+export async function saveChannelCredential(name: string, value: string): Promise<void> {
+  if (!/^[A-Z][A-Z0-9_]*$/.test(name) || /[\r\n\0]/.test(value) || (value.includes("'") && value.includes('"'))) {
+    throw Object.assign(new Error("密钥格式不支持换行或同时包含两种引号"), { statusCode: 400 });
+  }
+  const file = modelCredentialFile();
+  await mkdir(path.dirname(file), { recursive: true });
+  const original = await readFile(file, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  });
+  const quote = value.includes("'") ? '"' : "'";
+  const assignment = `${name}=${quote}${value}${quote}`;
+  const pattern = new RegExp(`^(?:export\\s+)?${name}\\s*=.*$`, "gm");
+  const next = pattern.test(original) ? original.replace(pattern, () => assignment) : `${original}${original.endsWith("\n") || !original ? "" : "\n"}${assignment}\n`;
+  const temporary = `${file}.${randomBytes(8).toString("hex")}.tmp`;
+  try {
+    await writeFile(temporary, next, { mode: 0o600 });
+    await rename(temporary, file);
+  } finally {
+    await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
+  }
+  groupCache.delete("models");
 }
 
 const PLACEHOLDER = /^(changeme|placeholder|dummy|test|xxx+|your[-_ ].*|<.*>)$/i;

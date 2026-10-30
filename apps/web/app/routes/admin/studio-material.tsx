@@ -1,0 +1,7 @@
+import { Link } from 'react-router';
+import type { Route } from './+types/studio-material';
+import { adminGet } from '../../lib/admin.server';
+import { useAdminAction } from '../../features/admin/action';
+import { AdminPage, Card, Button, Badge, Time } from '../../features/admin/ui';
+export async function loader({request,params}:Route.LoaderArgs){return adminGet<{id:string;title:string;url:string;source_name:string;body_text:string|null;body_status:string;published_at:string|null;revision:number}>(request,`/api/admin/studio/materials/${params.id}`)}
+export default function Material({loaderData:a}:Route.ComponentProps){const {run,busy}=useAdminAction();return <AdminPage title={a.title} subtitle={<span>{a.source_name} · {a.published_at?<Time at={a.published_at}/>: '发布日期待核实'} · 原文版本 {a.revision}</span>} actions={<Link to="/admin/studio" className="text-sm text-accent">返回素材池</Link>}><div className="mb-4 flex gap-3"><a href={a.url} target="_blank" rel="noreferrer" className="rounded-control border border-line px-3 py-2 text-sm text-accent">打开原文 ↗</a><Button disabled={busy||a.body_status==='ok'} onClick={()=>void run('POST',`/api/admin/studio/materials/${a.id}/extract`,{}, {success:'正文补采已完成，请查看结果。'})}>补采正文</Button><Badge tone={a.body_status==='ok'?'ok':'warn'}>{a.body_status==='ok'?'正文可读':'正文待补'}</Badge></div><Card><div className="max-w-4xl whitespace-pre-wrap break-words text-[14px] leading-7 text-ink-2">{a.body_text||'尚未取得正文。请补采，或到信源设置检查正文提取规则。'}</div></Card></AdminPage>}
