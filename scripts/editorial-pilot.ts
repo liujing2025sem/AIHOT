@@ -1,7 +1,7 @@
 // Reproducible local DB -> file handoff -> internal review. No worker, model API or public writes.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { packetSchema, safeId, sha256, instructions, responseFormat, validateResponse, renderReview, type Packet } from './editorial-pilot-lib.ts';
+import { packetSchema, safeId, sha256, instructions, responseFormat, validateResponse, renderReview, writingHandoffFiles, type Packet } from './editorial-pilot-lib.ts';
 
 const [command, directory, argument] = process.argv.slice(2);
 if (!directory || !['export', 'receive', 'status'].includes(command)) throw Error('Usage: editorial-pilot.ts export <dir> <task-id> | receive <dir> <response.json> | status <dir>');
@@ -26,16 +26,26 @@ if (command === 'export') {
     if (selected.length !== 2) throw Error('The two real pilot source articles are required');
     const packet = packetSchema.parse({ schema: 'aihot-editorial-pilot/1', task_id: taskId, created_at: new Date().toISOString(), scope: 'LOCAL_AGENT_HANDOFF_NOT_AUTOMATED_AIHOT_PIPELINE', articles, draft_article_ids: selected });
     mkdirSync(root, { recursive: true });
+    let exportedPacket = packet;
+    let exportStatus = 'EXPORTED';
     if (existsSync(requestPath)) {
       const prior = packetSchema.parse(JSON.parse(readFileSync(requestPath, 'utf8')));
       if (prior.task_id !== taskId || JSON.stringify(prior.articles) !== JSON.stringify(packet.articles)) throw Error('Existing handoff has different inputs; use a new task directory for a new source revision');
-      console.log(JSON.stringify({ status: 'EXISTING_INPUT_REUSED', task_id: taskId, article_count: prior.articles.length }));
+      exportedPacket = prior;
+      exportStatus = 'EXISTING_INPUT_REUSED';
     } else {
       writeFileSync(requestPath, JSON.stringify(packet, null, 2), { flag: 'wx' });
       writeFileSync(path.join(root, 'START_HERE.md'), instructions(packet), { flag: 'wx' });
       writeFileSync(path.join(root, 'RESPONSE_FORMAT.json'), JSON.stringify(responseFormat(packet), null, 2), { flag: 'wx' });
-      console.log(JSON.stringify({ status: 'EXPORTED', task_id: taskId, article_count: articles.length, draft_article_ids: selected }));
+
     }
+    // Supplement old packets without replacing their START_HERE or colleague drafts.
+    for (const [name, text] of Object.entries(writingHandoffFiles(exportedPacket))) {
+      const file = path.join(root, name);
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeOnce(file, text);
+    }
+    console.log(JSON.stringify({ status: exportStatus, task_id: taskId, article_count: articles.length, draft_article_ids: selected, writing_entry: 'WRITING_START_HERE.md' }));
   } finally { await closeDb(); }
 } else {
   const packet: Packet = packetSchema.parse(JSON.parse(readFileSync(requestPath, 'utf8')));

@@ -1,6 +1,10 @@
-param([string]$NodePath = 'node')
+param([string]$NodePath = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+if (-not $NodePath) {
+  $portableNode = Join-Path (Split-Path -Parent $projectRoot) 'runtime/node/node.exe'
+  $NodePath = if (Test-Path -LiteralPath $portableNode) { $portableNode } else { 'node' }
+}
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot '.env'))) { throw 'Missing .env. Read docs/local-pilot.md first.' }
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot 'apps/web/build/server/index.js'))) { throw 'Build the web application first.' }
 $localPorts = @(3001,3000)

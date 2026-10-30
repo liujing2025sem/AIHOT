@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { packetSchema, sha256, validateResponse, renderReview, type Packet, type Response } from '../scripts/editorial-pilot-lib.ts';
+import { packetSchema, sha256, validateResponse, renderReview, writingHandoffFiles, instructions, type Packet, type Response } from '../scripts/editorial-pilot-lib.ts';
 
 const body = 'The component supports 4000–5000 nits when used in a suitable display. This is a manufacturer claim.';
 const source = { article_id: 'article-1', revision: 3, content_sha256: sha256(JSON.stringify(['Component update', 'ok', body])), url: 'https://example.com/component', published_at: '2026-08-17T16:00:00.000Z' };
@@ -51,7 +50,7 @@ test('untrusted generated markup cannot run in the offline review', () => {
 });
 
 test('a new process resumes a partial receive, replay keeps edits, changed output is refused', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'aihot-editorial-test-'));
+  const dir = mkdtempSync(path.resolve('industry/writing/.editorial-test-'));
   const cli = path.resolve('scripts/editorial-pilot.ts');
   try {
     const bytes = JSON.stringify(response);
@@ -75,5 +74,78 @@ test('a new process resumes a partial receive, replay keeps edits, changed outpu
     const conflict = run(); assert.notEqual(conflict.status, 0);
     assert.match(conflict.stderr, /already received with different/);
     assert.equal(readFileSync(draft, 'utf8'), 'Colleague edit, keep this.');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('production prompt includes apply writing rules while preserving each existing output contract', async () => {
+  const { promptText, promptVersion } = await import('../packages/backend/src/editorial/prompts.ts');
+  const rules = readFileSync('industry/prompts/rules-editorial-writing.md', 'utf8');
+  const values = { publishedDate: '2026-09-20', today: '2026-10-29', sourceName: 'Manufacturer', identity: '', title: 'Source title', body: 'Source body', post: 'Source post', kindName: '周报', span: '一周', sentences: '两句', chars: '160', sections: '', sectionsExample: '[]' };
+  for (const name of ['understand', 'summarize-article', 'summarize-long-post', 'summarize-short-post', 'translate-body', 'translate-post', 'story-digest', 'report-period']) {
+    const rendered = promptText(name, values);
+    assert.ok(rendered.includes(rules), `${name} must use the actual common wording`);
+    assert.doesNotMatch(rendered, /\{\{[>\w]/);
+    assert.match(promptVersion(name), /@[a-f0-9]{10}$/);
+  }
+  assert.match(promptText('summarize-article', values), /title_zh:.*\r?\nsummary_zh:/);
+  assert.match(promptText('translate-body'), /同样数量|同样.*数量/);
+  assert.match(promptText('translate-body'), /不增删信息/);
+});
+
+test('old news packets stay neutral, brand pages use an explicit exact site and isolated reference', () => {
+  assert.equal(packetSchema.parse(packet).writing, undefined);
+  assert.match(instructions(packet), /行业新闻.*无品牌目标页/);
+  for (const site of ['chipshow.com', 'chipshowledusa.com', 'chipshow.eu', 'unishineled.com'] as const) {
+    const branded = packetSchema.parse({ ...packet, writing: { site, target_url: `https://www.${site}/assigned-page/`, page_type: 'guide' } });
+    assert.match(instructions(branded), site === 'unishineled.com' ? /writing\/unishine-candidate\.md/ : /writing\/chipshow-candidate\.md/);
+  }
+  for (const target_url of ['https://chipshow.com.evil.example/page', 'https://unishineled.com/page', 'https://chipshowledusa.com/page']) {
+    assert.throws(() => packetSchema.parse({ ...packet, writing: { site: 'chipshow.com', target_url, page_type: 'guide' } }), /must match exactly/);
+  }
+  assert.throws(() => packetSchema.parse({ ...packet, writing: { site: 'chipshow.cn', target_url: 'https://chipshow.cn/page', page_type: 'guide' } }));
+});
+
+test('two real LED sources retain exact evidence and provide a self-contained handoff in a fresh process', () => {
+  const examples = JSON.parse(readFileSync('industry/writing/led-rule-examples.json', 'utf8')).examples;
+  const real: Packet = packetSchema.parse({ ...packet, articles: examples.map((e: { source: Packet['articles'][number] }) => e.source), draft_article_ids: examples.map((e: { source: Packet['articles'][number] }) => e.source.binding.article_id) });
+  assert.equal(real.articles.length, 2);
+  const answer: Response = { ...response, decisions: real.articles.map(a => ({ article_id: a.binding.article_id, decision: 'KEEP', reason_zh: '厂商显示器件资料，可作中立行业选题' })), drafts: examples.map((e: { source: Packet['articles'][number]; example_zh: string; example_en: string; evidence_quotes: string[]; questions_zh: string[] }) => ({ source: e.source.binding, title_zh: e.source.title, title_en: e.source.title, review_zh: e.example_zh, body_en: e.example_en, evidence: e.evidence_quotes.map(quote => ({ claim: '原文事实或须确认的归属表述', quote })), questions_zh: e.questions_zh, keyword_hypothesis: 'hypothesis only', meta_description_en: 'Manufacturer component statements and their conditions.' })) };
+  assert.equal(validateResponse(real, answer).drafts.length, 2);
+  const king = answer.drafts.find(d => d.source.url.includes('kinglight'))!;
+  const macro = answer.drafts.find(d => d.source.url.includes('mblock'))!;
+  assert.match(king.body_en, /stability evaluation.*environment and operating conditions/);
+  assert.match(king.body_en, /manufacturer statement/);
+  assert.match(macro.body_en, /15,360Hz under a full 64-scan/);
+  assert.match(macro.body_en, /expected in Q4/);
+  assert.ok(macro.questions_zh.some(q => q.includes('MBI5292') && q.includes('归属')));
+  const files = writingHandoffFiles(real);
+  const dir = mkdtempSync(path.resolve('industry/writing/.editorial-handoff-test-'));
+  try {
+    writeFileSync(path.join(dir, 'request.json'), JSON.stringify(real));
+    writeFileSync(path.join(dir, 'RESPONSE_FORMAT.json'), JSON.stringify(answer));
+    for (const [name, content] of Object.entries(files)) {
+      const file = path.join(dir, name); mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, content);
+    }
+    // This reader has no repo cwd, credentials, installed skills or originals path.
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import assert from 'node:assert/strict';
+      const read = name => readFileSync(name, 'utf8');
+      const request = JSON.parse(read('request.json'));
+      assert.equal(request.articles.length, 2);
+      assert.ok(request.articles.every(a => a.body_text && a.binding.url));
+      for (const name of ${JSON.stringify(Object.keys(files))}) assert.ok(read(name).length);
+      assert.ok(read('WRITING_START_HERE.md').includes('WRITING_RULES.md'));
+      assert.ok(read('WRITING_RULES.md').includes('数字与论断逐项对应'));
+      assert.ok(read('WRITING_SOURCES.md').includes('4fda173f3fef7fb808f3eba991eeb2528ea4b189'));
+      assert.ok(read('LICENSE-human-writing.txt').includes('Permission is hereby granted'));
+      console.log('PORTABLE_RULES_AND_REAL_SOURCES_READABLE');
+    `], { cwd: dir, encoding: 'utf8' });
+    assert.equal(child.status, 0, child.stderr);
+    assert.match(child.stdout, /PORTABLE_RULES_AND_REAL_SOURCES_READABLE/);
+    const resultFile = path.join(dir, 'response.json'); writeFileSync(resultFile, JSON.stringify(answer));
+    const received = spawnSync(process.execPath, [path.resolve('scripts/editorial-pilot.ts'), 'receive', dir, resultFile], { encoding: 'utf8' });
+    assert.equal(received.status, 0, received.stderr);
+    assert.equal(JSON.parse(readFileSync(path.join(dir, 'received/run-a/receipt.json'), 'utf8')).human_approval, 'PENDING');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
