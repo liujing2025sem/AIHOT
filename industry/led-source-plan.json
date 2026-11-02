@@ -1,0 +1,198 @@
+{
+  "schema_version": "led-source-plan.v1",
+  "id": "led-source-coverage-plan",
+  "verified_on": "2026-11-01",
+  "verification_timezone": "America/Los_Angeles",
+  "purpose": "来源候选与覆盖地图；不是运行信源配置、事实库、Claim台账或调度器",
+  "runtime_authority": "industry/sources.json and existing Studio source records",
+  "runtime_changes_performed": false,
+  "collection_started": false,
+  "editorial_decisions": {
+    "internal_language": "zh-CN",
+    "external_language": "en",
+    "publication_destination": "chipshow Blog",
+    "daily_digest": "retain",
+    "fixed_daily_item_limit": null,
+    "customer_question_required_for_admission": false,
+    "outdoor_electricity": "one_topic_among_multiple_directions",
+    "fulltext_default": "summary_and_original_link",
+    "regulatory_applicability_to_direct_view_led_signage": "UNKNOWN"
+  },
+  "existing_source_refs": [
+    {"source_id": "web-macroblock-news", "directions": ["driver-ic", "control-image"], "use": "manufacturer_discovery", "current_visit": "LIST_READ", "verification_ref": "../docs/led-source-verification.md#existing-sources"},
+    {"source_id": "web-kinglight-news", "directions": ["led-package", "screen-system"], "use": "manufacturer_discovery", "current_visit": "LIST_READ", "verification_ref": "../docs/led-source-verification.md#existing-sources"},
+    {"source_id": "web-nationstar-product-news", "directions": ["led-package", "screen-system"], "use": "manufacturer_discovery", "current_visit": "LIST_READ", "verification_ref": "../docs/led-source-verification.md#existing-sources"}
+  ],
+  "coverage_layers": [
+    {"id": "A", "name": "组成端原厂", "state": "CANDIDATES_AND_EXISTING_CONFIGS", "uses": ["discovery", "manufacturer_parameters"]},
+    {"id": "B", "name": "屏体同行与工程结构", "state": "CANDIDATES_VERIFIED_AT_DOCUMENT_LEVEL", "uses": ["comparison", "model_specific_engineering_reference"]},
+    {"id": "C", "name": "应用与渠道", "state": "PUBLIC_LISTS_VERIFIED", "uses": ["discovery", "application_context"]},
+    {"id": "D", "name": "法规与标准", "state": "REFERENCE_ONLY_APPLICABILITY_UNKNOWN", "uses": ["scope_research"]},
+    {"id": "E", "name": "数据与披露", "state": "MIXED_PUBLIC_TABLE_AND_PARTIAL_ENTRIES", "uses": ["data", "issuer_disclosure"]},
+    {"id": "F", "name": "会议展会", "state": "GAP_NO_INDEPENDENT_EVENT_FEED_VERIFIED", "uses": ["discovery"]},
+    {"id": "G", "name": "内部工程与销售一手", "state": "EXISTING_PROJECT_INPUTS_ONLY_NOT_A_PUBLIC_SOURCE", "uses": ["chipshow_specific_verification"]}
+  ],
+  "directions": [
+    {"id": "driver-ic", "name": "驱动IC与显示芯片", "existing_source_ids": ["web-macroblock-news"], "candidate_ids": ["led-chipone-official", "led-macroblock-monthly-revenue"], "example_questions": ["低灰、刷新率与扫描架构变化会影响哪些选型条件？"]},
+    {"id": "led-package", "name": "灯珠与封装", "existing_source_ids": ["web-kinglight-news", "web-nationstar-product-news"], "candidate_ids": [], "example_questions": ["SMD、MiP、COB相关变化有哪些可复核条件？"]},
+    {"id": "cabinet-service", "name": "箱体、安装与维护结构", "existing_source_ids": [], "candidate_ids": ["led-roe-carbon-markii", "led-absen-kv3-manual"], "example_questions": ["模组、电源、接收卡分别从哪侧维护？箱体结构如何约束安装？"]},
+    {"id": "power-thermal", "name": "电源、配电与散热", "existing_source_ids": [], "candidate_ids": ["led-meanwell-new-products", "led-absen-kv3-manual", "led-eia-electricity"], "example_questions": ["电源规格、降额及散热条件对整屏方案有什么影响？"]},
+    {"id": "control-image", "name": "控制、校正与信号链", "existing_source_ids": ["web-macroblock-news"], "candidate_ids": ["led-novastar-official", "led-colorlight-news"], "example_questions": ["接收卡、控制器、云播放与校正兼容条件变了什么？"]},
+    {"id": "screen-system", "name": "屏体方案与可靠性", "existing_source_ids": ["web-kinglight-news", "web-nationstar-product-news"], "candidate_ids": ["led-roe-carbon-markii", "led-absen-kv3-manual", "led-daktronics-investor-news"], "example_questions": ["固定安装、租赁、XR与商显的限制有哪些不同？"]},
+    {"id": "application-channel", "name": "应用、渠道与采购", "existing_source_ids": [], "candidate_ids": ["led-isa-news", "led-signs-of-the-times", "led-oaaa-news"], "example_questions": ["标识商、集成商和媒体业主在部署什么？"]},
+    {"id": "market-disclosure", "name": "市场与供应链披露", "existing_source_ids": [], "candidate_ids": ["led-macroblock-monthly-revenue", "led-cninfo-investor-records", "led-daktronics-investor-news"], "example_questions": ["企业营收、产能与产品策略变化能说明什么，不能说明什么？"]},
+    {"id": "energy-scope", "name": "能效、法规范围与运营成本", "existing_source_ids": [], "candidate_ids": ["led-energy-star-displays", "led-eu-display-ecodesign", "led-eia-electricity"], "example_questions": ["某规格是否覆盖目标直显招牌型号？应使用哪一地区和月份的电价？"]}
+  ],
+  "recommended_next": [
+    {"candidate_id": "led-meanwell-new-products", "order": 1, "next": "先预览单个web_list；只接LED显示电源相关项，核对详情日期与规格书条件"},
+    {"candidate_id": "led-colorlight-news", "order": 2, "next": "先预览web_list；去重轮播和正文列表，排除纯算力宣传，保留控制/校正/播放相关项"},
+    {"candidate_id": "led-isa-news", "order": 3, "next": "检查原始HTML选择器后预览；限定公开内容，不进入会员区"},
+    {"candidate_id": "led-oaaa-news", "order": 4, "next": "使用公开新闻分类而非混合活动总页；详情Published字段优先"},
+    {"candidate_id": "led-daktronics-investor-news", "order": 5, "next": "条件候选：先解决正常HTTP403或改为人工原文输入；不绕过访问控制，不视为采集可用"}
+  ],
+  "candidate_defaults": {
+    "runtime_registered": false,
+    "collector_verified": false,
+    "fulltext_permission": "UNKNOWN",
+    "publication_policy": "原创摘要与原文链接；不复制全文、图片或整表；有权属限制时进一步缩减",
+    "rss_or_api_unknown_means": "未核实，不代表不存在；不猜feed或接口地址",
+    "maintenance_cost_is": "基于本次页面结构与阻断的估计，不是实测工时或报价"
+  },
+  "candidates": [
+    {
+      "id": "led-meanwell-new-products", "name": "明纬 MEAN WELL 新品", "claude_batch": 1, "layers": ["A"], "directions": ["power-thermal"],
+      "official_entry": "https://www.meanwell.com/news.aspx?c=1", "access": "LIST_AND_DETAIL_READ", "local_http": "READ_SUCCESS",
+      "evidence": [{"url": "https://www.meanwell.com/news.aspx?c=1", "observation": "日期、标题、分页的新品列表；普通HTTP读到82410字符"}, {"url": "https://www.meanwell.com/newsInfo.aspx?c=1&i=1554", "observation": "UDP显示电源详情Date为2026/09/29"}],
+      "original_date": {"status": "PRESENT", "example": "2026-09-29", "meaning": "article_publication_day"},
+      "interfaces": {"list": "VERIFIED_HTML", "rss": "UNKNOWN_NO_FEED_LINK_IN_FETCHED_HTML", "api": "UNKNOWN"},
+      "suggested_method": "web_list: .list-item；linkSelector a[href*='newsInfo.aspx']；publishedAtSelector .col.time；titleSelector需预览核准；详情补日期；按型号回规格书",
+      "maintenance_cost": "低", "cadence_suggestion": "weekly", "independence": "厂家自述", "limit": "列表混有传感器、照明等非显示内容；新品宣称不证明整屏节能，也不证明齐普采用；选择器未经过AIHOT预览"
+    },
+    {
+      "id": "led-novastar-official", "name": "诺瓦星云 NovaStar", "claude_batch": 2, "layers": ["A"], "directions": ["control-image"],
+      "official_entry": "https://www.novastar.tech/content/content.html?catid=19", "access": "PARTIAL_ENTRY", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.novastar.tech/news/", "observation": "404，不用该猜测入口"}, {"url": "https://www.novastar.tech/", "observation": "Recent News有标题及24/03/2026；官网NEWS链接指向content/content.html?catid=19"}, {"url": "https://www.novastar.tech/content/detail.html?catit=19&id=105", "observation": "浏览返回导航和空标题，未读到正文日期"}],
+      "original_date": {"status": "PARTIAL", "example": "2026-03-24", "meaning": "homepage_teaser_day_only_detail_unverified"},
+      "interfaces": {"list": "PARTIAL_RECENT_POST_LINKS_ONLY", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "先人工从官网Downloads/具体产品文档取版本；需普通HTML或官方公开数据端点证据后再决定web_list/json_list；本次未核出数据端点",
+      "maintenance_cost": "高", "cadence_suggestion": "manual_until_readable", "independence": "厂家自述", "limit": "新闻详情正文未读；不能将首页线索、下载目录年份或OSS路径年月当作原发布日期"
+    },
+    {
+      "id": "led-colorlight-news", "name": "卡莱特 Colorlight", "claude_batch": 3, "layers": ["A"], "directions": ["control-image"],
+      "official_entry": "https://en.colorlightinside.com/news/all/", "access": "LIST_AND_DETAIL_READ", "local_http": "READ_SUCCESS",
+      "evidence": [{"url": "https://en.colorlightinside.com/news/all/", "observation": "日期与新闻链接可读；普通HTTP读到57720字符；轮播.News_swiper .swiper-slide下有a、h5、.data"}, {"url": "https://en.colorlightinside.com/news/Exhibition/15564.html", "observation": "正文日期2026.10.21"}],
+      "original_date": {"status": "PRESENT", "example": "2026-10-21", "meaning": "article_publication_day"},
+      "interfaces": {"list": "VERIFIED_HTML_WITH_DUPLICATES", "rss": "UNKNOWN_NO_FEED_LINK_IN_FETCHED_HTML", "api": "UNKNOWN"},
+      "suggested_method": "web_list；从.News中重复新闻卡片取a[href^='/news/']、h5和.data；轮播与全列表去重；完整列表选择器须后台预览，不能只抓轮播",
+      "maintenance_cost": "中", "cadence_suggestion": "weekly", "independence": "厂家自述", "limit": "夹有AI计算业务与展会内容；编码须按响应核对；兼容性只限原文型号及软件，不能外推所有屏体"
+    },
+    {
+      "id": "led-chipone-official", "name": "集创北方 Chipone", "claude_batch": 4, "layers": ["A"], "directions": ["driver-ic"],
+      "official_entry": "https://www.chiponeic.com/", "access": "UNKNOWN_DIRECT_FETCH_TIMEOUT", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.chiponeic.com/", "observation": "官方搜索索引有27/08/2026新闻；直接打开超时；不能把索引当当前HTML可采集证据"}],
+      "original_date": {"status": "UNKNOWN", "example": null, "meaning": "indexed_day_exists_but_direct_page_not_read"},
+      "interfaces": {"list": "UNKNOWN_INDEX_ONLY", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "暂作人工核验候选；正常可读后只针对LED显示驱动IC新闻建立web_list，不从汽车/LCD标题猜相关性",
+      "maintenance_cost": "未知", "cadence_suggestion": "manual_until_readable", "independence": "厂家自述", "limit": "icn.com.cn旧猜测入口不可用，不作为官方确认；未获得可运行列表和详情"
+    },
+    {
+      "id": "led-isa-news", "name": "International Sign Association", "claude_batch": 5, "layers": ["C"], "directions": ["application-channel"],
+      "official_entry": "https://signs.org/news/", "access": "PUBLIC_LIST_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://signs.org/news/", "observation": "公开列表有标题、日期、Read More与分页；样本2026-10-07"}],
+      "original_date": {"status": "PRESENT_ON_LIST", "example": "2026-10-07", "meaning": "listed_article_day_detail_not_sampled"},
+      "interfaces": {"list": "VERIFIED_PUBLIC_LIST", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "web_list；新闻卡片标题和日期，排除Share推荐及导航；选公开列表后预览，不登录会员区",
+      "maintenance_cost": "中", "cadence_suggestion": "weekly", "independence": "行业协会，代表会员利益，非监管机构", "limit": "ISA在此指signs.org，不是isa.org自动化协会；许可、法规及研究结论仍回原始官方文件"
+    },
+    {
+      "id": "led-signs-of-the-times", "name": "Signs of the Times", "claude_batch": 5, "layers": ["C"], "directions": ["application-channel"],
+      "official_entry": "https://signsofthetimes.com/", "access": "UNKNOWN_HTTP_403", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://signsofthetimes.com/", "observation": "浏览工具返回403；本次未读正文"}],
+      "original_date": {"status": "UNKNOWN", "example": null, "meaning": "unread"},
+      "interfaces": {"list": "UNKNOWN_BLOCKED", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "人工公开文章链接输入；正常入口恢复后再核列表；不绕过403或付费内容",
+      "maintenance_cost": "未知", "cadence_suggestion": "manual_until_readable", "independence": "行业媒体，具体文章可能为广告或供稿", "limit": "与ISA分为两个候选，不能算两份已读独立证据"
+    },
+    {
+      "id": "led-oaaa-news", "name": "OAAA", "claude_batch": 6, "layers": ["C"], "directions": ["application-channel"],
+      "official_entry": "https://oaaa.org/news-and-events/", "access": "LIST_AND_DETAIL_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://oaaa.org/news-and-events/", "observation": "news/重定向此处；日期、新闻分类与详情链接可见"}, {"url": "https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/", "observation": "详情Published: October 16, 2026"}],
+      "original_date": {"status": "PRESENT", "example": "2026-10-16", "meaning": "article_publication_day_separate_from_future_event_dates"},
+      "interfaces": {"list": "VERIFIED_PUBLIC_LIST", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "web_list；优先公开News & Press Releases分类；详情Published补齐；不采会员报告或以活动日代发稿日",
+      "maintenance_cost": "中", "cadence_suggestion": "weekly", "independence": "广告行业协会，代表产业利益", "limit": "OOH包含非数字广告；行业营收及案例不能直接归因LED屏采购或视为独立性能测试"
+    },
+    {
+      "id": "led-energy-star-displays", "name": "ENERGY STAR Displays", "claude_batch": 7, "layers": ["D"], "directions": ["energy-scope"],
+      "official_entry": "https://www.energystar.gov/products/monitors/partners", "access": "OFFICIAL_SPEC_INDEX_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.energystar.gov/products/monitors/partners", "observation": "Current指向Displays Version8.0 Rev.Nov-2021；生效2020-01-28"}, {"url": "https://www.energystar.gov/products/spec/displays_specification_version_8_0_pd", "observation": "版本过程页列2019-05-02定稿及2021-11-24修订"}],
+      "original_date": {"status": "PRESENT_VERSION_DATES", "example": "2021-11-24", "meaning": "revision_day_not_news_publication_day"},
+      "interfaces": {"list": "VERIFIED_VERSION_DOCUMENT_INDEX", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "低频人工文档版本核对；先索引再具体PDF、适用范围与测试方法，不作为每日新闻RSS",
+      "maintenance_cost": "中", "cadence_suggestion": "monthly_or_on_spec_change", "independence": "官方项目规格原源", "applicability_to_direct_view_led_signage": "UNKNOWN", "limit": "不是通用法律合规结论；目标直显LED招牌及具体型号是否适用未核，不能用旧Key Product Criteria页面取代Current规格"
+    },
+    {
+      "id": "led-eu-display-ecodesign", "name": "欧盟电子显示器生态设计", "claude_batch": 8, "layers": ["D"], "directions": ["energy-scope"],
+      "official_entry": "https://energy-efficient-products.ec.europa.eu/product-list/electronic-displays_en", "access": "OVERVIEW_READ_LEGAL_TEXT_CHALLENGED", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://energy-efficient-products.ec.europa.eu/product-list/electronic-displays_en", "observation": "2019/2021与2019/2013及范围概述；FAQ日期17 June2025"}, {"url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=celex:32019R2021", "observation": "打开法规正文遇JavaScript机器人验证，未完成条文与排除项核验"}],
+      "original_date": {"status": "PRESENT_DOCUMENT_DATES", "example": "2019-10-01", "meaning": "regulation_date_not_overview_publication_day"},
+      "interfaces": {"list": "VERIFIED_DOCUMENT_LINKS_ONLY", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "官方总览与EUR-Lex法规版本低频人工核对；待合法普通入口可读再核修订和适用范围",
+      "maintenance_cost": "高", "cadence_suggestion": "monthly_or_on_legal_change", "independence": "欧委会/官方法规入口", "applicability_to_direct_view_led_signage": "UNKNOWN", "limit": "数字标牌概述不证明模块化直显LED招牌在范围内；无合规或法律结论，不把生效日作新闻日"
+    },
+    {
+      "id": "led-macroblock-monthly-revenue", "name": "台湾月营收：聚积 Macroblock", "claude_batch": 9, "layers": ["E"], "directions": ["driver-ic", "market-disclosure"],
+      "official_entry": "https://www.mblock.com.tw/en/investordetail/1/2", "access": "PARTIAL_ENTRY_NO_MONTHLY_ROWS", "local_http": "NOT_TESTED", "related_existing_source_ids": ["web-macroblock-news"],
+      "evidence": [{"url": "https://www.mblock.com.tw/en/investor", "observation": "官网投资者页链接Monthly Revenue和M.O.P.S."}, {"url": "https://www.mblock.com.tw/en/investordetail/1/2", "observation": "可打开但正文只有导航，未读月表"}, {"url": "https://emops.twse.com.tw/server-java/t58query", "observation": "MOPS入口可读，公司查询与Operating Statements存在，未查询到聚积月表"}, {"url": "https://www.tpex.org.tw/openapi/", "observation": "403；未核实聚积专属可用API"}],
+      "original_date": {"status": "UNKNOWN", "example": null, "meaning": "need_release_day_and_separate_reporting_month"},
+      "interfaces": {"list": "ENTRY_ONLY_NO_ROWS_VERIFIED", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "先由官网/MOPS确认聚积公司代码和申报市场，再取官方单公司月表；只在读到公开JSON/CSV契约后考虑json_list",
+      "maintenance_cost": "高", "cadence_suggestion": "monthly_after_release", "independence": "公司自报财务经官方平台披露，非独立市场研究", "limit": "本次未确认具体营收数值/发布日期/API；不能用上市公司汇总接口假定覆盖聚积，也不能把公司营收当LED驱动出货量"
+    },
+    {
+      "id": "led-cninfo-investor-records", "name": "巨潮投资者关系记录", "claude_batch": 10, "layers": ["E"], "directions": ["market-disclosure"],
+      "official_entry": "https://www.cninfo.com.cn/new/commonUrl?url=disclosure/list/notice", "access": "PARTIAL_LIST_SHELL_OFFICIAL_PDF_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.cninfo.com.cn/new/commonUrl?url=disclosure/list/notice", "observation": "调研入口只有announcementTitle/announcementTime模板变量，没有可验证记录列表"}, {"url": "https://static.cninfo.com.cn/finalpage/2026-08-22/1225490168.PDF", "observation": "官方2026半年报PDF可读；不是已核投资者活动记录原件"}],
+      "original_date": {"status": "UNKNOWN_FOR_TARGET_RECORD", "example": null, "meaning": "record_disclosure_day_and_activity_day_need_separate_verification"},
+      "interfaces": {"list": "DYNAMIC_TEMPLATE_ONLY", "rss": "UNKNOWN", "api": "UNKNOWN_OFFICIAL_DATA_SERVICE_LINK_ONLY"},
+      "suggested_method": "先人工选官方投资者关系活动记录PDF，核标题/公司/披露日/活动日；API端点、响应结构和许可确认后再用现有json_list，不猜POST接口",
+      "maintenance_cost": "高", "cadence_suggestion": "weekly_or_on_disclosure", "independence": "巨潮是官方披露平台，记录内容来自上市公司", "limit": "未实测API、未取得目标记录原件；半年报可读不等于调研列表可采；一个解析器覆盖多公司尚未验证"
+    },
+    {
+      "id": "led-daktronics-investor-news", "name": "Daktronics 投资者新闻", "claude_batch": 11, "layers": ["B", "E"], "directions": ["screen-system", "market-disclosure"],
+      "official_entry": "https://investor.daktronics.com/news-events/press-releases", "access": "BROWSER_LIST_AND_DETAIL_READ", "local_http": "HTTP_403",
+      "evidence": [{"url": "https://investor.daktronics.com/news-events/press-releases", "observation": "浏览工具可读日期、标题、分页，显示499条/当前10条；本机普通HTTP403"}, {"url": "https://investor.daktronics.com/news-releases/news-release-details/daktronics-announces-implementation-actions-strategic-structural", "observation": "详情日期October14,2026；有PDF Version"}],
+      "original_date": {"status": "PRESENT", "example": "2026-10-14", "meaning": "release_day_separate_from_fiscal_period_and_future_targets"},
+      "interfaces": {"list": "VERIFIED_IN_BROWSER_ONLY_LOCAL_HTTP_BLOCKED", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "候补web_list，须正常HTTP预览成功再接；暂人工链接输入，保留投资者新闻与SEC披露的区别",
+      "maintenance_cost": "高", "cadence_suggestion": "weekly_or_quarterly", "independence": "发行人自述，非独立研究或已审计事实全覆盖", "limit": "浏览可读不证明AIHOT HTTP可读；新闻稿目标/预期不当已实现，网站新闻不等于SEC文件"
+    },
+    {
+      "id": "led-eia-electricity", "name": "EIA Electric Power Monthly 电价", "claude_batch": 12, "layers": ["E"], "directions": ["power-thermal", "energy-scope"],
+      "official_entry": "https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a", "access": "OFFICIAL_TABLE_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a", "observation": "Table5.6.A有州/终端部门/美分每kWh；Data for August2026，Release Date October23,2026，Next Release November24,2026"}],
+      "original_date": {"status": "PRESENT", "example": "2026-10-23", "meaning": "release_day_reporting_month_2026_08_is_separate"},
+      "interfaces": {"list": "VERIFIED_HTML_STATISTICAL_TABLE", "rss": "UNKNOWN", "api": "UNKNOWN_NOT_PROBED"},
+      "suggested_method": "先低频人工引用Table5.6.A；它不是新闻条目列表，现有web_list不能直接将单元格导入为新闻；未调用任何API或申请key",
+      "maintenance_cost": "中", "cadence_suggestion": "monthly_after_release", "independence": "官方统计原源", "limit": "州均价不是项目合同电价，不含项目负荷曲线和需量费细项；不能替代真实账单，也不证明整屏功耗"
+    },
+    {
+      "id": "led-roe-carbon-markii", "name": "ROE Visual Carbon MarkII", "claude_batch": null, "layers": ["B"], "directions": ["cabinet-service", "screen-system"],
+      "official_entry": "https://www.roevisual.com/us-en/products/carbon-markii", "access": "OFFICIAL_PRODUCT_PAGE_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.roevisual.com/us-en/products/carbon-markii", "observation": "官方产品页具有Features/Specs/Downloads/Accessories；箱体结构与应用定位资料，后续同页读取出现超时"}],
+      "original_date": {"status": "UNKNOWN", "example": null, "meaning": "no_verified_page_publication_day"},
+      "interfaces": {"list": "VERIFIED_SINGLE_PRODUCT_DOCUMENT_ENTRY", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "先人工结构资料卡引用；下载附件另核版本和日期，低频复查具体型号，不伪装成新闻列表",
+      "maintenance_cost": "中", "cadence_suggestion": "monthly_or_on_model_change", "independence": "同行厂家规格，不是独立工程测试", "limit": "租赁/巡演结构不能直接迁移到固定招牌；页面发布日期未知，产品参数不是齐普性能；后续读取超时保留"
+    },
+    {
+      "id": "led-absen-kv3-manual", "name": "艾比森 K V3 维护手册", "claude_batch": null, "layers": ["B"], "directions": ["cabinet-service", "power-thermal", "screen-system"],
+      "official_entry": "https://www.absen.com/wp-content/uploads/2025/06/K-V3-Series-User-Manual-V202407-K-V3-Series-User-Manual-V202407.pdf", "access": "OFFICIAL_MANUAL_PDF_READ", "local_http": "NOT_TESTED",
+      "evidence": [{"url": "https://www.absen.com/wp-content/uploads/2025/06/K-V3-Series-User-Manual-V202407-K-V3-Series-User-Manual-V202407.pdf", "observation": "42页官方手册：箱体、安装、接线、31页起维护；第6.2节前维护/第6.3节后维护；应用范围为室内"}],
+      "original_date": {"status": "UNKNOWN", "example": null, "meaning": "filename_V202407_and_upload_path_2025_06_are_not_verified_publication_dates"},
+      "interfaces": {"list": "VERIFIED_SINGLE_PDF", "rss": "UNKNOWN", "api": "UNKNOWN"},
+      "suggested_method": "人工PDF工程背景输入；保留页码、型号和版本；现有新闻正文HTML提取不等于PDF解析完成",
+      "maintenance_cost": "中", "cadence_suggestion": "on_manual_revision", "independence": "同行官方型号手册，非第三方安全认证", "limit": "该手册限室内型号；不能外推户外防护、结构安全或齐普设计；不转载整本、图片或维修教程全文"
+    }
+  ]
+}

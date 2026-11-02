@@ -3,7 +3,11 @@ import { actorOf } from '@aihot/backend/admin/auth';
 import { adminHandler } from './admin-auth.ts';
 import { param, body, q, orNotFound } from './admin.ts';
 import { studioOverview, studioMaterial, createStudioTask, exportStudioTask, receiveStudioTask, generateStudioTask, studioDraft, saveStudioDraft, reviewStudioDraft, exportStudioDraft, collectStudioSource, extractStudioMaterial } from '@aihot/backend/admin/studio';
+import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/admin/studio-review';
 export function registerAdminStudio(app: FastifyInstance) {
+  app.get('/api/admin/studio/review-metrics',adminHandler(async()=>studioReviewMetrics()));
+  app.post('/api/admin/studio/review-policy',adminHandler(async(req,_reply,admin)=>setStudioReviewPolicy(body(req),actorOf(admin))));
+  app.post('/api/admin/studio/drafts/:id/intervention',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await recordStudioReview(param(req,'id'),body(req),actorOf(admin)))));
   app.get('/api/admin/studio', adminHandler(async req => studioOverview(q(req))));
   app.get('/api/admin/studio/materials/:id', adminHandler(async (req,reply) => orNotFound(req,reply,await studioMaterial(param(req,'id')))));
   app.post('/api/admin/studio/materials/:id/extract', adminHandler(async (req,reply,admin) => orNotFound(req,reply,await extractStudioMaterial(param(req,'id'),actorOf(admin)))));

@@ -85,3 +85,12 @@ Node 24.22.1/npm 和 PostgreSQL 16.15 二进制、实际安装依赖、最终网
 本轮使用 `runtime/tmp/relocation-test`、不同端口和独立库验证本机移目录；没有在另一台物理电脑验证。具体结果见 `evidence/production-studio-20261030/deployment/validation.json` 及 `部署结果.html`。主 Agent 后续改业务源码后应重新调用打包脚本；本轮包的验证不自动覆盖尚未写入的业务改动。
 
 首次安装预置 Macroblock、Kinglight、Nationstar 三个真实 LED 信源，均暂停自动采集。登录后到“采编工作台 → 采集信源”手动采集，也可“添加信源”。不会导入旧电脑稿件、账号、密钥或 AI 行业示例素材。
+
+
+## 2026-11-01 WorkBuddy与CAMOS部署补充
+
+本次完整包应包含 integrations/camos/app、runtime/python、data/expert_knowledge三个方法依赖目录；不包含CAMOS的data/business或原始完整业务包。启动器自动找到同目录方法库，无需原电脑D盘/K盘路径。显式AIHOT_CAMOS_ROOT可写相对包根路径。方法临时状态写在当前AIHOT_DATA_DIR下，使用后删除本次临时子目录。
+
+新电脑交给WorkBuddy时，先读包根WORKBUDDY_START_HERE.md，再执行install-studio.cmd、start-studio.cmd。首次安装为空白业务库，管理员密码由新机生成；原数据/模型密钥仍用本文私有迁移步骤，不进入公共源码或通用包。不得覆盖另一实例已有.env、凭据或活动数据库。
+
+代码已同步与程序已经加载为两个状态。WorkBuddy进程如未启动，由目标机正常启动脚本启动；不从本聊天自动重启其他实例。第二台物理电脑验收由目标WorkBuddy返回health、版本、采集、审稿、英文导出和CAMOS实际结果。

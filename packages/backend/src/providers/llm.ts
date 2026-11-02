@@ -178,7 +178,7 @@ async function runtimeModel(key: string, channelId?: AdminChannelId): Promise<Ru
     if (/deepseek[^/]*pro/i.test(existing.model)) throw new ModelUnavailableError("DeepSeek Pro 已禁用");
     return { spec: existing, baseUrl: credential("models", existing.baseUrlEnv), apiKey: credential("models", existing.apiKeyEnv) };
   }
-  return { spec: { ...existing, model: channel.model, service: channel.service, extra: undefined, reasoningTokens: undefined, jsonMode: true, vision: false,
+  return { spec: { ...existing, model: channel.model, service: channel.service, extra: undefined, reasoningTokens: reasoningTokensFromEnv(process.env.LLM_REASONING_TOKENS), jsonMode: true, vision: false,
     channel: { id: channel.id, endpointHash: sha256(channel.baseUrl) } }, baseUrl: channel.baseUrl, apiKey: channel.apiKey };
 }
 

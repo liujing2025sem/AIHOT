@@ -149,3 +149,25 @@ test('two real LED sources retain exact evidence and provide a self-contained ha
     assert.equal(JSON.parse(readFileSync(path.join(dir, 'received/run-a/receipt.json'), 'utf8')).human_approval, 'PENDING');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+import { editorialDirection, editorialTopic } from '../site/editorial.ts';
+import { publicDraft } from '../packages/backend/src/admin/studio-publication.ts';
+
+test('approved multi-direction Blog brief reaches file handoff without a mandatory buyer question',()=>{
+ const p={...packet,editorial_policy:editorialDirection};const parsed=packetSchema.parse(p);assert.equal(parsed.editorial_policy?.daily_digest,true);
+ const files=writingHandoffFiles(parsed);assert.match(files['WRITING_START_HERE.md'],/英文对外，中文仅内部审稿/);assert.match(files['EDITORIAL_DIRECTION.md'],/箱体/);assert.match(files['EDITORIAL_DIRECTION.md'],/未匹配既有采购问题不能单独作为淘汰理由/);
+ assert.equal(editorialTopic('The driver IC MBI model'),'ic');assert.equal(editorialTopic('LED package and MiP'),'led-package');assert.equal(editorialTopic('Display cabinet with front maintenance'),'cabinet');
+});
+
+test('unconfirmed status survives public title, summary and body while dates remain original',()=>{
+ const d={...response.drafts[0],review_zh:'据传厂商准备更新器件，尚未证实。'};
+ const published=publicDraft(d);assert.equal(published.news_status,'unconfirmed');assert.match(published.title,/^Unconfirmed report:/);assert.match(published.meta_description,/^Unconfirmed report/);assert.match(published.body,/Unconfirmed report/);assert.match(published.body,/2026-08-17/);assert.equal(published.canonical,null);assert.equal(published.placement,'blog');assert.ok(!('review_zh' in published));
+ const unknown=publicDraft({...d,source:{...d.source,published_at:null}});assert.match(unknown.body,/date: not provided/);
+});
+
+
+test('public exporter rejects Chinese prose but preserves original non-Latin source URLs',()=>{
+ assert.throws(()=>publicDraft({...response.drafts[0],body_en:'仅供内部审稿，不得公开。'}),/公开英文稿 body_en/);
+ const d={...response.drafts[0],body_en:'English source reference https://maker.example/中文原文'};assert.doesNotThrow(()=>publicDraft(d));assert.ok(!('keyword_hypothesis' in publicDraft(d)));
+});
