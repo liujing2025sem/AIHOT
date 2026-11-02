@@ -25,6 +25,12 @@ function Editor({row}:{row:Detail}){
   const change=(key:keyof Document,value:string)=>setD(x=>({...x,[key]:key==='questions_zh'?value.split('\n').filter(Boolean):value}));
   const field=(key:keyof Document,title:string,large=false)=><label className="mb-4 block text-sm font-medium text-ink-2">{title}{large?<textarea data-field={key} value={String(d[key])} onChange={e=>change(key,e.target.value)} className="mt-2 min-h-[380px] w-full rounded-control border border-line bg-surface p-3 text-[14px] font-normal leading-7"/>:<input data-field={key} value={String(d[key])} onChange={e=>change(key,e.target.value)} className="mt-2 w-full rounded-control border border-line bg-surface p-3 font-normal"/>}</label>;
   return <AdminPage title={row.document.title_zh} subtitle={<span><Badge tone={row.status==='approved'?'ok':'warn'}>{label[row.status]}</Badge> · 版本 {row.version} · <Time at={row.updated_at}/></span>} actions={<Link to="/admin/studio?tab=drafts" className="text-sm text-accent">返回稿件</Link>}>
+    <details className="mb-5 rounded-control border border-line bg-surface p-4">
+      <summary className="cursor-pointer text-sm font-medium text-ink">人工全审顺序 · Agent 整理，编辑判断</summary>
+      <p className="mt-3 text-sm leading-6 text-ink-3">先判断这条变化是否值得写、是否与已有内容重复；不值得写可退回并说明原因。再按下面顺序核对，按钮只切换阅读位置，不代表审核完成。</p>
+      <div className="mt-3 flex flex-wrap gap-2"><Button onClick={()=>setTab('source')}>1 看原文与证据</Button><Button onClick={()=>setTab('zh')}>2 审中文与待核问题</Button><Button onClick={()=>setTab('en')}>3 核对英文出口</Button></div>
+      <p className="mt-3 text-xs leading-6 text-ink-3">当前逐篇全审。重点核对型号、数字、条件、日期、归属及消息状态；认证、商务承诺、客户案例和新领域首篇逐字确认。所有 WARN 仍须逐项确认；问题数只观察工作量，不作为放行门槛。</p>
+    </details>
     <Card className="mb-5" title={row.gate.blocked?'内容否决：请修改后再审核':'逐项风险确认'}>
       <p className="text-sm leading-6 text-ink-3">{row.issues.summary.findingCount} 处命中已整理为 {row.issues.summary.issueCount} 个问题（含逐字检查）。同一问题保留全部位置。BLOCK必须修改，所有WARN仍须确认。</p>
       <p className="mt-2 text-xs leading-5 text-ink-4">确认绑定当前稿件、原文版本和条件；内容修改后会重新核对。五项以内是减负目标，不会据此隐藏问题或自动放行。</p>

@@ -29,6 +29,9 @@ const certificates = /\b(?:CE|EN\s*12966|AEC[-‐‑–]?Q102|RoHS|IP[0-6X][0-9X
 const negative = /不如|落后于|已被淘汰|\b(?:inferior to|lags? behind|obsolete|outdated)\b/gi;
 const commercial = /价格|报价|交期|质保|供货保证|\b(?:price|quote|quotation|delivery|lead time|warranty|guaranteed supply)\b/gi;
 const customer = /客户|项目|案例|\b(?:customer|client|project|case study)\b/gi;
+// A generic project is not a customer disclosure. Keep identifiable delivery/context cues
+// reviewable; this lexical check cannot discover every undisclosed customer identity.
+const projectDisclosure = /项目(?:名称|名为|位于|地址|业主|客户|案例|授权)|(?:承接|承建|交付|中标|签约|落地|竣工|完成|安装)[^。！？\n,，;；]{0,40}项目|(?:机场|体育场|体育馆|地铁|车站|商场|会展中心)项目|\bproject\s+(?:named|called|for|at|in)\b|\b(?:delivered|installed|deployed|completed|commissioned|awarded)\b[^.!?\n]{0,60}\bproject\b/i;
 const market = /市场规模|市场份额|出货量|年复合增长率|\b(?:market size|market share|shipments?|CAGR)\b/i;
 const marketNumber = /\d[\d,.]*\s*(?:%|亿|万|billion\b|million\b|units\b|美元|亿元)/gi;
 const condition = /条件|环境|温度|电流|扫描|测试|测量|上限|最高可达|\b(?:under|at\s+\d|scan|temperature|current|measured|test conditions|up to|maximum)\b/i;
@@ -169,6 +172,7 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
         // Detect mentions, not identities: unknown names and authorization cannot be inferred by regex.
         const state = evidence('customer', s.text.trim());
         if (state === 'verified') continue;
+        if (state !== 'denied' && /^(?:项目|project)$/i.test(m[0]) && !projectDisclosure.test(s.text)) continue;
         hit('D8', state === 'denied' ? 'BLOCK' : 'WARN', m, state === 'denied' ? '可信记录明确禁止披露该客户/项目内容。' : '客户/项目/案例候选，尚无可识别的可信授权记录；文稿自称已授权不生效。');
       }
       if (market.test(s.text)) for (const m of matches(s.text, marketNumber)) {
