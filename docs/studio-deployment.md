@@ -38,6 +38,14 @@ Node 24.22.1/npm 和 PostgreSQL 16.15 二进制、实际安装依赖、最终网
 
 状态命令显示当前根目录、Web/API/数据库端口、进程归属和健康检查，不输出密钥。端口被其他程序占用时直接报错，不替换其他实例。
 
+## 替代启动方式也必须执行迁移
+
+`start-studio.cmd` 会在数据库就绪后执行 `source/scripts/migrate.ts`，成功后才启动API/Web。WorkBuddy受管理持有器、其他harness或自定义服务入口也必须执行相同顺序，传入当前安装的 `appEnv()`，并在迁移失败时停止启动。仅启动数据库和两个应用进程不够。
+
+已发生故障：WorkBuddy持有器跳过迁移，旧库缺少0093/0094/0095的 `blocked` 状态约束更新，首个BLOCK返回500和 `studio_tasks_state_check`。补跑后恢复正常。本次修复本地 `tools/_wbtest-run.mjs`，增加 `workspaceLinks → startDb → run(migrate.ts) → launch`；修改持有器文件不会重启运行中进程。
+
+复用 `tools/studio-common.mjs` 的 `run(node, [path.join(source, 'scripts/migrate.ts')], {env: appEnv(), cwd: source, stdio: 'inherit'})`，不要另写迁移器或手动改历史SQL。健康检查成功不证明迁移已齐，仍需看迁移结果和BLOCK业务路径。
+
 ## 私有数据、附件与服务端 API 渠道迁移
 
 通用部署 ZIP 默认不含本机 `.env`、`runtime/studio.env`、数据库、业务附件、渠道密钥或历史 sessions。以下命令才会显式创建私有迁移资料；只能留在本机或用户控制的私有离线介质，不上传云端。备份会先停止本目录应用，保留数据库运行，确保数据库与附件不再被应用修改；备份后需手动重新启动。不要同时运行独立 worker 或其他写库程序。

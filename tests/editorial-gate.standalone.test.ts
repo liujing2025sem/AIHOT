@@ -127,6 +127,19 @@ test('D8 unidentified authorization warns, trusted denial blocks, model self-app
   assert.ok(has(check(d, packet, wrong), 'D8', 'WARN'));
 });
 
+test('D8 generic projects do not request authorization; disclosure cues and trusted denials still do', () => {
+  for (const text of ['适用于户外项目的安装与维护。', '本项目比较驱动方案。', 'This project compares display cabinet maintenance.']) {
+    assert.equal(has(check(withBody(text)), 'D8'), false, text);
+  }
+  for (const text of ['项目名称为海港体育场。', '我们交付了海港体育场项目。', 'The project at Example Arena uses LED cabinets.', 'We completed the Example Arena project.']) {
+    const report = check(withBody(text));
+    assert.ok(has(report, 'D8', 'WARN'), text);
+    for (const finding of report.findings.filter(f => f.ruleId === 'D8')) assert.equal(text.slice(finding.start, finding.end), finding.quote);
+  }
+  const text = 'This project compares display cabinet maintenance.';
+  assert.ok(has(check(withBody(text), packet, trusted('customer', text, 'denied')), 'D8', 'BLOCK'));
+});
+
 test('D9 market data without source/period/scope blocks; partial scope warns; complete cues do not assert verification', () => {
   assert.ok(has(check(withBody('市场份额达到30%。')), 'D9', 'BLOCK'));
   assert.ok(has(check(withBody('Global market share reached 30% in 2025.')), 'D9', 'WARN'));
