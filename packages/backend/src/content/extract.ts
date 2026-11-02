@@ -29,6 +29,47 @@ export interface ExtractedBody {
 
 const MIN_BODY_CHARS = 200;
 
+/**
+ * Paths that serve a sign-in form rather than the page that was asked for. A path segment, never a
+ * substring: "/auth-for-agents" and "/authors/x" are ordinary pages.
+ */
+// Sign-in paths read from the final address, never the text. login|log-in|log_in|signin|sign-in|sign_in|
+// register|signup|sign-up|sign_up cover the naming schemes sites use (Devise's /users/sign_in among them);
+// wp-login.php is WordPress's login page; the extension alternatives read /login.php, /register.html —
+// a segment only counts when it ends at a delimiter (a real page path or an extension), so a page that
+// merely carries an auth word ("login.company", "sso-products") stays content.
+const AUTH_PATH = /(?:^|\/)(?:login|log-in|log_in|signin|sign-in|sign_in|register|signup|sign-up|sign_up|authorize|oauth2?|sso|auth|wp-login(?:\.php)?)(?:\/|$|\.(?:php|aspx?|html?|jsp))/i;
+
+/** Whether an address is a sign-in form's own path (a listing's "Log in" link is no post either). */
+export function isSignInUrl(url: string): boolean {
+  try {
+    return AUTH_PATH.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A redirect that ended on a sign-in form: the site sent us to authenticate instead of to the page.
+ * Read from the final address of the fetch, never from the text, so an article that merely mentions
+ * signing in is untouched — a real one (a news piece about password autofill) reads like a login
+ * page to any text test.
+ *
+ * The real case: a source built arxiv.org URLs and HuggingFace answered with its login page. The
+ * sign-in form passed the length test and became the body, its navigation differed between fetches so
+ * every fetch looked like a new revision of the article (one reached 26 revisions), and the article
+ * entered the pool under a title of "220".
+ */
+export function isSignInRedirect(asked: string, landed: string): boolean {
+  try {
+    // An address already on such a path was not sent anywhere: a registry page at ".../register" that
+    // only gained a trailing slash is still the page that was asked for.
+    return !AUTH_PATH.test(new URL(asked).pathname) && AUTH_PATH.test(new URL(landed).pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** Restore only completed React streaming boundaries, without evaluating any page script. */
 function settleStreamedContent(document: ReturnType<typeof parseHTML>["document"]) {
   for (const script of document.querySelectorAll("script:not([src])")) {
@@ -386,6 +427,7 @@ export async function extractFromUrl(url: string, subject: string, rules: PageRu
   try {
     const res = await guardedFetch(url, { headers: languageHeaders(rules.acceptLanguage), timeoutMs: 20_000, maxBytes: 6 * 1024 * 1024 });
     if (isVideoPageUrl(res.url)) return null;
+    if (isSignInRedirect(url, res.url)) return null;
     const type = res.headers.get("content-type") ?? "";
     if (res.status === 200 && /html/.test(type)) {
       const got = readable(res.text(), res.url, rules);

@@ -9,7 +9,7 @@ import { config } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
 import { chatJson } from "@aihot/backend/providers/llm";
 import { embeddingsAvailable } from "@aihot/backend/providers/embeddings";
-import { assertAccepted, failureKind, ProviderRejectedError, BudgetExceededError, logicalKeyFor, markStalePendingReceipts, ModelOutputError, paidRequest, ReceiptUnknownError } from "@aihot/backend/providers/receipts";
+import { assertAccepted, failureKind, ProviderRejectedError, BudgetExceededError, logicalKeyFor, markStalePendingReceipts, ModelOutputError, paidRequest, providerStopKey, ReceiptUnknownError } from "@aihot/backend/providers/receipts";
 import { autoReleaseUnknownReceipts } from "@aihot/backend/operations/recover";
 
 const usage = { prompt_tokens: 80, completion_tokens: 20, total_tokens: 100 };
@@ -83,6 +83,40 @@ test("an answer already received is reused instead of bought again", async () =>
   assert.equal(first.reused, false);
   assert.equal(second.reused, true);
   assert.equal(second.receiptId, first.receiptId);
+});
+
+test('coding sessions reach the provider and bind reuse without losing reported billing fields', async () => {
+  const seen: Array<string | undefined> = [];
+  const coding = await stub((_hit, request) => {
+    seen.push(request.headers['x-opencode-session'] as string | undefined);
+    return { model: 'deepseek-v4.1-flash', choices: [{ message: { content: '{"ok":true}' } }], usage: { ...usage, cost: 0, opencode: { billing_source: 'go', allowance: 0.001 } } };
+  });
+  const previous = process.env.DEEPSEEK_BASE_URL;
+  process.env.DEEPSEEK_BASE_URL = `${coding.url}/v1`;
+  const options = { model: 'deepseek-flash', purpose: 'coding_test', subject: `coding-${tag()}`, promptVersion: 'v1', system: 'Review TypeScript', user: 'return null', schema: z.object({ ok: z.boolean() }) };
+  try {
+    const first = await chatJson({ ...options, sessionId: 'coding-session-a' });
+    const replay = await chatJson({ ...options, sessionId: 'coding-session-a' });
+    const other = await chatJson({ ...options, sessionId: 'coding-session-b' });
+    assert.equal(first.receiptId, replay.receiptId);
+    assert.notEqual(first.receiptId, other.receiptId);
+    assert.deepEqual(seen, ['coding-session-a', 'coding-session-b']);
+    assert.deepEqual(first.usage?.opencode, { billing_source: 'go', allowance: 0.001 });
+  } finally { process.env.DEEPSEEK_BASE_URL = previous; await coding.close(); }
+});
+
+test('Go refuses editorial calls without a coding session and implicit fallback before any request', async () => {
+  const prior = { base: process.env.LLM_BASE_URL, key: process.env.LLM_API_KEY, model: process.env.LLM_MODEL };
+  Object.assign(process.env, { LLM_BASE_URL: 'https://opencode.ai/inference/go/openai/v1', LLM_API_KEY: 'synthetic-not-a-key', LLM_MODEL: 'deepseek-v4.1-flash' });
+  const subject = `go-not-sent-${tag()}`;
+  const options = { model: 'default', purpose: 'invariant_test', subject, promptVersion: 'v1', system: 's', user: 'u', schema: z.object({ ok: z.boolean() }) };
+  try {
+    await assert.rejects(chatJson(options), /persisted coding session/);
+    await assert.rejects(chatJson({ ...options, sessionId: 'coding-session', fallbackModel: 'deepseek-flash' }), /cannot implicitly/);
+    assert.equal((await sql`SELECT 1 FROM receipts WHERE subject=${subject}`).length, 0);
+  } finally {
+    for (const [key, value] of Object.entries({ LLM_BASE_URL: prior.base, LLM_API_KEY: prior.key, LLM_MODEL: prior.model })) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
 });
 
 test("stale recovery waiting on a response transaction preserves its committed answer and attempt", async () => {
@@ -318,4 +352,102 @@ test("an unknown outcome is released automatically once, so a lost answer costs 
   assert.equal(await status(), "unknown", "a second loss waits for the admin");
   await assert.rejects(paidRequest(req, lost), ReceiptUnknownError);
   assert.equal(sent, 2);
+});
+
+// The classification the alert layer already uses: a TPM/RPM throttle may pass; an account, spending or
+// access refusal stops new calls, because the same request would be refused again in a minute.
+test("a throttle is not a spent account: only an access or billing refusal stops calls", () => {
+  const throttle = (body: string) => assert.throws(
+    () => assertAccepted("dashscope", 429, body),
+    (error: unknown) => error instanceof ProviderRejectedError && error.retryable && !error.accessRefused,
+  );
+  throttle('{"code":"Throttling.AllocationQuota","message":"Allocated quota exceeded"}');
+  throttle('{"error":{"code":"insufficient_quota","message":"You exceeded your current quota, please check your plan and billing details."}}');
+  const refused = (body: string) => assert.throws(
+    () => assertAccepted("dashscope", 429, body),
+    (error: unknown) => error instanceof ProviderRejectedError && error.accessRefused,
+  );
+  refused('{"code":"CommodityNotPurchased","message":"product not purchased"}');
+  refused('{"type":"error","error":{"type":"GoUsageLimitError","message":"Go plan usage limit reached"}}');
+  refused('{"error":{"message":"insufficient balance"}}');
+});
+
+test("an access refusal stops new calls until the cooldown, and a real answer releases the stop", async () => {
+  const service = `invariant-stop-${tag()}`;
+  let sent = 0;
+  const refuse = async () => {
+    sent += 1;
+    assertAccepted(service, 402, '{"error":{"message":"insufficient balance"}}');
+    return { response: null };
+  };
+  try {
+    await assert.rejects(paidRequest({ service, purpose: "invariant_test", identity: "first" }, refuse), ProviderRejectedError);
+    assert.equal(sent, 1);
+    const [stop] = await sql<{ value: { until: string } }[]>`SELECT value FROM settings WHERE key = ${providerStopKey(service)}`;
+    assert.ok(stop, "the refusal records a stop");
+    // The attempt keeps the provider's own words, so the refused-provider alert classifies it the same way.
+    const [attempt] = await sql<{ error: string }[]>`SELECT error FROM receipt_attempts WHERE service = ${service} ORDER BY id DESC LIMIT 1`;
+    assert.match(attempt!.error, /insufficient balance/);
+
+    // The next logical request is stopped before it is sent.
+    await assert.rejects(paidRequest({ service, purpose: "invariant_test", identity: "second" }, refuse), BudgetExceededError);
+    assert.equal(sent, 1, "no request reaches the provider while the stop holds");
+
+    // A stop, not a verdict: once the cooldown runs out a probe is allowed.
+    await sql`UPDATE settings SET value = jsonb_build_object('until', ${new Date(Date.now() - 1000).toISOString()}::text) WHERE key = ${providerStopKey(service)}`;
+    const ok = await paidRequest({ service, purpose: "invariant_test", identity: "third" }, async () => { sent += 1; return { response: { ok: true } }; });
+    assert.ok(ok.receiptId);
+    assert.equal(sent, 2, "calls resume after the cooldown");
+    assert.equal((await sql`SELECT 1 FROM settings WHERE key = ${providerStopKey(service)}`).length, 0, "a received answer releases the stop");
+  } finally {
+    await sql`DELETE FROM receipts WHERE service = ${service}`;
+    await sql`DELETE FROM settings WHERE key = ${providerStopKey(service)}`;
+  }
+});
+
+test("a TPM throttle does not stop the service", async () => {
+  const service = `invariant-throttle-${tag()}`;
+  let sent = 0;
+  try {
+    await assert.rejects(paidRequest({ service, purpose: "invariant_test", identity: "throttle" }, async () => {
+      sent += 1;
+      assertAccepted(service, 429, '{"code":"Throttling.AllocationQuota","message":"Allocated quota exceeded"}');
+      return { response: null };
+    }), ProviderRejectedError);
+    assert.equal(sent, 1);
+    assert.equal((await sql`SELECT 1 FROM settings WHERE key = ${providerStopKey(service)}`).length, 0, "a temporary throttle leaves the service callable");
+  } finally {
+    await sql`DELETE FROM receipts WHERE service = ${service}`;
+  }
+});
+test("a resource-level 403 (a private account) stops nothing", async () => {
+  const service = `invariant-private-${tag()}`;
+  try {
+    await assert.rejects(paidRequest({ service, purpose: "invariant_test", identity: "private" }, async () => {
+      assertAccepted(service, 403, '{"error":{"message":"Forbidden: user privacy settings"}}');
+      return { response: null };
+    }), ProviderRejectedError);
+    assert.equal((await sql`SELECT 1 FROM settings WHERE key = ${providerStopKey(service)}`).length, 0, "one private resource does not stop the service");
+  } finally {
+    await sql`DELETE FROM receipts WHERE service = ${service}`;
+  }
+});
+
+test("one model's spent quota stops that model, not the service's other models", async () => {
+  // dashscope's free quota is per model: the refused-provider alert is per model too (operations/alerts.ts).
+  const vision = `vision-${tag()}`;
+  const text = `text-${tag()}`;
+  try {
+    await assert.rejects(paidRequest({ service: "dashscope", model: vision, purpose: "invariant_test", identity: "vision" }, async () => {
+      assertAccepted("dashscope", 429, '{"code":"Throttling.AllocationQuota","message":"Free allocated quota exceeded."}');
+      return { response: null };
+    }), ProviderRejectedError);
+    assert.equal((await sql`SELECT 1 FROM settings WHERE key = ${providerStopKey("dashscope", vision)}`).length, 1, "the refused model is stopped");
+    let sent = 0;
+    await paidRequest({ service: "dashscope", model: text, purpose: "invariant_test", identity: "text" }, async () => { sent += 1; return { response: { ok: true } }; });
+    assert.equal(sent, 1, "another model of the same service is still called");
+  } finally {
+    await sql`DELETE FROM receipts WHERE service = 'dashscope' AND model IN (${vision}, ${text})`;
+    await sql`DELETE FROM settings WHERE key = ${providerStopKey("dashscope", vision)}`;
+  }
 });

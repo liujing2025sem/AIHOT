@@ -22,11 +22,20 @@ const SECTIONS: Array<{ title: string; items: NavItem[] }> = [
     title: "内容",
     items: [
       { to: "/", label: "精选", icon: IconBolt, end: true },
-      { to: "/all", label: subjectAfter("全部", "动态"), icon: IconList },
+      { to: "/all", label: "全部资讯", icon: IconList },
       { to: "/hot", label: "热点榜", icon: IconFlame },
       { to: "/daily", label: withSubject("日报"), icon: IconDoc },
       { to: "/topics", label: "主题", icon: IconGrid },
       { to: "/starred", label: "收藏", icon: IconBookmark },
+    ],
+  },
+  {
+    title: "工作台",
+    items: [
+      { to: "/admin/studio", label: "采编工作台", icon: IconDoc },
+      { to: "/admin/channels", label: "API 渠道", icon: IconPlug },
+      { to: "/admin/sources", label: "信源管理", icon: IconList },
+      { to: "/more", label: "阅读设置", icon: IconUser },
     ],
   },
   {

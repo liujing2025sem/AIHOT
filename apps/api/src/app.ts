@@ -9,6 +9,8 @@ import { registerSite } from "./routes/site.ts";
 import { registerOg } from "./routes/og.ts";
 import { registerAdminAuth } from "./routes/admin-auth.ts";
 import { registerAdmin } from "./routes/admin.ts";
+import { registerAdminStudio } from "./routes/admin-studio.ts";
+import { registerAdminChannels } from "./routes/admin-channels.ts";
 import { registerIngest } from "./routes/ingest.ts";
 import { registerV1, registerV1Fallbacks } from "./routes/v1.ts";
 import { registerAgent } from "./routes/agent.ts";
@@ -93,6 +95,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerOg(app);
   registerAdminAuth(app);
   registerAdmin(app);
+  registerAdminStudio(app);
+  registerAdminChannels(app);
   registerIngest(app);
   registerV1(app);
   registerAgent(app);

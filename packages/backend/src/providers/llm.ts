@@ -12,9 +12,12 @@ import {
   type ReceiptRequest,
 } from "./receipts.ts";
 import { enterModelCircuit, recordModelHealth, type CircuitPermit } from "./circuit.ts";
+import type { AdminChannelId } from "@aihot/contracts/admin";
+import { redactChannelText, resolveChannel } from "./channel.ts";
 
 export interface ModelSpec extends ModelPreset {
   key: string;
+  channel?: { id: AdminChannelId; endpointHash: string };
 }
 
 function extraFromEnv(value: string | undefined): Record<string, unknown> | undefined {
@@ -50,6 +53,8 @@ export type ContentPart = { type: "text"; text: string } | { type: "image_url"; 
 
 export interface ChatJsonOptions<S extends z.ZodType> {
   model: string;
+  /** Optional pinned Studio channel. Otherwise `default` reads the active channel at call time. */
+  channelId?: AdminChannelId;
   /** One independently operated, evaluated backup. Only availability failures switch providers. */
   fallbackModel?: string;
   purpose: string;
@@ -62,6 +67,8 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   maxTokens?: number;
   attemptTag?: string;
   timeoutMs?: number;
+  /** Persisted coding conversation identity. News/translation calls do not supply this. */
+  sessionId?: string;
   /** false: the model answers in its own text format (no JSON mode); `parse` turns it into the schema's input. */
   json?: boolean;
   parse?: (content: string) => unknown;
@@ -115,14 +122,31 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
+const USER_AGENT = 'aihot-local-coding-harness/0.1';
+function transportHeaders<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec, baseUrl: string): Record<string, string> {
+  if (opts.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(opts.sessionId)) throw new ModelUnavailableError('Invalid coding sessionId');
+  const url = new URL(baseUrl);
+  if (url.hostname === 'opencode.ai' && url.pathname.startsWith('/inference/go')) {
+    if (url.protocol !== 'https:' || url.port || url.username || url.password || url.search || url.hash || url.pathname.replace(/\/$/, '') !== '/inference/go/openai/v1') throw new ModelUnavailableError('Use the exact OpenCode Go HTTPS API base');
+    if (spec.model !== 'deepseek-v4.1-flash') throw new ModelUnavailableError('This local Go configuration supports deepseek-v4.1-flash');
+    if (!opts.sessionId) throw new ModelUnavailableError('OpenCode Go needs a persisted coding session; use the Codex file handoff for editorial work');
+    if (opts.fallbackModel) throw new ModelUnavailableError('OpenCode Go cannot implicitly change model or billing endpoint');
+    if (spec.extra && ['model', 'messages'].some(key => Object.hasOwn(spec.extra!, key))) throw new ModelUnavailableError('Go extra JSON cannot replace model or messages');
+  }
+  return { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(opts.sessionId ? { 'x-opencode-session': opts.sessionId } : {}) };
+}
+
 function requestFor<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec) {
   const temperature = opts.temperature ?? 0.2;
   const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.reasoningTokens ?? 0);
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
   const request: ReceiptRequest = {
     service: spec.service, model: spec.model, purpose: opts.purpose, subject: opts.subject,
-    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null },
-    requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
+    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null,
+      ...(spec.channel ? { channel: spec.channel } : {}),
+      ...(opts.sessionId ? { client: { userAgent: USER_AGENT, sessionId: opts.sessionId } } : {}) },
+    requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens,
+      ...(spec.channel ? { channelId: spec.channel.id } : {}) },
     attemptTag: opts.attemptTag,
   };
   return { request, temperature, maxTokens, userText };
@@ -144,28 +168,43 @@ const FAILOVER_TIMEOUT_MS = 30_000;
  * besides the one release in operations/recover.ts, the other place where an unknown outcome is
  * followed by a second paid request.
  */
+interface RuntimeModel { spec: ModelSpec; baseUrl: string | null; apiKey: string | null }
+async function runtimeModel(key: string, channelId?: AdminChannelId): Promise<RuntimeModel> {
+  const existing = MODELS[key];
+  if (!existing) throw new ModelUnavailableError(`Unknown model ${key}`);
+  if (channelId && key !== "default") throw new ModelUnavailableError("指定渠道时请使用 model=default");
+  const channel = key === "default" ? await resolveChannel(channelId) : null;
+  if (!channel) {
+    if (/deepseek[^/]*pro/i.test(existing.model)) throw new ModelUnavailableError("DeepSeek Pro 已禁用");
+    return { spec: existing, baseUrl: credential("models", existing.baseUrlEnv), apiKey: credential("models", existing.apiKeyEnv) };
+  }
+  return { spec: { ...existing, model: channel.model, service: channel.service, extra: undefined, reasoningTokens: reasoningTokensFromEnv(process.env.LLM_REASONING_TOKENS), jsonMode: true, vision: false,
+    channel: { id: channel.id, endpointHash: sha256(channel.baseUrl) } }, baseUrl: channel.baseUrl, apiKey: channel.apiKey };
+}
+
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
-  if (!opts.fallbackModel) return chatOnce(opts);
+  const primary = await runtimeModel(opts.model, opts.channelId);
+  if (primary.baseUrl) transportHeaders(opts, primary.spec, primary.baseUrl);
+  if (!opts.fallbackModel) return chatOnce(opts, false, undefined, primary);
   const backupOpts = { ...opts, model: opts.fallbackModel };
-  const fallbackFor = logicalKeyFor(requestFor(opts, MODELS[opts.model]!).request);
-  const saved = await receiptState(requestFor(backupOpts, MODELS[opts.fallbackModel]!).request);
+  const backup = await runtimeModel(opts.fallbackModel);
+  const fallbackFor = logicalKeyFor(requestFor(opts, primary.spec).request);
+  const saved = await receiptState(requestFor(backupOpts, backup.spec).request);
   // Finish an existing backup attempt before choosing a provider again, even after recovery/restart.
-  if (saved && saved !== "failed") return chatOnce(backupOpts, true, fallbackFor);
+  if (saved && saved !== "failed") return chatOnce(backupOpts, true, fallbackFor, backup);
   try {
-    return await chatOnce(opts, true);
+    return await chatOnce(opts, true, undefined, primary);
   } catch (error) {
     const kind = failureKind(error);
     if (kind !== "unknown" && kind !== "outage") throw error;
-    return chatOnce(backupOpts, true, fallbackFor);
+    return chatOnce(backupOpts, true, fallbackFor, backup);
   }
 }
 
-async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit = false, fallbackFor?: string): Promise<ChatJsonResult<z.infer<S>>> {
-  const spec = MODELS[opts.model];
-  if (!spec) throw new Error(`Unknown model ${opts.model}`);
+async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit = false, fallbackFor?: string, runtime?: RuntimeModel): Promise<ChatJsonResult<z.infer<S>>> {
+  const { spec, baseUrl, apiKey } = runtime ?? await runtimeModel(opts.model, opts.channelId);
   if (!config.modelCallsEnabled) throw new ModelUnavailableError("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const baseUrl = credential("models", spec.baseUrlEnv);
-  const apiKey = credential("models", spec.apiKeyEnv);
+  const headers = baseUrl ? transportHeaders(opts, spec, baseUrl) : {};
   if (!baseUrl || !apiKey || !spec.model) throw new ModelUnavailableError(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
   const { request, temperature, maxTokens, userText } = requestFor(opts, spec);
@@ -194,11 +233,13 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
       try {
         res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+          ...(spec.channel ? { redirect: "error" as const } : {}),
+          headers: { ...headers, authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(timeoutMs),
         });
         text = await res.text();
+        if (spec.channel) text = redactChannelText(text, apiKey);
         assertAccepted(spec.service, res.status, text);
       } catch (error) {
         const failure = isConnectFailure(error) ? new ProviderRejectedError(`connect failed: ${String(error)}`, null, true) : error;

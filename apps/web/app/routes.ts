@@ -43,6 +43,10 @@ export default [
   route("admin/login", "routes/admin-login.tsx"),
   layout("routes/admin/layout.tsx", { id: "admin-layout" }, [
     route("admin", "routes/admin/index.tsx"),
+    route("admin/studio", "routes/admin/studio.tsx"),
+    route("admin/channels", "routes/admin/channels.tsx"),
+    route("admin/studio/materials/:id", "routes/admin/studio-material.tsx"),
+    route("admin/studio/drafts/:id", "routes/admin/studio-draft.tsx"),
     route("admin/content", "routes/admin/content.tsx"),
     route("admin/content/:id", "routes/admin/content-item.tsx"),
     route("admin/sources", "routes/admin/sources.tsx"),

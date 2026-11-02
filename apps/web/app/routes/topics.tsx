@@ -1,12 +1,13 @@
+import { useState } from "react";
 import { useLoaderData } from "react-router";
-import { SITE, subjectAfter, withSubject } from "@aihot/site";
+import { SITE, withSubject } from "@aihot/site";
 import type { Route } from "./+types/topics";
 import type { TopicSummary, TopicsResponse } from "@aihot/contracts/site";
 import { apiGet, cachedPage } from "../lib/api.server";
 import { pageReuse } from "../lib/page-reuse";
 import { breadcrumbLd, pageMeta, siteUrl } from "../lib/seo";
 import { relativeTime } from "../lib/format";
-import { IconChevronRight } from "../components/icons";
+import { IconChevronRight, IconSearch } from "../components/icons";
 import { IntentLink } from "../components/ui/IntentLink";
 import { BrandMark } from "../components/BrandMark";
 import { PhoneBar } from "../components/shell/PhoneBar";
@@ -30,7 +31,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   const base = siteUrl();
   return pageMeta({
     title: SITE.topicsTitle,
-    description: `按${by}${subjectAfter("追踪", "最新动态")}：${named ? `${named}等 ` : ""}${topics.length} 个主题，浏览最新精选与重要进展，持续更新。`,
+    description: `按${by}浏览 LED 商显行业目录：${named ? `${named}等 ` : ""}${topics.length} 个主题，查看主题说明与已收录精选。`,
     path: "/topics",
     image: "/og/pages/topics.png",
     jsonLd: [
@@ -75,9 +76,10 @@ function TopicCard({ t }: { t: TopicSummary }) {
           )}
           {t.name}
         </span>
-        <span className="mt-0.5 line-clamp-1 text-[12.5px] leading-[1.6] text-ink-4 lg:mt-1.5 lg:line-clamp-2 lg:flex-1 lg:text-[13px] lg:leading-[1.65] lg:text-ink-2">
-          {t.latest?.title ?? t.definition}
+        <span className="mt-1 block text-[12.5px] leading-[1.65] text-ink-3 lg:mt-2 lg:flex-1 lg:text-[13px]">
+          {t.definition}
         </span>
+        {t.latest && <span className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-ink-2">{t.latest.title}</span>}
         <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px] text-ink-4 lg:mt-3 lg:justify-between">
           {t.latest && <time dateTime={t.latest.at} suppressHydrationWarning>{relativeTime(t.latest.at)}</time>}
           <span>
@@ -86,7 +88,7 @@ function TopicCard({ t }: { t: TopicSummary }) {
                 近 30 天 <span className="num font-semibold text-ink-3">{t.recent}</span> 条
               </>
             ) : (
-              "近 30 天暂无新精选"
+              t.total > 0 ? `已收录 ${t.total} 条精选` : "暂无精选"
             )}
           </span>
         </span>
@@ -98,26 +100,47 @@ function TopicCard({ t }: { t: TopicSummary }) {
 
 export default function TopicsPage() {
   const { groups, topics } = useLoaderData<typeof loader>();
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLocaleLowerCase();
+  const visible = topics.filter((t) => `${t.name} ${t.slug} ${t.definition}`.toLocaleLowerCase().includes(normalized));
+  const visibleGroups = groups.filter((g) => visible.some((t) => t.group === g.key));
   return (
     <div className="pb-10">
       <PhoneBar back={{ to: "/more", label: "我的" }} title="主题" />
       <header className="pb-2 pt-3 lg:pt-1">
-        <h1 data-page-title="" className="text-[24px] font-semibold leading-[1.3] text-ink">{subjectAfter("按主题看")}</h1>
+        <h1 data-page-title="" className="text-[24px] font-semibold leading-[1.3] text-ink">LED 商显主题</h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">
-          {`按${groups.map((g) => g.name).join("、")}浏览 `}
-          <span className="num">{topics.length}</span> 个主题，追踪最新精选与重要进展。
+          按企业、技术与应用查找内容；主题下展示已收录的精选。
         </p>
       </header>
-      {groups.map((g) => (
-        <section key={g.key} aria-labelledby={`topics-${g.key}`} className="pt-8">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+        <nav aria-label="主题分组" className="flex flex-wrap gap-1">
+          {groups.filter((g) => topics.some((t) => t.group === g.key)).map((g) => (
+            <a key={g.key} href={`#topics-${g.key}`} onClick={() => setQuery("")} className="inline-flex min-h-11 items-center rounded-control px-3 text-[13px] font-medium text-ink-3 transition-colors hover:bg-bg-sunk hover:text-accent">{g.name}</a>
+          ))}
+        </nav>
+        <div role="search" aria-label="查找主题" className="relative w-full sm:w-72">
+          <IconSearch size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-4" />
+          <input type="search" aria-label="搜索主题" placeholder="搜索企业、技术、应用…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-h-11 w-full rounded-control border border-line bg-surface py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink-4" />
+        </div>
+      </div>
+      <p role="status" aria-live="polite" className="mt-3 text-[12px] text-ink-4">{normalized ? `找到 ${visible.length} 个主题` : `${topics.length} 个主题`}</p>
+      {visible.length === 0 && (
+        <div className="py-12 text-center">
+          <p className="text-[14px] font-medium text-ink">没有匹配的主题</p>
+          <button type="button" onClick={() => setQuery("")} className="mt-2 min-h-11 px-3 text-[13px] font-medium text-accent hover:underline">查看全部主题</button>
+        </div>
+      )}
+      {visibleGroups.map((g) => (
+        <section key={g.key} id={`topics-${g.key}`} aria-labelledby={`topics-heading-${g.key}`} className="scroll-mt-20 pt-6 lg:scroll-mt-6">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-            <h2 id={`topics-${g.key}`} className="text-[15px] font-bold text-ink">
+            <h2 id={`topics-heading-${g.key}`} className="text-[15px] font-bold text-ink">
               {g.name}
             </h2>
             <p className="text-[12px] text-ink-4">{g.blurb}</p>
           </div>
-          <ul className="mt-3 divide-y divide-line-soft overflow-hidden rounded-card border border-line bg-surface lg:mt-3.5 lg:grid lg:grid-cols-3 lg:gap-3 lg:divide-y-0 lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent xl:grid-cols-4">
-            {topics
+          <ul className="mt-3 divide-y divide-line-soft overflow-hidden rounded-card border border-line bg-surface lg:mt-3.5 lg:grid lg:grid-cols-2 lg:gap-3 lg:divide-y-0 lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent xl:grid-cols-3 2xl:grid-cols-4">
+            {visible
               .filter((t) => t.group === g.key)
               .map((t) => (
                 <li key={t.slug}>

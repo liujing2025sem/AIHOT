@@ -20,6 +20,37 @@ export interface AdminMe {
   dev: boolean;
 }
 
+export type AdminChannelId = "opencode-go" | "deepseek" | "custom";
+export interface AdminChannel {
+  id: AdminChannelId;
+  name: string;
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+  active: boolean;
+  hasKey: boolean;
+  maskedKey: string | null;
+  keySource: "environment" | "credential-file" | "missing";
+}
+export interface AdminChannels {
+  channels: AdminChannel[];
+  activeId: AdminChannelId | null;
+  source: "settings" | "environment";
+  modelCallsEnabled: boolean;
+}
+export interface AdminChannelTest {
+  channelId: AdminChannelId;
+  kind: "models" | "completion";
+  ok: boolean;
+  status: number | null;
+  model: string;
+  returnedModel: string | null;
+  models: string[];
+  modelAvailable: boolean | null;
+  detail: string;
+  receiptId?: number;
+}
+
 export interface AdminPresentationRefresh {
   revision: number;
   version: string;

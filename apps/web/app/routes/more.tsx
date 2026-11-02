@@ -39,6 +39,7 @@ const tools = (): Row[] => [
   ...webModules().flatMap((m) => m.tools ?? []),
   ...(inNav("/topics") ? [{ to: "/topics", label: "主题", icon: <IconGrid size={20} /> }] : []),
   { to: "/agent", label: "Agent 接入", icon: <IconPlug size={20} />, detail: agentWays().slice(0, 3).join(" · ") },
+  { to: "/admin", label: "管理后台", icon: <IconGrid size={20} />, detail: "管理员登录" },
 ];
 
 function Group({ title, children }: { title?: string; children: ReactNode }) {

@@ -19,9 +19,13 @@ export function beijingIso(instant: Date | string | number): string {
   return `${new Date(new Date(instant).getTime() + OFFSET_MS).toISOString().slice(0, 23)}+08:00`;
 }
 
-/** "9月28日" of a calendar date (YYYY-MM-DD). */
-export function monthDay(date: string): string {
-  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
+/**
+ * "9月28日" of a calendar date (YYYY-MM-DD). Given `today` (YYYY-MM-DD, Beijing), a day of another year carries its
+ * year, so an archived item is not read as this year's: "2019年2月19日".
+ */
+export function monthDay(date: string, today?: string): string {
+  const year = today && date.slice(0, 4) !== today.slice(0, 4) ? `${date.slice(0, 4)}年` : "";
+  return `${year}${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
 }
 
 /** "9月29日" in Beijing time. */

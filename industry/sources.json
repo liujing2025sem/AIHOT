@@ -1,5 +1,5 @@
 {
-  "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里新建、修改和暂停。字段说明见 docs/customize.md。",
+  "$comment": "原18个示范信源保留不变；追加3个停用的LED官方新闻候选。已部署同ID信源不会覆盖，启用前按 docs/led-sources.md 核验。",
   "sources": [
     {
       "id": "rss-openai-news",
@@ -365,6 +365,113 @@
       ],
       "site_fulltext": false,
       "syndicate_fulltext": false
+    },
+    {
+      "id": "web-macroblock-news",
+      "name": "Macroblock News",
+      "owner_entity_id": "macroblock",
+      "config": {
+        "url": "https://www.mblock.com.tw/en/news",
+        "parseMode": "html",
+        "itemSelector": "li.alldata .news_box",
+        "linkSelector": "a[href*=\"/en/news/detail/\"]",
+        "titleSelector": ".txt > p",
+        "allowUrlPrefixes": [
+          "https://www.mblock.com.tw/en/news/detail/"
+        ],
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "detail": {
+          "maxFetches": 8,
+          "titleSelector": ".news_title h5",
+          "publishedAtRegex": "\"datePublished\"\\s*:\\s*\"(\\d{4}-\\d{2}-\\d{2})\"",
+          "publishedAtAuthoritative": true
+        },
+        "_aihot": {
+          "initialBackfillLimit": 8,
+          "initialBackfillMonths": 6
+        }
+      },
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-kinglight-news",
+      "name": "Kinglight News",
+      "owner_entity_id": "kinglight",
+      "config": {
+        "url": "https://en.kinglight.com/category/blog/news",
+        "parseMode": "html",
+        "itemSelector": "#news-page .top .right, #news-page .bottom > .list",
+        "linkSelector": "a[href*=\"/blog/\"]",
+        "titleSelector": "h2",
+        "publishedAtSelector": ".time",
+        "publishedAtUtcOffset": "+08:00",
+        "allowUrlPrefixes": [
+          "https://en.kinglight.com/blog/"
+        ],
+        "acceptLanguage": "en",
+        "detail": {
+          "maxFetches": 8,
+          "titleSelector": "h1.news-tit",
+          "titleAuthoritative": true,
+          "publishedAtSelector": "#newsshow > .top .tnh span",
+          "publishedAtAuthoritative": true
+        },
+        "_aihot": {
+          "initialBackfillLimit": 8,
+          "initialBackfillMonths": 6
+        }
+      },
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
+    },
+    {
+      "id": "web-nationstar-product-news",
+      "name": "Nationstar Product News",
+      "owner_entity_id": "nationstar",
+      "config": {
+        "url": "https://www.nationstar.com/nationstar/channel/product_news",
+        "parseMode": "html",
+        "itemSelector": "ul.mar_list > li.item",
+        "linkSelector": ".info a.title",
+        "titleSelector": ".info a.title",
+        "publishedAtSelector": ".bot .tag:first-child",
+        "publishedAtUtcOffset": "+08:00",
+        "allowUrlPrefixes": [
+          "https://www.nationstar.com/nationstar/content/"
+        ],
+        "acceptLanguage": "en",
+        "detail": {
+          "maxFetches": 8,
+          "titleSelector": ".arc_content > h1.title",
+          "publishedAtSelector": ".arc_content > .tag > span:nth-child(2)"
+        },
+        "_aihot": {
+          "initialBackfillLimit": 8,
+          "initialBackfillMonths": 6
+        }
+      },
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "interval_minutes": 360,
+      "tags": [],
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "enabled": false
     }
   ]
 }

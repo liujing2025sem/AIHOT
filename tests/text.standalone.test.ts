@@ -1,8 +1,36 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { looksZh } from "@aihot/backend/editorial/writing";
+import { enforceIdentity, finalizeCopy, looksZh } from "@aihot/backend/editorial/writing";
 import { isChineseBody, exportTranslation } from "@aihot/backend/publication/items";
 import { stripTags } from "@aihot/backend/lib/text";
+
+// 合成回归样例，借用公开材料中“性能在前、样品阶段与配置条件在后”的结构，非新闻摘录。
+// https://www.mblock.com.tw/en/news/detail/LED_Display_Symposium_LED_Driver_IC
+test("finalizing copy preserves later model, availability and configuration conditions", () => {
+  const summaryZh = "某器件供应商公布一款驱动芯片的方案，称刷新率可达 15,360 Hz，并介绍这项设计如何服务于更细间距的显示应用，以及与现有控制、供电、模组布线和检测流程衔接时需要核对的工程资料。" +
+    "报道还介绍了现场展示的不同方案，涉及画面质量、拍摄效果以及后续验证安排，采购方需要结合实际项目核对适用范围，不能只凭宣传中的一个数字完成器件替换或采购选型。\n" +
+    "上述性能仅针对示例型号 D64 的完整 64 扫描配置；供应商预计第四季度提供样品，尚未确认量产供货日期。";
+  assert.ok(summaryZh.length > 200, "the old length guard would compact this copy");
+  for (const sourceKind of ["rss", "x_search"]) {
+    const input = { title: "驱动芯片方案与供货计划", text: summaryZh, mainText: summaryZh, sourceKind };
+    const copy = { titleZh: input.title, summaryZh };
+    assert.deepEqual(finalizeCopy(input, copy), {
+      ...copy,
+      identityGuard: { outcome: "pass", unsupportedTitleEntityIds: [], unsupportedSummaryEntityIds: [] },
+    });
+  }
+});
+
+test("finalizing complete copy still rejects a company introduced only in its tail", () => {
+  const input = { title: "某实验室公布测试结果", text: "某实验室公布了测试方法和结果，未披露任何合作企业。", sourceKind: "rss" };
+  const summaryZh = "某实验室公布测试结果，并介绍测量条件、样品准备、重复实验与结果复核方法。".repeat(6) + "OpenAI 将提供这些样品。";
+  assert.ok(summaryZh.indexOf("OpenAI") > 200);
+  const result = finalizeCopy(input, { titleZh: input.title, summaryZh });
+  assert.equal(result.titleZh, input.title);
+  assert.equal(result.summaryZh, "");
+  assert.equal(result.identityGuard.outcome, "fallback");
+  assert.deepEqual(result.identityGuard.unsupportedSummaryEntityIds, ["openai"]);
+});
 
 // Regression coverage for HTML attributes that contain `>` in real source pages.
 test("stripTags ignores > inside quoted HTML attributes", () => {
@@ -62,4 +90,30 @@ test("writing and public reading agree about Chinese, including Japanese with ka
   assert.equal(isChineseBody({ language: null, body_text: "新的人工智能模型发布了。" }), true);
   assert.equal(isChineseBody({ language: "zh-Hans", body_text: "API" }), true);
   assert.equal(isChineseBody({ language: "en", body_text: "An English article quoting 人工智能." }), false);
+});
+
+test("LED identities preserve source attribution in Chinese and English without inventing the site brand", () => {
+  const input = { title: "Macroblock announces a driver update", text: "Macroblock announced a driver update for LED displays.", sourceKind: "web_list", documentUrl: "https://www.mblock.com.tw/en/news/example" };
+  const allowed = enforceIdentity(input, { titleZh: "聚积科技发布驱动更新", summaryZh: "聚积科技公布了显示驱动更新。" });
+  assert.equal(allowed.identityGuard.outcome, "pass", "an official Chinese brand name can translate its English source name");
+  for (const invented of ["Chipshow 发布驱动更新", "齐普光电发布驱动更新"]) {
+    const got = enforceIdentity(input, { titleZh: invented, summaryZh: `${invented}。` });
+    assert.equal(got.identityGuard.outcome, "fallback");
+    assert.deepEqual([got.titleZh, got.summaryZh], ["", ""]);
+  }
+  const chinese = { title: "国星光电发布显示器件", text: "国星光电公布显示器件的供货安排。", sourceKind: "web_list" };
+  assert.equal(enforceIdentity(chinese, { titleZh: "Nationstar 发布显示器件", summaryZh: "Nationstar 公布显示器件的供货安排。" }).identityGuard.outcome, "pass");
+  const ordinary = { title: "工程说明", text: "工程说明", sourceKind: "web_list" };
+  assert.equal(enforceIdentity(ordinary, { titleZh: "编码中的 macroblocks 与 chipshowcase", summaryZh: "We mean well. 这份工程说明提到了 macroblocks、chipshowcase 与资料的聚积。" }).identityGuard.outcome, "pass", "substrings and the ordinary Chinese word are not brands");
+  const forged = { ...input, text: "A driver update.", title: "A driver update", documentUrl: "https://mblock.com.tw.untrusted.example/news" };
+  assert.equal(enforceIdentity(forged, { titleZh: "聚积科技发布更新", summaryZh: "聚积科技发布了更新。" }).identityGuard.outcome, "fallback", "a lookalike domain does not establish publisher ownership");
+});
+
+test("LED official brand aliases are recognized in both source and copy", () => {
+  for (const [english, chinese] of [["Chipshow", "齐普光电"], ["NovaStar", "诺瓦星云"], ["Nationstar", "国星光电"], ["Kinglight", "晶台光电"], ["Macroblock", "聚积科技"], ["MEANWELL", "明纬"], ["Daktronics", "达科电子"]]) {
+    const englishInput = { title: `${english} announces a display update`, text: `${english} published the details.`, sourceKind: "web_list" };
+    assert.equal(enforceIdentity(englishInput, { titleZh: `${chinese}发布更新`, summaryZh: `${chinese}公布相关详情。` }).identityGuard.outcome, "pass", `${english} to ${chinese}`);
+    const chineseInput = { title: `${chinese}发布更新`, text: `${chinese}公布相关详情。`, sourceKind: "web_list" };
+    assert.equal(enforceIdentity(chineseInput, { titleZh: `${english} 发布更新`, summaryZh: `${english} 公布相关详情。` }).identityGuard.outcome, "pass", `${chinese} to ${english}`);
+  }
 });

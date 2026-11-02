@@ -9,6 +9,24 @@ import { isPhone } from "./screens";
 
 let goingBack = false;
 
+/** Router replays an opted-in link's transition on POP, even when our CSS says "none".
+ * Skip that snapshot for browser traversal: WebKit can crash before committing a deep list.
+ * App back controls still opt into the reverse animation through markBack().
+ */
+export function installPageTransitions() {
+  if (!document.startViewTransition) return;
+  const start = document.startViewTransition.bind(document);
+  let browserTraversal = false;
+  window.addEventListener("popstate", () => { browserTraversal = !goingBack; }, true);
+  document.addEventListener("click", () => { browserTraversal = false; }, true);
+  document.startViewTransition = (update) => {
+    const transition = start(update);
+    if (browserTraversal) transition.skipTransition();
+    browserTraversal = false;
+    return transition;
+  };
+}
+
 /** Called just before navigating back from the app's own controls (the bar's back button, a tab tapped deeper in). */
 export function markBack() {
   goingBack = true;

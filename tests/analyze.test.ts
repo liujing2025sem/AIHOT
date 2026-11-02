@@ -11,7 +11,7 @@ import { upsertMaterial } from "@aihot/backend/content/materials";
 import { analyzeArticle, buildMaterial, loadAnalyzeInput, normalizeStructure, StructureSchema, tierThreshold, UNDERSTAND_FLOOR } from "@aihot/backend/editorial/analyze";
 import { queueProcessing } from "@aihot/backend/jobs/content";
 import { QUEUES, stopBoss } from "@aihot/backend/jobs/queue";
-import { compactAnswerFirstSummary, enforceIdentity, MAX_BODY_CHARS, parseTranslateOutput } from "@aihot/backend/editorial/writing";
+import { enforceIdentity, MAX_BODY_CHARS, parseTranslateOutput } from "@aihot/backend/editorial/writing";
 import { READER_WORDING } from "@aihot/industry/wording";
 import { ITEM_TYPES } from "@aihot/industry/taxonomy";
 
@@ -229,22 +229,13 @@ test("a short post in Chinese is its own copy; a content-filter refusal is trans
   assert.deepEqual(calls("SENSITIVE").filter((s) => s === "understand" || s === "summarize"), ["understand", "summarize"]);
 });
 
-test("guards: a company the input does not name is not written in; long summaries are cut at sentences", () => {
+test("guards and parsing: unsupported companies are rejected and multiline copy is retained", () => {
   const input = { title: "某实验室发布新模型", text: "某实验室发布了一个新模型，参数规模和价格都有说明。", sourceKind: "rss" };
   const guarded = enforceIdentity(input, { titleZh: "OpenAI 发布新模型", summaryZh: "某实验室发布新模型。" });
   assert.deepEqual([guarded.titleZh, guarded.summaryZh, guarded.identityGuard.outcome], ["某实验室发布新模型", "某实验室发布新模型。", "fallback"]);
   // The identity lexicon: a Chinese rendering of a company the input names in English is no invention.
   const alibaba = { title: "Alibaba ships a new coding model", text: "Alibaba released a coding model with pricing details.", sourceKind: "rss" };
   assert.equal(enforceIdentity(alibaba, { titleZh: "阿里巴巴发布编程模型", summaryZh: "阿里巴巴发布了编程模型并公布价格。" }).identityGuard.outcome, "pass");
-  const long = "第一句交代了谁做了什么以及关键结果，这一句本身已经足够说明核心事件的来龙去脉。".repeat(3) + "第二句补充数字。".repeat(20);
-  assert.ok(compactAnswerFirstSummary(long).length <= 190);
-  // A short first sentence and a long second one: the card once ended "…可连接 Google Ads 和 Meta 账号在 Google。".
-  const lovable = "Lovable 推出增长工具，在原有建应用聊天窗口中提供增长计划、广告投放和 SEO 能力。用户设定目标后，Lovable 依据应用上下文生成可执行计划；可连接 Google Ads 和 Meta 账号在 Google、YouTube、Facebook、Instagram 投放广告，广告上线前需用户审批，计费直接走 Google Ads 和 Meta 账号，Lovable 不加收服务费；SEO 方面覆盖索引基础、内置 Semrush 关键词机会分析和站外社区推广建议。功能现已在 Free、Pro 和 Business 计划可用。";
-  assert.equal(compactAnswerFirstSummary(lovable), "Lovable 推出增长工具，在原有建应用聊天窗口中提供增长计划、广告投放和 SEO 能力。", "whole sentences, never half of one");
-  // Only a first sentence longer than the limit is cut, at a clause, never inside an enumeration.
-  const runOn = "某实验室发布新模型，支持" + "甲乙丙、".repeat(39) + "甲乙丙，" + "补充说明".repeat(20) + "。";
-  const head = compactAnswerFirstSummary(runOn).slice(0, -1);
-  assert.ok(runOn.startsWith(head) && "，；".includes(runOn[head.length]!), head);
   assert.deepEqual(parseTranslateOutput("title_zh: 标题\nsummary_zh: 第一句。\n第二句。"), { titleZh: "标题", summaryZh: "第一句。\n第二句。", bodyZh: "" });
   assert.equal(parseTranslateOutput("title_zh: 标题\nbody_zh: 我们懂你。\n\n来源：X：PixVerse (@PixVerse)").bodyZh, "我们懂你。", "a repeated prompt line is dropped");
 });

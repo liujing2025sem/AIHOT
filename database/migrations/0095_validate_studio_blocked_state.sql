@@ -1,0 +1,1 @@
+ALTER TABLE studio_tasks VALIDATE CONSTRAINT studio_tasks_editorial_state_check;
