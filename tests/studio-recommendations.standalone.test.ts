@@ -12,6 +12,14 @@ const material=(extra:Partial<PlanningMaterial>={}):PlanningMaterial=>({id:'mate
 const empty=summarizeDemandSignals([]);
 const plan=(questions:StudioQuestionRow[],materials:PlanningMaterial[],profile=empty)=>planRecommendations({questions,materials,profiles:profile,search:[],now});
 
+test('a material card carries matching aggregate demand and search evidence before adoption',()=>{
+  const parsed=parseDemandCsv(demandCsvTemplate);assert.ok(parsed.ok);
+  const profiles=summarizeDemandSignals([{record:parsed.records[0],imported_at:now},{record:parsed.records[0],imported_at:now}]);
+  const cards=planRecommendations({questions:[q()],materials:[material()],profiles,search:parseSearchSignals('gsc','query,page,impressions,clicks,position\npower supplies,https://chipshow.com/energy,100,2,20'),now});
+  const card=cards.find(c=>c.article_id==='material-1')!;
+  assert.equal(card.demand_mentions,2);assert.ok(card.evidence.some(e=>e.query==='power supplies'));
+});
+
 test('changed source paragraphs create one material-version card linked to the known page',()=>{
   const row=material({revision:2,published_at:'2021-01-01T00:00:00Z',previous_revision:1,previous_body:'Manufacturer power was 200 W.',body_text:'Manufacturer power is now 180 W.'});
   const result=plan([q({existing_url:'https://www.chipshow.com/energy-guide'}),{...q(),id:'question-2'}],[row]);

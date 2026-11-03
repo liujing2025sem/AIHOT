@@ -23,6 +23,7 @@ export type Recommendation={key:string;trigger:'A'|'E'|'B'|'C'|'D';question_id:s
 type RecommendationCounts={total:number;adopted:number;rejected:number;update_opportunities:number;updates_completed:number;baseline_missed_updates:number;baseline_unknown:number};
 type StoredRecommendation={id:string;status:string;created_at:Date;document:Recommendation;stale?:boolean;article_id:string|null;article_revision:number|null;current_revision?:number|null;question_id:string|null;task_id:string|null;baseline_found:boolean|null;completed:boolean;[key:string]:unknown};
 const actionFor=(q:StudioQuestion):Recommendation['action']=>q.existing_url?'update_page':q.content_type==='tutorial'?'new_tutorial':q.content_type==='news'?'new_brief':'new_explainer';
+const readership=(q:StudioQuestion,profiles:DemandProfiles)=>profiles.groups.filter(g=>q.roles.includes(g.role)&&(g.scenario===q.scenario||g.needTags.some(tag=>keywordMatch(q,tag.tag)>0)));
 const dateValue=(value:PlanningMaterial['published_at'])=>{const ms=value?new Date(value).getTime():NaN;return Number.isFinite(ms)?new Date(ms).toISOString():null;};
 function changedParagraphs(before:string,after:string){
   const old=before.split(/\r?\n+/).map(plain).filter(Boolean),next=after.split(/\r?\n+/).map(plain).filter(Boolean);
@@ -58,13 +59,15 @@ export function planRecommendations(input:{questions:StudioQuestionRow[];materia
     const trigger:Recommendation['trigger']|null=changed?'A':isVersion&&(material.previous_body?hasVersionChange:fresh)?'E':fresh&&(!!best||!!editorialTopic(text))?'D':null;
     if(!trigger)continue;
     const q=best?.document;
+    const mentions=q?readership(q,input.profiles).reduce((n,g)=>n+g.recordCount,0):0;
+    const queryEvidence=q?input.search.filter(s=>keywordMatch(q,s.query)>0).sort((a,b)=>(b.impressions??b.volume??0)-(a.impressions??a.volume??0)).slice(0,5).map(s=>({url:s.page,date:null,revision:null,query:s.query})):[];
     result.push({key:`material:${material.id}:${material.revision}`,trigger,question_id:best?.id??null,article_id:material.id,article_revision:material.revision,title:q?.question??material.title,
       change:change?`${change.before.slice(0,160)} → ${change.after.slice(0,160)}`:material.title,
-      evidence:[{url:material.url,date,revision:material.revision,...(change?{before:change.before.slice(0,350),after:change.after.slice(0,350)}:{after:material.body_text?.split(/\r?\n/).find(p=>p.trim())?.slice(0,350)??material.title})}],
-      reason:q?`对应“${q.question}”；面向${q.roles.join('、')}。`:'LED商显主题线索，尚未挂接已有问题，需确认客户影响。',action:q?actionFor(q):'new_brief',channels:['blog','social'],existing_url:q?.existing_url??'',requires_first_party:!!q?.requires_first_party,needs_material:material.body_status!=='ok'||!material.body_text||!!q?.requires_first_party||!!q?.existing_url&&q.existing_url!==material.url,demand_mentions:0,priority:trigger==='A'?0:trigger==='E'?1:4});
+      evidence:[{url:material.url,date,revision:material.revision,...(change?{before:change.before.slice(0,350),after:change.after.slice(0,350)}:{after:material.body_text?.split(/\r?\n/).find(p=>p.trim())?.slice(0,350)??material.title})},...queryEvidence],
+      reason:q?`对应“${q.question}”；面向${q.roles.join('、')}，${mentions}条登记提及。`:'LED商显主题线索，尚未挂接已有问题，需确认客户影响。',action:q?actionFor(q):'new_brief',channels:['blog','social'],existing_url:q?.existing_url??'',requires_first_party:!!q?.requires_first_party,needs_material:material.body_status!=='ok'||!material.body_text||!!q?.requires_first_party||!!q?.existing_url&&q.existing_url!==material.url,demand_mentions:mentions,priority:trigger==='A'?0:trigger==='E'?1:4});
   }
   for(const question of questions){
-    const q=question.document,groups=input.profiles.groups.filter(g=>q.roles.includes(g.role)&&(g.scenario===q.scenario||g.needTags.some(tag=>keywordMatch(q,tag.tag)>0))),mentions=groups.reduce((n,g)=>n+g.recordCount,0);
+    const q=question.document,groups=readership(q,input.profiles),mentions=groups.reduce((n,g)=>n+g.recordCount,0);
     if(!q.existing_url&&mentions>=2)result.push({key:`demand:${question.id}:${question.version}`,trigger:'B',question_id:question.id,article_id:null,article_revision:null,title:q.question,change:'登记需求反复出现，问题地图尚无承接页面。',evidence:[],reason:`${groups.map(g=>`${g.role}/${g.region}/${g.scenario}`).join('；')}，共${mentions}条登记提及；可重叠，未按客户去重。`,action:actionFor(q),channels:['blog','social'],existing_url:'',requires_first_party:q.requires_first_party,needs_material:true,demand_mentions:mentions,priority:2});
     const grouped=new Map<string,SearchSignal[]>();
     for(const signal of input.search){
