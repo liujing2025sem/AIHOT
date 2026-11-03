@@ -65,7 +65,9 @@ await chatJson({ ...request, model: "default", channelId: sourceConfig.channelId
 - 迁移机器时，由部署负责人携带原数据库与凭据文件；只复制代码不包含渠道配置和密钥。环境变量注入且没有持久凭据挂载的容器，需为原 models 凭据目录配置可写持久挂载。
 - 前端和审计仅有固定掩码，不返回原密钥或尾号；服务商错误、模型列表与受管渠道的生成响应也会移除本次请求密钥，防止上游回显。
 
-OpenCode Go 固定为 `https://opencode.ai/inference/go/openai/v1` 和 `deepseek-v4.1-flash`。既有“持久编码 sessionId、不可隐式 fallback”约束保持有效；生成测试也不能通过 Custom 绕开。Go 生成测试需额外提供已有 `sessionId`，采编主线不应伪造编码会话；普通采编使用 DeepSeek 标准 API 或 Custom。DeepSeek Pro 在配置和实际调用前均拒绝。
+OpenCode Go 固定为 `https://opencode.ai/inference/go/openai/v1` 和 `deepseek-v4.1-flash`。2026-11-02用户明确选用它作为Studio独立采编供应渠道，Studio不再按编辑用途提前拒绝。`x-opencode-session`使用已落库任务ID，同任务继续时稳定，不同任务隔离；客户端如实标识为`chipshow-studio/0.1`，不伪装编码流量。成稿请求超时300秒；超时沿用已有回执与未知结果处理，不自动循环重买。模型、端点和计费不得隐式切换，DeepSeek Pro仍拒绝。
+
+供应商[Go文档](https://opencode.ai/v2/docs/console/go/)仍描述适用于编码Agent流量。用户选择、目标端成功调用、供应商长期支持三个事实分开记录；本项目不伪造用途、不保证供给承诺，上游拒绝或限流如实显示。本轮不检查用户已要求暂不处理的8080网关和DSH旧密钥。
 
 ## 验证与边界
 

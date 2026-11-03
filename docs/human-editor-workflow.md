@@ -1,5 +1,7 @@
 # AIHOT：Agent辅助采编，人工编辑工作法
 
+**2026-11-02当前执行方式更新：** 用户明确要求Studio独立调用OpenCode供应的DeepSeek V4.1 Flash完成采编；当前默认执行者为Studio后端，WorkBuddy文件接棒保留为辅助。以下人工选题、事实核对和英文批准仍有效；“先用文件接棒”属于上一阶段选择。当前完整目标见[产品PRD](aihot-product-prd.md)。
+
 背景：2026-11-01 America/Los_Angeles，用户提出加强human环节；基于WorkBuddy同日现场回执，先采用现有文件接棒与逐篇全审。此处是执行方式调整，不声称自动采编或减负效果已验收。
 
 ## 运营只处理三个判断

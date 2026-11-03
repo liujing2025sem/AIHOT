@@ -131,7 +131,7 @@ export async function testChannel(id: AdminChannelId, input: unknown, actor: str
     returnedModel: null, models: [], modelAvailable: null, detail: "" };
   if (!c!.apiKey) return { ...result, detail: "尚未配置密钥，未发送请求。" };
   if (b.kind === "completion" && !config.modelCallsEnabled) return { ...result, detail: "MODEL_CALLS_ENABLED=false，未发送生成请求。" };
-  if (b.kind === "completion" && c!.baseUrl === GO_BASE_URL && !b.sessionId) return { ...result, detail: "OpenCode Go 需要已有的持久编码 sessionId，未发送生成请求。" };
+  if (b.kind === "completion" && c!.baseUrl === GO_BASE_URL && !b.sessionId) return { ...result, detail: "OpenCode Go 需要已有任务或会话的稳定 sessionId，未发送生成请求。" };
   if (b.kind === "completion" && !requestKey) throw Object.assign(new Error("生成测试需要 Idempotency-Key"), { statusCode: 400 });
   const clean = (s: string) => redactChannelText(s, c!.apiKey);
   try {
@@ -151,7 +151,7 @@ export async function testChannel(id: AdminChannelId, input: unknown, actor: str
       identity: { endpoint: sha256(c!.baseUrl), model: c!.model, requestKey, sessionId: b.sessionId ?? null }, attemptTag: requestKey,
       requestSummary: { channelId: id, model: c!.model, maxTokens: 16 } }, async () => {
       const res = await fetch(`${c!.baseUrl}/chat/completions`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(30_000),
-        headers: { "content-type": "application/json", authorization: `Bearer ${c!.apiKey}`, "user-agent": "aihot-local-coding-harness/0.1", ...(b.sessionId ? { "x-opencode-session": b.sessionId } : {}) },
+        headers: { "content-type": "application/json", authorization: `Bearer ${c!.apiKey}`, "user-agent": "chipshow-studio/0.1", ...(b.sessionId ? { "x-opencode-session": b.sessionId } : {}) },
         body: JSON.stringify({ model: c!.model, messages: [{ role: "user", content: "Reply OK." }], max_tokens: 16 }) });
       result.status = res.status;
       const text = clean(await res.text());
