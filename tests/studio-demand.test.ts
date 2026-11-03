@@ -14,6 +14,8 @@ const csv = `${header}\r\n${row}\r\n${row}`;
 test('import, metadata-only lists, overlapping profiles and withdrawal cascade; writing and audit exclude questions', async () => {
   const first = await importDemandCsv({ csv, filename: 'synthetic-only.csv' }, actor);
   const second = await importDemandCsv({ csv: `${header}\r\n${row}` }, actor);
+  assert.equal(second.overlapping_rows,1);
+  await assert.rejects(importDemandCsv({csv},actor),/相同内容/);
   const gsc = `test-gsc-${tag()}`, semrush = `test-semrush-${tag()}`;
   try {
     await sql`INSERT INTO studio_import_batches (id, kind, row_count, created_by) VALUES

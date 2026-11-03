@@ -4,16 +4,16 @@ import { after,beforeEach,test } from 'node:test';
 import { closeDb,sql } from '@aihot/backend/db';
 import { config } from '@aihot/backend/config';
 import { saveStudioQuestion } from '@aihot/backend/admin/studio-questions';
-import { setRecommendationCapacity,refreshRecommendations,recommendationOverview,decideRecommendation } from '@aihot/backend/admin/studio-recommendations';
+import { setRecommendationCapacity,refreshRecommendations,recommendationOverview,decideRecommendation,bindRecommendationEvidence } from '@aihot/backend/admin/studio-recommendations';
 import { createStudioTask,bindStudioTaskMaterials,exportStudioTask,generateStudioTask,receiveStudioTask } from '@aihot/backend/admin/studio';
 import { importDemandCsv } from '@aihot/backend/admin/studio-demand';
 import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
 import { importSearchSignals } from '@aihot/backend/admin/studio-search-signals';
-const suffix=tag(),actor=`test:recommendations:${suffix}`,source=`recommendation-source-${suffix}`;
+const suffix=tag(),actor=`test:recommendations:${suffix}`,source='web-macroblock-news';
 after(closeDb);
 beforeEach(async()=>{
   await sql`TRUNCATE studio_recommendations,studio_tasks,studio_questions,articles,sources CASCADE`;
-  await sql`DELETE FROM settings WHERE key='studio.recommendations.weekly_limit'`;
+  await sql`DELETE FROM settings WHERE key IN ('studio.recommendations.weekly_limit','studio.recommendations.lookback_days','studio.recommendations.last_refresh')`;
 });
 async function material(id:string,body='The manufacturer describes LED power conditions.',external=false){
   const sourceId=external?`${source}-engineering`:source;
@@ -24,14 +24,14 @@ async function material(id:string,body='The manufacturer describes LED power con
 test('cards require an explicit capacity, reuse the same version, require rejection reason, and adopt atomically once',async()=>{
   await material(`card-material-${suffix}`);
   assert.equal((await recommendationOverview()).rows.length,0);
-  await assert.rejects(refreshRecommendations(actor),/设置每周审核产能/);
+  await assert.rejects(refreshRecommendations(actor),/先由运营设置/);
   await assert.rejects(setRecommendationCapacity({weekly_limit:16},actor));
-  await setRecommendationCapacity({weekly_limit:5},actor);
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
   assert.equal((await refreshRecommendations(actor)).created,1);
   assert.equal((await refreshRecommendations(actor)).created,0);
   const card=(await recommendationOverview()).rows[0];
   await assert.rejects(decideRecommendation(card.id,{action:'reject'},actor),/填写理由/);
-  const adopted=await decideRecommendation(card.id,{action:'adopt'},actor),again=await decideRecommendation(card.id,{action:'adopt'},actor);
+  const [adopted]=await Promise.all([decideRecommendation(card.id,{action:'adopt'},actor),refreshRecommendations(actor)]),again=await decideRecommendation(card.id,{action:'adopt'},actor);
   assert.equal(adopted!.task_id,again!.task_id);
   assert.equal((await sql`SELECT count(*)::int AS n FROM studio_tasks`)[0].n,1);
   assert.equal((await exportStudioTask(adopted!.task_id))!.request.editorial_plan!.card_id,card.id);
@@ -44,8 +44,8 @@ test('cards require an explicit capacity, reuse the same version, require reject
   assert.equal((await exportStudioTask(research!.task_id))!.request.articles.length,0);
   await assert.rejects(generateStudioTask(research!.task_id,actor),/先补证据/);
 });
-test('source revisions create a new card, old cards cannot be adopted, and the weekly creation cap holds',async()=>{
-  await setRecommendationCapacity({weekly_limit:5},actor);
+test('source revisions create a new card, old cards cannot be adopted, and the pending queue keeps overflow visible',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
   const id=`version-material-${suffix}`;await material(id);
   await refreshRecommendations(actor);
   const old=(await recommendationOverview()).rows.find(c=>c.article_id===id)!;
@@ -54,11 +54,11 @@ test('source revisions create a new card, old cards cannot be adopted, and the w
   assert.equal((await refreshRecommendations(actor)).created,1);
   assert.equal((await recommendationOverview()).rows.filter(c=>c.article_id===id).length,2);
   for(let n=0;n<8;n++)await material(`cap-${suffix}-${n}`);
-  await refreshRecommendations(actor);assert.equal((await recommendationOverview()).rows.length,5);
+  await refreshRecommendations(actor);assert.equal((await recommendationOverview()).activeCount,5);assert.ok((await recommendationOverview()).capacityFullCount>0);
 });
 test('repeated demand creates an evidence-pending task; binding continues it without using inquiry rows as facts',async()=>{
-  await setRecommendationCapacity({weekly_limit:15},actor);
-  const question=await saveStudioQuestion({document:{question:`安装运输要确认什么-${suffix}？`,roles:['集成商/安装商/招牌制作商'],scenario:'运输安装',dimension:'供货',keywords:['安装','运输']}},actor);
+  await setRecommendationCapacity({weekly_limit:15,lookback_days:30},actor);
+  const question=await saveStudioQuestion({document:{question:`安装运输要确认什么-${suffix}？`,roles:['集成商/安装商/招牌制作商'],scenario:'运输安装',dimension:'供货',keywords:['安装','运输','transport']}},actor);
   const row='2026-W45,欧洲,网站,集成商/安装商/招牌制作商,LED显示屏,运输安装,交付与运输,合成问题只用于画像界面,A';
   await importDemandCsv({csv:demandCsvFields.join(',')+'\n'+row+'\n'+row},actor);
   await refreshRecommendations(actor);
@@ -85,7 +85,7 @@ test('tutorial and existing-page updates HOLD before a paid call when the requir
   assert.equal(config.modelCallsEnabled,true);
 });
 test('GSC and Semrush imports enter candidate evidence while optional baseline stays unknown until observed',async()=>{
-  await setRecommendationCapacity({weekly_limit:15},actor);
+  await setRecommendationCapacity({weekly_limit:15,lookback_days:30},actor);
   const question=await saveStudioQuestion({document:{question:`屏幕维护缺口-${suffix}？`,roles:['集成商/安装商/招牌制作商'],scenario:'维护',dimension:'维护',keywords:['maintenance'],existing_url:'https://www.chipshow.com/maintenance'}},actor);
   await importSearchSignals({kind:'gsc',csv:'query,page,impressions,clicks,position,period\nmaintenance,https://www.chipshow.com/maintenance,100,2,20,2026-10'},actor);
   await refreshRecommendations(actor);
@@ -96,4 +96,51 @@ test('GSC and Semrush imports enter candidate evidence while optional baseline s
   await decideRecommendation(card.id,{action:'adopt'},actor);
   await decideRecommendation(card.id,{action:'complete'},actor);
   assert.equal((await recommendationOverview()).metrics.updates_completed,1);
+});
+
+test('late A preempts a full D queue and a card exposes its evidence before adoption',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  for(let n=0;n<5;n++)await material(`early-${suffix}-${n}`);
+  await refreshRecommendations(actor);
+  assert.equal((await recommendationOverview()).activeCount,5);
+  const question=await saveStudioQuestion({document:{question:'MBI123刷新率变化会影响哪种拍摄？',roles:['集成商/安装商/招牌制作商'],scenario:'拍摄',dimension:'部件',keywords:['MBI123','refresh rate'],existing_url:'https://chipshow.com/refresh'}},actor);
+  const changed=await material(`changed-${suffix}`,'MBI123 refresh rate is 3840 Hz.');
+  await sql`INSERT INTO article_revisions(article_id,revision,title,body_text) VALUES(${changed},1,'MBI123','MBI123 refresh rate is 1920 Hz.')`;
+  await sql`UPDATE articles SET revision=2 WHERE id=${changed}`;
+  await refreshRecommendations(actor);
+  let overview=await recommendationOverview();const card=overview.rows.find(c=>c.question_id===question.id)!;
+  assert.equal(card.document.trigger,'A');assert.equal(card.capacity_full,false);assert.equal(overview.capacityFullCount,1);
+  assert.match(card.document.evidence[0].before!,/1920/);assert.match(card.document.evidence[0].after!,/3840/);
+  assert.equal(card.document.evidence_checklist!.existing_page_body,false);
+  const page=await material(`old-page-${suffix}`,'Existing explanation: MBI123 refresh rate is 1920 Hz.');
+  await sql`UPDATE articles SET url='https://chipshow.com/refresh' WHERE id=${page}`;
+  await bindRecommendationEvidence(card.id,{article_ids:[page]},actor);
+  overview=await recommendationOverview();const ready=overview.rows.find(c=>c.id===card.id)!;
+  assert.equal(ready.document.evidence_checklist!.existing_page_body,true);
+  assert.match(ready.document.affected_page!.paragraph!,/1920 Hz/);
+  const adopted=await decideRecommendation(card.id,{action:'adopt'},actor);
+  assert.equal((await exportStudioTask(adopted!.task_id))!.request.articles.length,2);
+});
+
+test('200 GSC rows group by problem and page per batch; own Semrush winners are not gaps',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  const question=await saveStudioQuestion({document:{question:'户外电源如何选？',roles:['集成商/安装商/招牌制作商'],scenario:'供电',dimension:'部件',keywords:['power supply']}},actor);
+  const rows=Array.from({length:200},(_,i)=>`power supplies ${i},https://chipshow.com/power,100,2,20,2026-10`);
+  await importSearchSignals({kind:'gsc',csv:'query,page,impressions,clicks,position,period\n'+rows.join('\n')},actor);
+  await importSearchSignals({kind:'semrush',csv:'keyword,url,position,volume,period\npower supply,https://chipshow.com/power,2,100,2026-10'},actor);
+  await refreshRecommendations(actor);
+  const cards=(await recommendationOverview()).rows.filter(c=>c.question_id===question.id);
+  assert.equal(cards.length,1);assert.equal(cards[0].document.action,'update_page');assert.equal(cards[0].document.evidence.length,5);
+  assert.match(cards[0].document.reason,/200个查询/);
+});
+
+test('10k-material refresh reads only configured LED/referenced sources and operator window',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${source},'Synthetic LED source','web_list',false),('rss-openai-news','AI demo','rss',false)`;
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,body_text,updated_at)
+    SELECT 'bench-'||n,CASE WHEN n<=5000 THEN 'rss-openai-news' ELSE ${source} END,'bench-'||n,'https://example.com/bench-'||n,'LED power supply','2020-01-01'::timestamptz,now(),CASE WHEN n>9990 THEN now() ELSE '2020-01-01'::timestamptz END,'ok','Synthetic LED power supply body.','2020-01-01'::timestamptz FROM generate_series(1,10000) n`;
+  const start=performance.now(),result=await refreshRecommendations(actor),elapsedMs=performance.now()-start;
+  assert.equal(result.scanned,10);assert.equal(result.created,10);
+  assert.equal((await recommendationOverview()).activeCount,5);
+  console.log(JSON.stringify({benchmark:'A7',totalMaterials:10000,scanned:result.scanned,elapsedMs:Number(elapsedMs.toFixed(2)),modelCalls:0}));
 });
