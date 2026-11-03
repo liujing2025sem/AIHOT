@@ -16,16 +16,18 @@ const hooked: string[] = [];
 const hookedAt: number[] = [];
 const hookedBytes: number[] = [];
 let failing = false;
+function recordWebhook(payload: string) {
+  const body = JSON.parse(payload);
+  assert.equal(body.msg_type, "text");
+  hooked.push(body.content.text as string);
+  hookedAt.push(performance.now());
+  hookedBytes.push(Buffer.byteLength(payload));
+  return failing ? { code: 19001, msg: "synthetic webhook failure" } : { StatusCode: 0, code: 0, msg: "success" };
+}
 const provider = await stub(async (_hit, req) => {
   if (req.url.endsWith("/auth/v3/tenant_access_token/internal")) return { code: 0, tenant_access_token: "fictional-token", expire: 7200 };
+  if (req.url.endsWith(`/bot/v2/hook/test-${T}`)) return recordWebhook(req.body);
   const body = JSON.parse(req.body);
-  if (req.url.endsWith(`/bot/v2/hook/test-${T}`)) {
-    assert.equal(body.msg_type, "text");
-    hooked.push(body.content.text as string);
-    hookedAt.push(performance.now());
-    hookedBytes.push(Buffer.byteLength(req.body));
-    return failing ? { code: 19001, msg: "synthetic webhook failure" } : { StatusCode: 0, code: 0, msg: "success" };
-  }
   assert.equal(body.receive_id, `oc_test_${T}`);
   attempts.push(JSON.parse(body.content).text as string);
   return failing ? { code: 99, msg: "synthetic send failure" } : { code: 0, data: { message_id: `message-${T}` } };
@@ -108,7 +110,22 @@ test("with an alert webhook, alerts go to the group bot alone and need no messag
   assert.ok(hooked.every((text) => text.includes("后台处理服务停了")));
 });
 
-test("the alert webhook keeps within the custom bot's limits: 20 KB a request, 100 requests a minute", async () => {
+test("the alert webhook keeps within the custom bot's limits: 20 KB a request, 100 requests a minute", async (t) => {
+  // Test the sender's requested pacing, not OS timer granularity or loopback arrival jitter.
+  // Windows/Node 24 real-clock runs fail the 590ms assertion even at the dispatch boundary.
+  // A monotonic clock advances only by the actual delays requested by the sender; no wait
+  // means no advance, so removing/breaking pacing still fails the same spacing assertion.
+  let clock = performance.now() + 60_000;
+  const timeout = globalThis.setTimeout;
+  t.mock.method(performance, "now", () => clock);
+  t.mock.method(globalThis, "setTimeout", (callback: () => void, ms: number) => {
+    clock += ms;
+    return timeout(callback, 0);
+  });
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(String(input), `https://open.feishu.cn/open-apis/bot/v2/hook/test-${T}`);
+    return new Response(JSON.stringify(recordWebhook(String(init?.body))), { status: 200 });
+  });
   process.env.FEISHU_ALERT_WEBHOOK_URL = `https://open.feishu.cn/open-apis/bot/v2/hook/test-${T}`;
   const lines = Array.from({ length: 900 }, (_, i) => `第 ${i} 个信源：连续抓取失败，读者看不到它的新内容`);
   lines.push("长".repeat(9000));
