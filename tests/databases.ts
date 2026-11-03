@@ -13,11 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainThread } from "node:worker_threads";
 import postgres from "postgres";
+import { randomBytes } from "node:crypto";
 
 const template = new URL(process.env.DATABASE_URL!);
 const name = decodeURIComponent(template.pathname.slice(1));
 const suffix = name.slice(name.lastIndexOf("_") + 1);
-const copyPattern = `^${name.replace(/\W/g, "\\$&")}_f[0-9]+_${suffix}$`;
+const copyPattern = `^${name.replace(/\W/g, "\\$&")}_f[0-9]+(?:_[a-f0-9]+)?_${suffix}$`;
 
 function urlOf(database: string) {
   const url = new URL(template);
@@ -64,7 +65,8 @@ if (process.env.NODE_TEST_CONTEXT && isMainThread) {
   if (process.argv[1]?.endsWith(".standalone.test.ts")) {
     await import("./standalone.ts");
   } else {
-    const copy = `${name}_f${process.pid}_${suffix}`;
+    // Windows can reuse a test process PID before the suite's final cleanup.
+    const copy = `${name}_f${process.pid}_${randomBytes(3).toString('hex')}_${suffix}`;
     await onServer((db) => db`CREATE DATABASE ${db(copy)} TEMPLATE ${db(name)}`);
     process.env.DATABASE_URL = urlOf(copy);
   }

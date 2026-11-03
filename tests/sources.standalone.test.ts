@@ -299,6 +299,23 @@ test("LED candidates use supported config and do not start collection or full-te
   }
 });
 
+test("G1 LED candidates remain disabled with both full-text outlets closed", () => {
+  const ids = new Set([
+    "web-meanwell-new-products", "web-colorlight-news", "web-oaaa-news", "web-chipone-news",
+    "web-czcl-news", "web-g-energy-news", "web-huidu-news", "web-huidu-hdplayer",
+    "web-colorlight-software", "web-colorlight-ledvision", "web-colorlight-firmware",
+    "web-novastar-news", "rss-ledinside-news",
+  ]);
+  const configured = JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8")).sources;
+  const candidates = configured.filter((s: SourceRow) => ids.has(s.id));
+  assert.deepEqual(new Set(candidates.map((s: SourceRow) => s.id)), ids);
+  for (const s of candidates) {
+    assert.equal(s.enabled, false, s.id);
+    assert.equal(s.site_fulltext, false, s.id);
+    assert.equal(s.syndicate_fulltext, false, s.id);
+  }
+});
+
 test("LED source configs read article cards, exclude navigation and keep date precision", () => {
   // Structural excerpts checked against the official pages on 2026-10-27; titles and slugs below
   // are synthetic. No vendor article body or image is redistributed with the fixture.

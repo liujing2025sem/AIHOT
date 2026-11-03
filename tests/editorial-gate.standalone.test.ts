@@ -56,6 +56,51 @@ test('D1 does not treat years or heading/list ordinals as technical numbers', ()
   assert.ok(has(check(withBody('An unidentified proportion is 30%.')), 'D1', 'WARN'));
 });
 
+test('D1 resolves controlled manufacturer aliases despite source display suffixes and announcement tense', () => {
+  for (const [sourceId, sourceName, brand] of [
+    ['led-meanwell-new-products', '明纬 MEAN WELL 新品', 'MEAN WELL'],
+    ['led-meanwell-new-products', '明纬 MEAN WELL 新品', 'MEANWELL'],
+    ['led-meanwell-new-products', '明纬 MEAN WELL 新品', '明緯'],
+    ['web-kinglight-news', '晶台原厂资讯', 'Kinglight'],
+    ['web-nationstar-product-news', '原厂产品动态', 'NATIONSTAR'],
+    ['web-macroblock-news', '驱动IC资讯', 'Macroblock'],
+    ['meanwell', '电源资讯', 'MEAN WELL'],
+  ]) {
+    const p = structuredClone(packet);
+    p.articles[0].source_id = sourceId; p.articles[0].source_name = sourceName;
+    for (const verb of ['announces', 'announced', 'has announced']) {
+      const text = `${brand} ${verb} a component rated at 300 W under test conditions.\n\nOutput is 24 V under test conditions.`;
+      assert.equal(has(check(withBody(text), p), 'D1'), false, `${sourceId}: ${text}`);
+    }
+  }
+});
+
+test('D1 controlled aliases cannot clear unrelated, bare, negated or self-verified claims', () => {
+  const p = structuredClone(packet);
+  p.articles[0].source_id = 'led-meanwell-new-products'; p.articles[0].source_name = '明纬 MEAN WELL 新品';
+  for (const text of [
+    'Kinglight has announced an output of 300 W under test conditions.',
+    'MEAN WELL: output is 300 W under test conditions.',
+    'MEAN WELL compatibility matters; Kinglight has announced 300 W under test conditions.',
+    'XMEAN WELL has announced 300 W under test conditions.',
+    'MEAN WELLness has announced 300 W under test conditions.',
+    'The model has verified MEAN WELL output: 300 W under test conditions.',
+  ]) {
+    const d = withBody(text);
+    d.evidence = [{ claim: 'Verified source attribution: MEAN WELL has announced 300 W.', quote: text }];
+    const r = check(d, p);
+    assert.ok(has(r, 'D1', 'BLOCK'), text);
+    for (const f of r.findings.filter(f => f.ruleId === 'D1')) assert.equal(text.slice(f.start, f.end), f.quote);
+  }
+  // Existing negation handling keeps denied claims reviewable; attribution must not clear them.
+  assert.ok(has(check(withBody('MEAN WELL has not announced an output of 300 W under test conditions.'), p), 'D1', 'WARN'));
+  // A registered source owner takes precedence over a misleading display brand.
+  p.articles[0].source_id = 'web-kinglight-news';
+  assert.ok(has(check(withBody('MEAN WELL has announced 300 W under test conditions.'), p), 'D1', 'BLOCK'));
+  p.articles[0].source_id = 'industry-media'; p.articles[0].source_name = 'LED industry news';
+  assert.ok(has(check(withBody('MEAN WELL has announced 300 W under test conditions.'), p), 'D1', 'BLOCK'));
+});
+
 test('D2 bare rankings block; cited reports, negation and editorial reminders do not', () => {
   assert.ok(has(check(withBody('This is the best outdoor display.')), 'D2', 'BLOCK'));
   assert.ok(has(check(withBody('这是最强产品。')), 'D2', 'BLOCK'));
@@ -182,6 +227,44 @@ test('W3 source offsets point into unchanged source body, same-origin evidence i
 test('W4 technical performance with no condition warns; recognized conditions avoid the warning', () => {
   assert.ok(has(check(withBody('Kinglight reports 5000 nits.')), 'W4', 'WARN'));
   assert.equal(has(check(withBody('Kinglight reports up to 5000 nits under specified test conditions.')), 'W4'), false);
+});
+
+test('W4 locates package-level relabelling of explicit screen metrics without blocking', () => {
+  for (const source of [
+    'Kinglight reports displays using these LEDs reach 6000 nits under test conditions.',
+    'Using these LEDs, brightness reaches 6000 nits under test conditions.',
+    '原厂称显示屏在测试条件下亮度可达6000 nits。',
+  ]) {
+    const p = structuredClone(packet); p.articles[0].body_text = source;
+    const d = withBody('😀 According to Kinglight, package-level specifications include brightness up to 6000 nits under test conditions.');
+    const r = check(d, p);
+    const f = r.findings.find(f => f.ruleId === 'W4' && f.quote === 'package-level specifications');
+    assert.ok(f, source); assert.equal(f.severity, 'WARN'); assert.equal(f.field, 'body_en');
+    assert.equal(d.body_en.slice(f.start, f.end), f.quote); assert.ok(f.reason.includes(source));
+    assert.equal(r.blocked, false);
+    assert.ok(r.mandatoryReview.includes('W4'));
+    const aggregate = editorialGate(p, { ...response, drafts: [d] });
+    assert.ok(aggregate.findings.some(f => f.ruleId === 'W4' && f.field === 'drafts[0].body_en' && d.body_en.slice(f.start, f.end) === 'package-level specifications'));
+    for (const text of [
+      'According to Kinglight, displays using these LEDs reach up to 6000 nits under test conditions.',
+      'According to Kinglight, these are not package-level specifications; the screen reaches up to 6000 nits under test conditions.',
+    ]) assert.equal(has(check(withBody(text), p), 'W4'), false, text);
+  }
+});
+
+test('W4 leaves genuine package dimensions and unknown metric objects for existing checks', () => {
+  const p = structuredClone(packet);
+  for (const source of [
+    'Kinglight reports a package width of 1.5 mm.',
+    'The display uses packages with a width of 1.5 mm.',
+    'Kinglight reports brightness up to 6000 nits under test conditions.',
+    'This display application uses a new package.',
+  ]) {
+    p.articles[0].body_text = source;
+    const d = withBody('According to Kinglight, package-level specifications include a width of 1.5 mm.');
+    assert.equal(has(check(d, p), 'W4'), false, source);
+    assert.equal(check(d, p).blocked, false);
+  }
 });
 
 test('W5 lexical topic scope does not make a semantic rejection', () => {

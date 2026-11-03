@@ -1,5 +1,5 @@
 {
-  "$comment": "原18个示范信源保留不变；追加3个停用的LED官方新闻候选。已部署同ID信源不会覆盖，启用前按 docs/led-sources.md 核验。",
+  "$comment": "保留原18个框架示范源及3个停用LED原厂源；本轮仅追加实际preview通过的停用P0候选。未seed、未启用；核验与缺口见docs/led-source-verification.md。",
   "sources": [
     {
       "id": "rss-openai-news",
@@ -472,6 +472,341 @@
       "site_fulltext": false,
       "syndicate_fulltext": false,
       "enabled": false
+    },
+    {
+      "id": "web-meanwell-new-products",
+      "name": "MEAN WELL / 明纬新品",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "owner_entity_id": "meanwell",
+      "config": {
+        "url": "https://www.meanwell.com/news.aspx?c=1",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".list-item:has(.txt:contains(\"LED Display\")), .list-item:has(.txt:contains(\"LED display\"))",
+        "linkSelector": "a",
+        "titleSelector": ".col.txt",
+        "publishedAtSelector": ".col.time",
+        "allowUrlPrefixes": [
+          "https://www.meanwell.com/newsInfo.aspx?c=1&"
+        ]
+      }
+    },
+    {
+      "id": "web-colorlight-news",
+      "name": "Colorlight / 卡莱特新闻",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://en.colorlightinside.com/news/all/",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".News_swiper .swiper-slide, a[href^=\"/news/\"][href$=\".html\"]",
+        "linkSelector": "a",
+        "titleSelector": "h5, h3, h4",
+        "publishedAtSelector": ".data",
+        "allowUrlPrefixes": [
+          "https://en.colorlightinside.com/news/"
+        ],
+        "ingestNoiseFilter": {
+          "dropMarkersTitleOnly": [
+            "computing",
+            "算力"
+          ]
+        }
+      }
+    },
+    {
+      "id": "web-oaaa-news",
+      "name": "OAAA / 户外广告协会新闻",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://oaaa.org/news-and-events/",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "-04:00",
+        "itemSelector": "article.card-image:has([meta-term-slug=\"news-and-press-releases\"])",
+        "linkSelector": ".card-image__title a",
+        "titleSelector": ".card-image__title a",
+        "allowUrlPrefixes": [
+          "https://oaaa.org/news/"
+        ],
+        "detail": {
+          "maxFetches": 2
+        }
+      }
+    },
+    {
+      "id": "web-chipone-news",
+      "name": "Chipone / 集创北方新闻",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://www.chiponeic.com/",
+        "parseMode": "html",
+        "acceptLanguage": "zh-CN",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": "li:has(> a[href^=\"/qydt/\"])",
+        "linkSelector": "a[href^=\"/qydt/\"]",
+        "titleSelector": "h2",
+        "allowUrlPrefixes": [
+          "https://www.chiponeic.com/qydt/"
+        ],
+        "detail": {
+          "maxFetches": 2
+        }
+      }
+    },
+    {
+      "id": "web-czcl-news",
+      "name": "CZCL / 创联公司新闻",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://www.cl-power.com/newslist/11.html",
+        "parseMode": "html",
+        "acceptLanguage": "zh-CN",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".p_loopitem:has(.s_title a[href^=\"/newsdetail/\"])",
+        "linkSelector": ".s_title a",
+        "titleSelector": ".s_title a",
+        "allowUrlPrefixes": [
+          "https://www.cl-power.com/newsdetail/"
+        ],
+        "detail": {
+          "maxFetches": 2,
+          "publishedAtSelector": ".e_timeFormat-63",
+          "publishedAtAuthoritative": true
+        }
+      }
+    },
+    {
+      "id": "web-g-energy-news",
+      "name": "G-energy / 巨能伟业资讯",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://www.g-energy.cn/article/new.html",
+        "parseMode": "html",
+        "acceptLanguage": "zh-CN",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".news_f1",
+        "linkSelector": "h2 a",
+        "titleSelector": "h2 a",
+        "allowUrlPrefixes": [
+          "https://www.g-energy.cn/article/detail/"
+        ],
+        "detail": {
+          "maxFetches": 2
+        },
+        "ingestNoiseFilter": {
+          "dropMarkersTitleOnly": [
+            "食堂",
+            "迎新年会",
+            "招聘"
+          ]
+        }
+      }
+    },
+    {
+      "id": "web-huidu-news",
+      "name": "Huidu / 灰度新闻",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://www.huidu.cn/CnNews/",
+        "parseMode": "html",
+        "acceptLanguage": "zh-CN",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": "li:has(a[href^=\"/CnNews/\"][href$=\".html\"])",
+        "linkSelector": "a[href^=\"/CnNews/\"][href$=\".html\"]",
+        "titleSelector": ".name",
+        "publishedAtSelector": ".time",
+        "allowUrlPrefixes": [
+          "https://www.huidu.cn/CnNews/"
+        ]
+      }
+    },
+    {
+      "id": "web-huidu-hdplayer",
+      "name": "Huidu / HDPlayer软件版本",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://www.huidu.cn/CnDownload/",
+        "parseMode": "html",
+        "acceptLanguage": "zh-CN",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".lbox:has(a[href^=\"https://cdn1.huidu.cn/\"][href*=\"HDPlayer\"])",
+        "linkSelector": "a[href^=\"https://cdn1.huidu.cn/\"]",
+        "titleSelector": ".name",
+        "allowUrlPrefixes": [
+          "https://cdn1.huidu.cn/huidu.cn/HDPlayer"
+        ]
+      }
+    },
+    {
+      "id": "web-colorlight-software",
+      "name": "Colorlight / 控制软件版本",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://en.colorlightinside.com/service/download/?cat=242",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".con1 .box:has(a.left[href^=\"/dow_beforb/\"])",
+        "linkSelector": "a.left",
+        "titleSelector": "h5",
+        "allowUrlPrefixes": [
+          "https://en.colorlightinside.com/dow_beforb/"
+        ]
+      }
+    },
+    {
+      "id": "web-novastar-news",
+      "name": "NovaStar / 诺瓦新闻",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "owner_entity_id": "novastar",
+      "config": {
+        "url": "https://www.novastar.tech/content/content.html?catid=19",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": "a.news_card2",
+        "titleSelector": ".news_card_text21",
+        "allowUrlPrefixes": [
+          "https://www.novastar.tech/content/detail.html"
+        ]
+      }
+    },
+    {
+      "id": "rss-ledinside-news",
+      "name": "LEDinside / TrendForce新闻",
+      "kind": "rss",
+      "tier": "T2",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "feedUrl": "https://www.ledinside.com/rss.xml",
+        "acceptLanguage": "en"
+      }
+    },
+    {
+      "id": "web-colorlight-ledvision",
+      "name": "Colorlight / LEDVISION版本（停产软件）",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://en.colorlightinside.com/service/download/?cat=3559",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".con1 .box:has(a.left[href^=\"/dow_beforb/\"])",
+        "linkSelector": "a.left",
+        "titleSelector": "h5",
+        "allowUrlPrefixes": [
+          "https://en.colorlightinside.com/dow_beforb/"
+        ]
+      }
+    },
+    {
+      "id": "web-colorlight-firmware",
+      "name": "Colorlight / 控制器固件",
+      "kind": "web_list",
+      "tier": "T1",
+      "participation_mode": "editorial",
+      "enabled": false,
+      "site_fulltext": false,
+      "syndicate_fulltext": false,
+      "interval_minutes": 720,
+      "tags": [],
+      "config": {
+        "url": "https://en.colorlightinside.com/service/download/?cat=62",
+        "parseMode": "html",
+        "acceptLanguage": "en",
+        "publishedAtUtcOffset": "+08:00",
+        "itemSelector": ".con1 .box:has(a.left[href^=\"/dow_beforb/\"])",
+        "linkSelector": "a.left",
+        "titleSelector": "h5",
+        "allowUrlPrefixes": [
+          "https://en.colorlightinside.com/dow_beforb/"
+        ]
+      }
     }
   ]
 }
