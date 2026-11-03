@@ -12,6 +12,7 @@ type Extraction = { state: ExtractionState; notice: string; changes: { body: boo
 type BatchResult = { id: string; title: string; result: Extraction | null };
 type Draft = { id: string; title_zh: string; title_en: string; status: string; updated_at: string; version: number };
 type ReviewMetrics={tier:number;backtestConfirmed:boolean;totalDrafts:number;observedDrafts:number;unobservedDrafts:number;interventionRate:number|null;zeroMissStreak:number;eligible20:boolean;eligible10:boolean;note:string;trend:{at:string;substantive:boolean;minutes:number|null;fullReview:boolean;majorFactError:boolean}[]};
+type PlanningMetrics={adopted:number;rejected:number;adoptionRate:number|null;update_opportunities:number;updates_completed:number;baseline_missed_updates:number;baseline_unknown:number;denominator:string;reasons:{reason:string;count:number}[]};
 type Overview = { reviewMetrics:ReviewMetrics; rows: Material[]; total: number; page: number; stats: Record<string, number>; generation: { ready: boolean; reason: string }; sources: { id: string; name: string; kind: string; health: string; materials: number; last_fetch: string | null; last_fetch_status: string | null; last_fetch_error: string | null }[]; tasks: { editorial_plan?:{question:string;requires_first_party:boolean;action:string}; id: string; state: string; materials: number; created_at: string; editorial_gate?:{blocked:boolean;findings:{ruleId:string;severity:string;field:string;start:number;end:number;quote:string;reason:string}[]}; drafts: number; articles: { id: string; title: string }[]; decisions: (Editorial & { article_id: string })[] | null }[]; drafts: Draft[] };
 const decisionLabels = { KEEP: '值得成稿', SKIP: '暂不采用', HOLD: '待核实' };
 function EditorialResult({ value }: { value: Editorial }) {
@@ -29,8 +30,13 @@ function PublicationDate({ material: a }: { material: Material }) {
   return <><Time at={a.published_at} />{!value && <span>（原始精度未知）</span>}</>;
 }
 export async function loader({ request }: Route.LoaderArgs) {
-  const [overview,reviewMetrics]=await Promise.all([adminGet<Omit<Overview,'reviewMetrics'>>(request, '/api/admin/studio' + new URL(request.url).search),adminGet<ReviewMetrics>(request,'/api/admin/studio/review-metrics')]);
-  return {...overview,reviewMetrics};
+  const url=new URL(request.url);
+  const [overview,reviewMetrics,planning]=await Promise.all([
+    adminGet<Omit<Overview,'reviewMetrics'>>(request, '/api/admin/studio'+url.search),
+    adminGet<ReviewMetrics>(request,'/api/admin/studio/review-metrics'),
+    url.searchParams.get('tab')==='review'?adminGet<{metrics:PlanningMetrics}>(request,'/api/admin/studio/recommendations'):Promise.resolve(null),
+  ]);
+  return {...overview,reviewMetrics,planningMetrics:planning?.metrics??null};
 }
 export const meta = () => [{ title: '采编工作台 · Chipshow Studio' }];
 export default function Studio({ loaderData: data }: Route.ComponentProps) {
@@ -105,7 +111,16 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
     }
   };
   return <AdminPage title="采编工作台" subtitle="从原始资讯到可交付稿件，所有内容都保留来源。" actions={<div className="flex flex-wrap gap-4"><Link className="text-sm text-accent" to="/admin/studio/planning">今日值得处理 →</Link><Link className="text-sm text-accent" to="/admin/studio/social">社媒派生与导出 →</Link><Link className="text-sm text-accent" to="/admin/channels">API 渠道设置 →</Link></div>}>
-    {tab==='review'&&<Card title="本期选题成效" className="mb-5"><p className="text-sm text-ink-3">采纳与否决、旧页更新机会和完成数用于本期验收；人工分钟和调用成本继续记录。</p><Link to="/admin/studio/planning" className="mt-3 block text-sm text-accent">查看选题采纳与旧页更新记录 →</Link></Card>}
+    {tab==='review'&&data.planningMetrics&&<Card title="本期选题成效" className="mb-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat label="已采纳" value={data.planningMetrics.adopted}/><Stat label="已否决" value={data.planningMetrics.rejected}/>
+        <Stat label="推荐采纳率" value={data.planningMetrics.adoptionRate===null?'未知':`${(data.planningMetrics.adoptionRate*100).toFixed(1)}%`}/>
+        <Stat label="旧页更新机会" value={data.planningMetrics.update_opportunities}/><Stat label="已记录完成" value={data.planningMetrics.updates_completed} hint="人工记录，不是CMS回读"/>
+      </div>
+      <p className="mt-3 text-xs leading-6 text-ink-3">采纳率分母：{data.planningMetrics.denominator}。基线未发现的旧页更新：{data.planningMetrics.baseline_missed_updates}；尚未对照：{data.planningMetrics.baseline_unknown}。人工分钟和调用成本继续记录，不作本期门槛。</p>
+      {data.planningMetrics.reasons.length>0&&<details className="mt-3 text-sm"><summary className="cursor-pointer text-accent">否决理由分布</summary>{data.planningMetrics.reasons.map(item=><p key={item.reason} className="mt-2 break-words">{item.reason} · {item.count}</p>)}</details>}
+      <Link to="/admin/studio/planning" className="mt-3 block text-sm text-accent">记录基线对照与旧页更新完成 →</Link>
+    </Card>}
     {bindingTask&&<Card className="mb-5" title="为原选题任务补证据"><p className="mb-3 text-sm leading-6 text-ink-3">在素材池选择完整原文。更新旧页须同时选择旧页正文；软件教程须选择人工上传的实机资料。绑定后继续原任务，不另建重复任务。</p><div className="flex flex-wrap items-center gap-3"><Button tone="primary" disabled={busy||!selected.length||missingBodies>0||selected.length>12} onClick={async()=>{if(await run('POST',`/api/admin/studio/tasks/${encodeURIComponent(bindingTask)}/materials`,{article_ids:selected.map(a=>a.id)},{success:'证据已绑定，请继续原任务。'})){setSelected([]);navigate('/admin/studio?tab=tasks');}}}>绑定所选 {selected.length} 条素材</Button><Link to="/admin/studio?tab=tasks" className="text-sm text-accent">取消绑定</Link></div></Card>}
     <Card className="mb-5" title="选素材 → 一键评估并成稿 → 审稿"><p className="text-sm leading-6 text-ink-3">系统先判断信息增量、行业影响和证据条件，只为值得写的材料成稿；不适合的说明原因。稿件保留原文与日期，供你核对后使用。</p><p className="mt-2 text-sm text-ink-3">{data.generation.reason} {!data.generation.ready && <Link className="text-accent" to="/admin/channels">配置写作渠道 →</Link>}</p><p role="status" aria-live="polite" className="mt-2 text-sm text-accent">{generationStep}</p></Card>
     <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="素材总量" value={data.stats.materials} /><Stat label="正文可读" value={data.stats.body_ready} hint={`${data.stats.undated} 条发布日期待核实`} /><Stat label="等待审稿" value={data.stats.review} /><Stat label="审核通过" value={data.stats.approved} /></div>
