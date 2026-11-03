@@ -105,13 +105,13 @@ test('coding sessions reach the provider and bind reuse without losing reported 
   } finally { process.env.DEEPSEEK_BASE_URL = previous; await coding.close(); }
 });
 
-test('Go refuses editorial calls without a coding session and implicit fallback before any request', async () => {
+test('Go requires a persisted task session and refuses implicit fallback before any request', async () => {
   const prior = { base: process.env.LLM_BASE_URL, key: process.env.LLM_API_KEY, model: process.env.LLM_MODEL };
   Object.assign(process.env, { LLM_BASE_URL: 'https://opencode.ai/inference/go/openai/v1', LLM_API_KEY: 'synthetic-not-a-key', LLM_MODEL: 'deepseek-v4.1-flash' });
   const subject = `go-not-sent-${tag()}`;
   const options = { model: 'default', purpose: 'invariant_test', subject, promptVersion: 'v1', system: 's', user: 'u', schema: z.object({ ok: z.boolean() }) };
   try {
-    await assert.rejects(chatJson(options), /persisted coding session/);
+    await assert.rejects(chatJson(options), /persisted task sessionId/);
     await assert.rejects(chatJson({ ...options, sessionId: 'coding-session', fallbackModel: 'deepseek-flash' }), /cannot implicitly/);
     assert.equal((await sql`SELECT 1 FROM receipts WHERE subject=${subject}`).length, 0);
   } finally {

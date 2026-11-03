@@ -64,11 +64,13 @@ test('source revision drift rejects imported results; no partial drafts are inse
 });
 test('API generation really calls the configured endpoint, stores drafts and reuses the completed task',async()=>{
  const {task,response}=await input();let calls=0;
- const provider=await stub((_hit,req)=>{calls++;assert.equal(JSON.parse(req.body).max_tokens,20000);return {model:'fake-flash',choices:[{message:{content:JSON.stringify(response)}}]};});
+ const provider=await stub((_hit,req)=>{calls++;assert.equal(req.headers['x-opencode-session'],task.id);assert.equal(req.headers['user-agent'],'chipshow-studio/0.1');assert.equal(JSON.parse(req.body).max_tokens,20000);return {model:'fake-flash',choices:[{message:{content:JSON.stringify(response)}}]};});
  const oldDir=config.credentialsDir,oldEnabled=config.modelCallsEnabled,oldReasoning=process.env.LLM_REASONING_TOKENS;
  process.env.LLM_REASONING_TOKENS='8000';
  const dir=await mkdtemp(path.join(tmpdir(),'studio-channel-'));
  try{config.credentialsDir=dir;config.modelCallsEnabled=true;
+  await updateChannel('opencode-go',{key:'synthetic-go-key',activate:true,reason:'independent studio'},actor);
+  assert.equal((await studioGenerationStatus()).ready,true);
   await updateChannel('custom',{baseUrl:provider.url+'/v1',model:'fake-flash',key:'synthetic-private-key',activate:true,reason:'workspace test'},actor);
   const result=await generateStudioTask(task.id,actor);assert.ok(result&&'receiptId' in result);assert.equal(calls,1);
   await generateStudioTask(task.id,actor);assert.equal(calls,1);

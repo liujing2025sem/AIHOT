@@ -67,7 +67,7 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   maxTokens?: number;
   attemptTag?: string;
   timeoutMs?: number;
-  /** Persisted coding conversation identity. News/translation calls do not supply this. */
+  /** Persisted conversation/task identity, stable across continuation of the same task. */
   sessionId?: string;
   /** false: the model answers in its own text format (no JSON mode); `parse` turns it into the schema's input. */
   json?: boolean;
@@ -122,14 +122,14 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
-const USER_AGENT = 'aihot-local-coding-harness/0.1';
+const USER_AGENT = 'chipshow-studio/0.1';
 function transportHeaders<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec, baseUrl: string): Record<string, string> {
-  if (opts.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(opts.sessionId)) throw new ModelUnavailableError('Invalid coding sessionId');
+  if (opts.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(opts.sessionId)) throw new ModelUnavailableError('Invalid sessionId');
   const url = new URL(baseUrl);
   if (url.hostname === 'opencode.ai' && url.pathname.startsWith('/inference/go')) {
     if (url.protocol !== 'https:' || url.port || url.username || url.password || url.search || url.hash || url.pathname.replace(/\/$/, '') !== '/inference/go/openai/v1') throw new ModelUnavailableError('Use the exact OpenCode Go HTTPS API base');
     if (spec.model !== 'deepseek-v4.1-flash') throw new ModelUnavailableError('This local Go configuration supports deepseek-v4.1-flash');
-    if (!opts.sessionId) throw new ModelUnavailableError('OpenCode Go needs a persisted coding session; use the Codex file handoff for editorial work');
+    if (!opts.sessionId) throw new ModelUnavailableError('OpenCode Go needs a persisted task sessionId');
     if (opts.fallbackModel) throw new ModelUnavailableError('OpenCode Go cannot implicitly change model or billing endpoint');
     if (spec.extra && ['model', 'messages'].some(key => Object.hasOwn(spec.extra!, key))) throw new ModelUnavailableError('Go extra JSON cannot replace model or messages');
   }
