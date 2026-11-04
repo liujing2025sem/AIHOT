@@ -1,6 +1,6 @@
 # R1：WorkBuddy 部署与真实出文接续
 
-本轮任务：加载已合并的 main，跑通一篇真实英文稿的卡片、任务、成稿、审核、导出，回传真实界面证据供 Codex 编写运营手册。尚未完成部署或真实出文；本文是执行入口，PR 描述是回执。
+本轮任务：加载已合并的 main，跑通一篇真实英文稿的卡片、任务、成稿、审核、导出。WorkBuddy 已完成迁移与启动；Codex 已保存10件/180天、导入36题并完成U1七个入口的手动采集，新增47条。当前自动卡题文不符且MiP未出卡，首篇路径待用户决定；真实出文尚未完成。操作实录见 [运营手册](operator-guide.md)，PR 描述是回执。
 
 ## 已完成与当前授权
 
@@ -15,9 +15,9 @@
 部署基准是上述 #10 合并提交。其源码树与 Claude 复验的 `d465271` 相同。Codex 已向 `K:/codex/AIHOT-wbtest/source` 同步38个新增或更新文件，并在目标目录成功构建 Web；目标目录不是 Git 工作区，不要直接在其中执行 `git pull`。后续异机安装需使用目标机实际安装目录。
 
 - 同步前逐项比较了目标文件与上一轮 `8824853`，未发现需要保留的目标端独有修改；没有覆盖私有 `.env`、凭据和数据库。
-- 本轮只读状态检查：目标数据库未运行，API/Web 不可达；进程记录里的旧 PID 已不属于该安装的运行进程。启动时仍重新检查当时状态。
+- 启动前的只读状态检查曾显示数据库/API/Web未运行。WorkBuddy 随后已通过持有任务 `2tqBYQ` 加载服务，真实应用0096–0105共10个迁移；Codex复查API和登录页均可达。旧 `processes.json` 的 PID 不代表该持有器的新进程。
 - `build-info/SOURCE_REVISION.json` 记录磁盘源码与构建状态，**不能证明应用已加载**；`build-info/RELEASE.json` 是旧安装包的历史记录。
-- 构建原文：`evidence/r1/main-build.log`。本轮尚无迁移输出、真实出文回执或冒烟截图。
+- 构建原文：`evidence/r1/main-build.log`；迁移原文：`evidence/r1/migration-start.log`；WorkBuddy回执：`evidence/r1/R1-1-回执-迁移与冒烟.md`，含4张真实页面截图。真实出文回执尚未产生。
 - Codex 的跨聊天连接检查返回 `DESKTOP_PIPE_UNAVAILABLE`，直连没有发送成功；用户随后确认已手动向 WorkBuddy 转交部署指令。目标端是否已读和执行，仍以 WorkBuddy 的实际回执、日志和运行状态为准。
 
 ## R1-1：迁移与加载，由 WorkBuddy 执行
