@@ -10,6 +10,11 @@ import { sql, closeDb } from "@aihot/backend/db";
 import { getBoss, stopBoss } from "@aihot/backend/jobs/queue";
 import { upsertMaterial } from "@aihot/backend/content/materials";
 
+// A9 platform evidence: Windows 10.0.26200 / Node v24.22.1, 2026-11-03.
+// A child with a SIGTERM handler sent only "ready", then exited with signal SIGTERM:
+// child.kill() terminates it without running the handler. Keep real signal assertions on POSIX.
+const posixSignals = { skip: process.platform === "win32" && "Windows child.kill(SIGTERM) terminates without delivering the graceful handler; run this real-signal test on POSIX" };
+
 const T = tag();
 const SOURCE = `test-analyze-stop-${T}`;
 let active: {
@@ -89,7 +94,7 @@ after(async () => {
   await provider.close(); await stopBoss(); await closeDb();
 });
 
-test("SIGTERM during the final paid writing call still commits the complete analysis and publication", async () => {
+test("SIGTERM during the final paid writing call still commits the complete analysis and publication", posixSignals, async () => {
   active = { calls: [], scoreAsked: gate(), structureAsked: gate(), scoreAnswer: gate(), structureAnswer: gate(), writingAsked: gate(), writingAnswer: gate(), failScore: false };
   active.scoreAnswer.open(); active.structureAnswer.open();
   const queue = `test.analyze-stop-${T}-final`;
@@ -113,7 +118,7 @@ test("SIGTERM during the final paid writing call still commits the complete anal
   assert.equal((await sql`SELECT 1 FROM receipts WHERE subject=${`article:${articleId}@1`} AND status='completed'`).length, 5);
 });
 
-for (const failScore of [false, true]) test(`SIGTERM during ${failScore ? "failed" : "successful"} first score drains slower structure and leaves a retryable job`, async () => {
+for (const failScore of [false, true]) test(`SIGTERM during ${failScore ? "failed" : "successful"} first score drains slower structure and leaves a retryable job`, posixSignals, async () => {
   active = { calls: [], scoreAsked: gate(), structureAsked: gate(), scoreAnswer: gate(), structureAnswer: gate(), failScore };
   const queue = `test.analyze-stop-${T}-${failScore}`;
   const boss = await getBoss();

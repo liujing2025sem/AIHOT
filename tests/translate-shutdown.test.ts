@@ -7,6 +7,11 @@ import { stopBoss } from '@aihot/backend/jobs/queue';
 import { upsertMaterial } from '@aihot/backend/content/materials';
 import { publishArticle } from '@aihot/backend/publication/publish';
 
+// A9 platform evidence: Windows 10.0.26200 / Node v24.22.1, 2026-11-03.
+// A child with a SIGTERM handler sent only "ready", then exited with signal SIGTERM:
+// child.kill() terminates it without running the handler. Keep real signal assertions on POSIX.
+const posixSignals = { skip: process.platform === "win32" && "Windows child.kill(SIGTERM) terminates without delivering the graceful handler; run this real-signal test on POSIX" };
+
 const T = tag();
 const SOURCE = `test-translate-stop-${T}`;
 let active: { asked: ReturnType<typeof gate<void>>; hold: ReturnType<typeof gate<void>>; calls: number; misaligned: boolean; refused?: boolean };
@@ -50,7 +55,7 @@ before(async () => {
 });
 after(async () => { await provider.close(); await stopBoss(); await closeDb(); });
 
-for (const misaligned of [false, true]) test(`SIGTERM finishes the sent ${misaligned ? 'misaligned' : 'normal'} batch and resumes from its receipt`, async () => {
+for (const misaligned of [false, true]) test(`SIGTERM finishes the sent ${misaligned ? 'misaligned' : 'normal'} batch and resumes from its receipt`, posixSignals, async () => {
   active = { asked: gate(), hold: gate(), calls: 0, misaligned };
   const first = misaligned ? `First paragraph ${T}.` : `First paragraph ${T}. ${'English text '.repeat(170)}`;
   const second = misaligned ? `Second paragraph ${T}.` : `Second paragraph ${T}. ${'More English '.repeat(170)}`;
@@ -81,7 +86,7 @@ for (const misaligned of [false, true]) test(`SIGTERM finishes the sent ${misali
   assert.ok(finished.every((receipt) => receipt.status === 'completed'), 'all batches covered by the committed translation complete after resume');
 });
 
-test('a batch the provider refuses after SIGTERM is an interruption, not a translation attempt', async () => {
+test('a batch the provider refuses after SIGTERM is an interruption, not a translation attempt', posixSignals, async () => {
   active = { asked: gate(), hold: gate(), calls: 0, misaligned: false, refused: true };
   const { articleId } = await upsertMaterial({ sourceId: SOURCE, url: `https://example.org/translation-shutdown-${T}/refused`, title: `Refused ${T}`, bodyHtml: `<p>Refused paragraph ${T}.</p><p>Another refused paragraph ${T}.</p>`, bodyText: `Refused paragraph ${T}. Another refused paragraph ${T}.`, bodyStatus: 'ok', language: 'en', via: 'fetch', publishedAt: new Date(), discoveredAt: new Date(Date.now() + 86_400_000) });
   await sql`INSERT INTO analyses (article_id,input_revision,origin,relevance,category,title_zh,summary_zh,reason_zh,score,selected)
