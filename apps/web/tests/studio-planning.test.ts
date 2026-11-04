@@ -39,6 +39,7 @@ for(const width of [1440,390])test(`editorial cards show the change and missing 
     await page.getByText('已过时短讯 · 1 张（不占待处理名额，展开查看）',{exact:true}).click();
     const expiredCard=page.getByRole('heading',{name:expired.document.title}).locator('xpath=ancestor::section[1]');
     await expect(expiredCard).toBeVisible();await expect(expiredCard.getByRole('button',{name:'已过时，保留参考'})).toBeDisabled();
+    await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({path:path.join(tmpdir(),`aihot-phase-a-cards-${width}.png`),fullPage:true});
     await first.getByRole('link',{name:/旧页正文 ✗/}).click();await page.waitForURL(/bind_card=card-fixture/);
     await page.getByRole('checkbox',{name:'选择 Old page',exact:true}).check();await page.getByRole('button',{name:'绑定所选 1 条素材',exact:true}).click();
