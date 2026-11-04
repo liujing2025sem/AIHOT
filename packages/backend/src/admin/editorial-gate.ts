@@ -1,4 +1,6 @@
 import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import { ENTITIES } from '@aihot/industry/taxonomy';
+import sourceConfig from '../../../../industry/sources.json' with { type: 'json' };
 
 export type Finding = {
   ruleId: string; severity: 'BLOCK' | 'WARN'; field: string;
@@ -60,13 +62,26 @@ const negated = (text: string, index: number) => {
     || /(?:等|这些|此类)?(?:用语|词语|表述|措辞|断言).{0,8}(?:应避免|不可使用|不应使用|需核实)|^.{0,24}(?:广告语|广告用语)|^.{0,35}\b(?:should|must) (?:be avoided|not be used)\b/i.test(text.slice(index));
 };
 const historical = (text: string) => /(?:回顾|当时|彼时|历史报道|曾于)|\b(?:at the time|back then|historically|in (?:19|20)\d{2}[^.!?]{0,35}(?:said|reported|announced))\b/i.test(text);
-function attributed(text: string, sourceName: string) {
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const named = (text: string, name: string) => matches(text, new RegExp(`(?<![\\p{L}\\p{N}_])${escaped(name)}(?![a-zA-Z0-9_])`, 'giu'));
+function sourceNames(sourceId: string, sourceName: string): string[] {
+  const configured = sourceConfig.sources.find(s => s.id === sourceId);
+  const owner = configured?.owner_entity_id ?? sourceId;
+  const entities = ENTITIES[owner] ? [ENTITIES[owner]] : Object.values(ENTITIES).filter(e =>
+    [...e.aliases, ...(e.orgNames ?? []), ...(e.otherNames ?? [])].some(n => named(sourceName, n).length > 0));
+  // An ambiguous display name cannot select multiple manufacturers. Never scan draft text for owners.
+  if (entities.length === 1) {
+    const e = entities[0];
+    return [...new Set([e.name, ...e.aliases, ...(e.orgNames ?? []), ...(e.otherNames ?? [])])];
+  }
+  const name = sourceName.trim().replace(/\s+(?:Product\s+)?News$/i, '');
+  return name ? [name] : [];
+}
+function attributed(text: string, names: readonly string[]) {
   if (thirdParty.test(text)) return true;
   if (/原文[^。\n]{0,14}(?:给出|表述|说明|描述|强调|说|称)|厂商的?(?:解法|比较|表述)|(?:reported|stated|claimed|specified) (?:by|in) (?:the )?(?:manufacturer|source|company)/i.test(text)) return true;
-  const name = sourceName.trim().replace(/\s+(?:Product\s+)?News$/i,'');
-  if (!name) return false;
-  const i = text.toLowerCase().indexOf(name.toLowerCase());
-  return i >= 0 && /^.{0,40}(?:says|said|claims?|reports?|states?|announces?|specifies|describes|称|表示|介绍|宣布|披露)/i.test(text.slice(i + name.length));
+  return names.some(name => named(text, name).some(m =>
+    /^\s*(?:[,，:：]\s*)?(?:(?:has|have|had)\s+)?(?:(?:says|said|claims?|claimed|reports?|reported|states?|stated|announces?|announced|specifies|specified|describes|described)\b|称|表示|介绍|宣布|披露)/i.test(text.slice(m.index! + m[0].length))));
 }
 // Require an explicit date, and never consult wall-clock time. Unzoned timestamps are unknown.
 function dateMs(value: string | null | undefined): number | null {
@@ -88,6 +103,9 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
   const article = packet.articles.find(a => a.binding.article_id === draft.source.article_id);
   const source = article?.body_text ?? '';
   const sourceName = article?.source_name ?? '';
+  const attributionNames = sourceNames(article?.source_id ?? '', sourceName);
+  const screenMetrics = sentences(source).filter(s => matches(s.text, techNumber).some(n => !/\b(?:mm|cm|nm)\b|μm|µm/i.test(n[0]))
+    && /显示屏|屏体|\b(?:displays?|screens?|using these LEDs)\b/i.test(s.text));
   const sourceTime = dateMs(article?.binding.published_at);
   const taskTime = dateMs(packet.created_at);
   const ageDays = sourceTime === null || taskTime === null ? null : (taskTime - sourceTime) / 86_400_000;
@@ -111,13 +129,13 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
     // Explicit opening attribution can govern later parameter paragraphs. A bare brand name cannot.
     const opening = paras.slice(0,3).map(p=>p.text).join('\n');
     const explicitScope = /下文所有性能表述均来自|(?:figures|specifications|mechanisms|parameters|numbers|product boundaries)[^.\n]{0,100}(?:reported|stated|claimed|specified) (?:by|in) (?:the )?(?:manufacturer|source)|as stated by the manufacturer/i.test(text);
-    const manufacturerFrame = (attributed(opening, sourceName)||explicitScope) && !/\b(?:we|our)\b|本公司|本站|我们/i.test(text);
+    const manufacturerFrame = (attributed(opening, attributionNames)||explicitScope) && !/\b(?:we|our)\b|本公司|本站|我们/i.test(text);
     // A local paragraph may inherit attribution from elsewhere. That is ambiguous,
     // not proof of absent attribution: require human review instead of blocking it.
-    const attributionElsewhere = attributed(text,sourceName) && !/\b(?:we|our)\b|本公司|本站|我们/i.test(text);
+    const attributionElsewhere = attributed(text,attributionNames) && !/\b(?:we|our)\b|本公司|本站|我们/i.test(text);
     for (const p of paras) {
       const nums = matches(p.text, techNumber);
-      const hasAttribution = attributed(p.text, sourceName) || manufacturerFrame;
+      const hasAttribution = attributed(p.text, attributionNames) || manufacturerFrame;
       for (const n of nums) {
         // A year alone or a numbered heading has no technical unit and cannot match.
         const sentence = sentences(p.text).find(s => n.index! >= s.start && n.index! < s.end)!;
@@ -128,8 +146,17 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
         if (!/\b(?:mm|cm|nm)\b|μm|µm/i.test(n[0]) && !condition.test(p.text)) add('W4', 'WARN', field, text, p.start + n.index!, p.start + n.index! + n[0].length, '性能数值未识别到测试条件/适用范围，需按具体指标确认。');
       }
     }
+    // Only flag an explicit package-level label against explicit source screen metrics.
+    // Object equivalence and mixed metrics remain an editor decision, never an automatic block.
+    if (screenMetrics.length > 0) {
+      for (const m of matches(text, /\bpackage[- ]level\s+specifications\b/gi)) {
+        const sentence = sentences(text).find(s => m.index! >= s.start && m.index! < s.end)!;
+        if (!negated(sentence.text, m.index! - sentence.start)) add('W4', 'WARN', field, text, m.index!, m.index! + m[0].length,
+          `原文含明确屏体/使用这些LED的指标：“${screenMetrics[0].text.trim()}”；此处概括为封装级规格，需人工核对指标对象，不能据此认定封装本体性能。`);
+      }
+    }
     for (const s of sentences(text)) {
-      const attr = attributed(s.text, sourceName) || manufacturerFrame;
+      const attr = attributed(s.text, attributionNames) || manufacturerFrame;
       const own = /\b(?:we|our|us)\b|我们|本公司|本站|我司/i.test(s.text);
       const cited = attr && (locator.test(s.text) || locator.test(text));
       const hit = (rule: string, severity: Finding['severity'], m: RegExpMatchArray, reason: string) => add(rule, severity, field, text, s.start + m.index!, s.start + m.index! + m[0].length, reason);
@@ -231,7 +258,7 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
   const normalizedNumbers = (t: string) => new Set(matches(t, techNumber).map(m => m[0].toLowerCase().replace(/[\s,]/g, '').replace(/nits?$/, 'nit').replace(/[–—~]/g, '-')));
   const z = normalizedNumbers(zh), e = normalizedNumbers(en);
   if (z.size !== e.size || [...z].some(n => !e.has(n))) anchor('W7', '中英标题+正文的技术数字/单位集合不一致；程序不推断单位换算与事实等价，须逐点核实。');
-  else if (attributed(zh, sourceName) !== attributed(en, sourceName)) anchor('W7', '中英文可识别的来源归属线索不一致；须逐点核实事实与归属。');
+  else if (attributed(zh, attributionNames) !== attributed(en, attributionNames)) anchor('W7', '中英文可识别的来源归属线索不一致；须逐点核实事实与归属。');
 
   if (context.publishedTexts === undefined) anchor('W8', '未提供已发布文字历史，本次无法判断历史重复度。');
   else if (context.publishedTexts.length > 0) {

@@ -1,0 +1,945 @@
+{
+  "questions": [
+    {
+      "question": "尺寸有了，还缺什么才能询价？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "场景",
+      "keywords": [
+        "尺寸",
+        "询价",
+        "观看"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "户外招牌一年用多少电，哪些条件影响电费？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "费用",
+      "keywords": [
+        "用电",
+        "电费",
+        "power"
+      ],
+      "content_type": "tool",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "平均功率与最大功率应该怎样用于预算？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "费用",
+      "keywords": [
+        "平均功率",
+        "最大功率",
+        "能耗"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "两套显示方案的功耗要先对齐哪些条件？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "DOOH",
+      "dimension": "工况",
+      "keywords": [
+        "功耗",
+        "对比",
+        "亮度"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "美国商业电价的数据期变化会影响哪份电费估算？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "DOOH",
+      "dimension": "费用",
+      "keywords": [
+        "EIA",
+        "电价",
+        "商业电价"
+      ],
+      "content_type": "tool",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [
+        "EIA Electric Power Monthly 表5.6.A；数据期待核"
+      ],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "欧洲非家庭用户电价该怎样说明税费和统计口径？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "DOOH",
+      "dimension": "费用",
+      "keywords": [
+        "Eurostat",
+        "电价",
+        "税费"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [
+        "Eurostat nrg_pc_205；数据期待核"
+      ],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "夜间自动调光需要哪些项目条件和当地依据？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "工况",
+      "keywords": [
+        "调光",
+        "夜间",
+        "亮度"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "电压波动较大的现场要向供应商确认什么？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "新兴市场安装",
+      "dimension": "工况",
+      "keywords": [
+        "宽电压",
+        "供电",
+        "电源"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "停电后恢复播放需要哪些工程验证？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "新兴市场安装",
+      "dimension": "工况",
+      "keywords": [
+        "停电",
+        "恢复",
+        "播放"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "高温户外项目的电源和散热条件怎样核对？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "工况",
+      "keywords": [
+        "高温",
+        "电源",
+        "散热"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "防雷与浪涌保护应向工程确认哪些资料？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "维护",
+      "keywords": [
+        "防雷",
+        "浪涌",
+        "接地"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "进水后的检查边界和维护条件应怎样说明？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "维护",
+      "keywords": [
+        "进水",
+        "水损",
+        "防护"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "这批屏怎么向货代问装柜？",
+      "roles": [
+        "分销商/代理商"
+      ],
+      "scenario": "海运装柜",
+      "dimension": "供货",
+      "keywords": [
+        "装柜",
+        "海运",
+        "包装"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "海运包装与到货验收需要哪些一手资料？",
+      "roles": [
+        "分销商/代理商"
+      ],
+      "scenario": "海运装柜",
+      "dimension": "供货",
+      "keywords": [
+        "包装",
+        "运输",
+        "验收"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "备件清单应按哪些维护任务配置？",
+      "roles": [
+        "分销商/代理商"
+      ],
+      "scenario": "分销集成",
+      "dimension": "维护",
+      "keywords": [
+        "备件",
+        "维护",
+        "清单"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "现货与海外仓承诺应核对哪些实际条件？",
+      "roles": [
+        "分销商/代理商"
+      ],
+      "scenario": "分销集成",
+      "dimension": "供货",
+      "keywords": [
+        "现货",
+        "海外仓",
+        "交付"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "两份报价究竟差在产品还是交付范围？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "项目采购",
+      "dimension": "供货",
+      "keywords": [
+        "报价",
+        "交付",
+        "范围"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "控制卡、发送端和播放系统怎样核对兼容资料？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "室内商显",
+      "dimension": "部件",
+      "keywords": [
+        "控制卡",
+        "兼容",
+        "播放"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "NovaLCT在实机上如何完成配置并处理报错？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "NovaLCT",
+        "配置",
+        "报错"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "ViPlex Express操作教程需要记录哪些实机步骤和版本？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "ViPlex",
+        "Express",
+        "版本"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "LEDVISION更新后哪些实机操作需要重新验证？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "LEDVISION",
+        "更新",
+        "版本"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "LEDStudio实机连接和故障排查应怎样记录？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "LEDStudio",
+        "连接",
+        "故障"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "HDPlayer实机播放与参数设置应保留哪些操作证据？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "HDPlayer",
+        "播放",
+        "参数"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "升级控制软件或固件前应怎样记录备份和适用型号？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "固件",
+        "升级",
+        "备份"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "黑屏或闪烁的排查步骤怎样用实机复现？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords": [
+        "黑屏",
+        "闪烁",
+        "排查"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "MiP灯珠封装尺寸与屏体性能指标如何区分？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "小间距商显",
+      "dimension": "部件",
+      "keywords": [
+        "MiP",
+        "封装",
+        "屏体"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "COB维护方式应核实哪些工程条件？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "室内商显",
+      "dimension": "维护",
+      "keywords": [
+        "COB",
+        "维护",
+        "维修"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "刷新率数字相同，拍摄表现就相同吗？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "租赁舞台",
+      "dimension": "部件",
+      "keywords": [
+        "刷新率",
+        "扫描",
+        "IC"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "户外灯珠的亮度说法对应器件还是整屏？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "户外招牌",
+      "dimension": "部件",
+      "keywords": [
+        "灯珠",
+        "亮度",
+        "整屏"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "前维护与后维护需要哪些现场空间和结构资料？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "室内商显",
+      "dimension": "维护",
+      "keywords": [
+        "箱体",
+        "前维护",
+        "后维护"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "交通VMS项目需要整理哪些公开标准和适用范围？",
+      "roles": [
+        "租赁公司/政府与交通"
+      ],
+      "scenario": "交通VMS",
+      "dimension": "场景",
+      "keywords": [
+        "VMS",
+        "交通",
+        "标准"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "交通显示的可读性应结合哪些现场条件说明？",
+      "roles": [
+        "租赁公司/政府与交通"
+      ],
+      "scenario": "交通VMS",
+      "dimension": "工况",
+      "keywords": [
+        "VMS",
+        "可读性",
+        "观看"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "DOOH内容更新与夜间运行需要怎样的运营条件？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "DOOH",
+      "dimension": "场景",
+      "keywords": [
+        "DOOH",
+        "夜间",
+        "运营"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "远程播放系统需要记录哪些权限和维护职责？",
+      "roles": [
+        "终端业主/广告媒体主"
+      ],
+      "scenario": "室内商显",
+      "dimension": "维护",
+      "keywords": [
+        "远程",
+        "播放",
+        "权限"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "租赁项目的拆装与交付检查应提供哪些工程资料？",
+      "roles": [
+        "租赁公司/政府与交通"
+      ],
+      "scenario": "租赁舞台",
+      "dimension": "维护",
+      "keywords": [
+        "租赁",
+        "拆装",
+        "交付"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "供应商换了灯珠、IC或电源，原方案要重核什么？",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "项目采购",
+      "dimension": "部件",
+      "keywords": [
+        "灯珠",
+        "IC",
+        "电源",
+        "变更"
+      ],
+      "content_type": "explainer",
+      "requires_first_party": false,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    }
+  ]
+}

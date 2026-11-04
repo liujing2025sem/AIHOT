@@ -1,5 +1,139 @@
 # LED 多方向信源核验与接续
 
+<a id="g1-condition-json-20261103"></a>
+
+## G1 官方JSON补核：2026-11-02（仅EIA与Eurostat）
+
+本轮用户明确批准核验两家官方JSON入口，复用已有json_list，不写新采集器。实际执行时间 2026-11-03T05:37:12.901Z；未修改.env或部署环境，仍采用原独立验证进程和空历史缓存，不连接业务库。其余来源未请求、原10项失败记录未改写。
+
+**结果：新增运行配置0个。Eurostat免密钥JSON真实可读，但现有映射会丢失价格与统计期关系；EIA无密钥preview返回HTTP403。两项均未写入sources.json，原13个新增停用配置保留。**
+
+### 官方入口与实际preview结果
+
+| 核验对象 | 直接读取结果 | previewSource实际结果 | 接纳判断 |
+|---|---|---|---|
+| EIA retail-sales商业电价官方JSON，无key | [官方文档](https://www.eia.gov/opendata/documentation.php)明确要求分配的API key | HTTP403，未返回条目计数或数据；不是一个成功的0条列表 | UNKNOWN；不寻找、读取、注册或写入真实key |
+| Eurostat德国两期价格，标量映射 | 官方JSON两条value及独立的地区、统计期、单位、状态维度 | count=1；title/excerpt=0.2618，publishedAt=null；2026-S1的0.2366被同URL去重丢弃 | 拒绝该配置；接口可读不能算无损采集通过 |
+| Eurostat EU27两期，改试统计期索引 | 官方JSON两期价格和期码均可读 | no items mapped (check title/url paths)，无条目计数 | 拒绝该配置；现有模板需要对象字段，不能直接把标量期码带入链接 |
+
+官方请求、完整JSON样本和每次preview输入/输出摘要存于同一个 [source-previews.json](K:/codex/AIHOT/evidence/grill-20261103/source-previews.json) 的 conditionJsonFollowup。未注册上述诊断配置。
+
+### 已核数值及条件含义
+
+这类来源用于电费试算与已有内容的条件更新，**不是新闻条目**。数值必须随地区、客户类别、用电档、税口径和统计期一起使用，不能拿不同条件直接比较，更不能把数据期当作报道发布日期。
+
+Eurostat样本为 [nrg_pc_205官方Statistics API](https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_pc_205?format=JSON&lang=EN&freq=S&siec=E7000&unit=KWH&currency=EUR&geo=EU27_2020&nrg_cons=MWH20-499&tax=X_VAT&lastTimePeriod=2)：非家庭用户，年用电20–499MWh的IB档，currency=EUR、unit=KWH，即EUR/kWh；tax=X_VAT，排除增值税和其他可退税费。地区分别限定Germany(DE)与European Union–27 countries from 2020(EU27_2020)，不是欧洲每个客户的通用报价。[官方API说明](https://ec.europa.eu/eurostat/en/web/user-guides/data-browser/api-data-access/api-getting-started/api)说明响应采用分离维度与数值的JSON-stat立方体结构。
+
+| 地区 | 统计期 | EUR/kWh | 原始状态 |
+|---|---|---:|---|
+| Germany | 2025-S2 | 0.2618 | 未返回标志 |
+| Germany | 2026-S1 | 0.2366 | provisional |
+| European Union - 27 countries (from 2020) | 2025-S2 | 0.2179 | 未返回标志 |
+| European Union - 27 countries (from 2020) | 2026-S1 | 0.2165 | 未返回标志 |
+
+2025-S2为2025年下半年，2026-S1为2026年上半年。德国2026-S1带p(provisional，暂定)标志。JSON的updated=2026-10-19T11:00:00+0200是数据集更新时间；本轮获取时间为2026-11-03T05:37:12.901Z。三个时间含义不同，均未填入稿件发布日期。标量preview的publishedAt保持null。
+
+EIA目标口径为美国分州/地区、Commercial商业用户、月度平均零售电价；表5.6.A明确用cents/kWh（美分/千瓦时）。本轮官方HTML表仍显示August 2026与August 2025，Connecticut商业列为19.29与23.47 cents/kWh。这仅是HTML表的直接抽样；**本轮没有得到EIA JSON价格、price-units或统计期响应，不能把HTML值冒充API返回值**。需要key的结论来自官方文档；HTTP403本身未提供可核对的API_KEY_MISSING错误体，不擅自确定403的全部成因。
+
+### 现有采集器的具体边界
+
+fetchJsonList按每个条目取titlePaths/summaryPaths，itemsObjectValues丢弃字典的键；urlTemplate只能从非空字段路径取值。Eurostat的value、status、dimension.time.category.index等位于不同对象，现有配置不能把它们组合为每期的完整记录。把价格标量当标题会在同一数据集链接下合并两期；造锚点、把更新日当统计期或只保留期码都不算有效修复。本轮未增加转换脚本、采集器或接口层。
+
+当前建议保留两项UNKNOWN，使用已保存的条件样本作人工参考。后续若要把数值自动接入，需要在另行授权后解决EIA凭据和Eurostat维度映射；本轮不扩展到这些工作。
+
+### 本轮文件与验证
+
+只更新候选地图中的led-eia-electricity、led-eurostat-nrg-pc-205两个对象、本文、led-sources.md及既有source-previews.json。sources.json与sources.standalone.test.ts保持本轮开始时的内容；原10个失败条目未改写，其余候选逐项保持不变。未重跑此前19/19的sources测试，也未运行全量回归；本轮验收依据为真实preview、原始JSON维度/数值对照和限定文件回读。
+
+
+<a id="g1-preview-20261103"></a>
+
+## G1 本轮来源预览：2026-11-02（America/Los_Angeles）
+
+任务编号沿用 grill-20261103；真实核验时间为 2026-11-02，UTC 已为 2026-11-03，以证据中的 checkedAt 为准。完整读取 Grill 第2节 D1–D18、第3.2–3.5和9.2 G1；本轮不修改用户决定。
+
+**本轮新增13个停用配置，复核既有3个；10个入口保留 UNKNOWN，不写入 sources.json。** 新增中4个是软件/固件版本目录、9个是发现源；EIA/Eurostat 两个条件源尚未接通。没有启用来源、worker或模型，没有 seed、业务库操作或生产采集。
+
+证据入口：[source-previews.json](K:/codex/AIHOT/evidence/grill-20261103/source-previews.json)。其中保存逐项 config、真实 preview 输出摘要、时间、抽样核对、失败原入口和可重放的验证脚本。仓库配置不能代表部署数据库当前状态。
+
+### 验证方式和可证明的边界
+
+直接调用后台原有 previewSource，继续使用 fetchRss/fetchWebList、listingEntries、原过滤和详情补齐。原函数会查询历史详情缓存；本次在独立 Node 进程中 mock 整个 db 模块，历史 SELECT 返回空集合，其余数据库语句拒绝，避免接触业务库。因此测到了真实网络、列表解析、过滤及本次列表身份去重，**未测数据库历史身份复用**。未修改后台代码或预览逻辑。
+
+最多2并发，保留现有列表25秒/详情20秒超时；出现访问失败即记录，不换路由、换身份、改选入口或调用付费渲染。仅使用已核入口、官网导航及官网明确公布的 RSS；LEDinside feed 是在首页 rel=alternate 中实际发现的，不是猜测。软件/固件只读列表与链接，不下载或执行二进制，不打开下载门页。
+
+### 实际预览摘要
+
+数量是本次 preview 的总条数，绝非入库数；样本最多20条。最后一列仅统计返回样本中的未知日期，不能推广到170条等整份列表。日期为原 preview 的 UTC 表示；日精度标签转换为零点不代表精确发布时刻。
+
+| 来源ID | preview条数 | 首条样本 publishedAt（UTC） | 日期未知/样本数 |
+|---|---:|---|---:|
+| web-macroblock-news | 170 | 2026-09-20T16:00:00.000Z | 12/20 |
+| web-nationstar-product-news | 20 | 2026-06-23T16:00:00.000Z | 0/20 |
+| web-kinglight-news | 10 | 2024-03-19T16:00:00.000Z | 2/10 |
+| web-meanwell-new-products | 1 | 2026-09-28T16:00:00.000Z | 0/1 |
+| web-colorlight-news | 12 | 2026-10-20T16:00:00.000Z | 0/12 |
+| web-oaaa-news | 14 | 2026-10-16T12:35:46.000Z | 12/14 |
+| web-chipone-news | 3 | UNKNOWN | 3/3 |
+| web-czcl-news | 8 | 2026-07-31T16:00:00.000Z | 6/8 |
+| web-g-energy-news | 2 | UNKNOWN | 2/2 |
+| web-huidu-news | 8 | 2025-12-21T16:00:00.000Z | 0/8 |
+| web-huidu-hdplayer | 4 | UNKNOWN | 4/4 |
+| web-colorlight-software | 4 | UNKNOWN | 4/4 |
+| web-novastar-news | 3 | UNKNOWN | 3/3 |
+| rss-ledinside-news | 10 | 2026-11-01T23:07:05.000Z | 0/10 |
+| web-colorlight-ledvision | 11 | UNKNOWN | 11/11 |
+| web-colorlight-firmware | 3 | UNKNOWN | 3/3 |
+
+逐项检查返回样本的原文URL唯一性：各样本均无重复URL。既有合成fixtures继续覆盖导航排除与重复卡片去重；没有用浏览器可读替代 preview。
+
+### 新来源的标题、链接和日期抽样对照
+
+以下4项把直接读取的官方列表/详情标签与 preview 对照，标题和链接一致；完整标题与URL保存于证据JSON。其他来源已运行preview，但未逐篇核正文。
+
+| 来源ID | 官方样本标题与链接 | 页面原标签 | preview的UTC值 |
+|---|---|---|---|
+| web-meanwell-new-products | [UDP-200/300/400 Series: 200W~400W Next-Generation Compact Power Supplies for LED Displays](https://www.meanwell.com/newsInfo.aspx?c=1&i=1554) | 2026/09/29 | 2026-09-28T16:00:00.000Z |
+| web-colorlight-news | [New Compatibility Unlocked in Malaysia.](https://en.colorlightinside.com/news/Exhibition/15564.html) | 2026.10.21 | 2026-10-20T16:00:00.000Z |
+| web-huidu-news | [新起点·新征程——深圳市灰度科技股份有限公司正式揭牌成立](https://www.huidu.cn/CnNews/57.html) | 2025.12.22 | 2025-12-21T16:00:00.000Z |
+| web-czcl-news | [标准落地，创联同行｜GB/T 47033—2026将于8月1日实施](https://www.cl-power.com/newsdetail/66.html) | 2026-08-01 (.e_timeFormat-63) | 2026-07-31T16:00:00.000Z |
+
+明确保持未知：集创首页的 DD/MM/YYYY 不用通用月/日解析器猜测，因此3条日期都为null；诺瓦3条日期未知；G-energy只保留两条显示相关旧案例，页面年份为2019，解析日期仍未知，不当新鲜消息。OAAA仅前2条做详情补齐，其余12条日期未知。软件/固件版本号、文件名和查询日期均不补为发布日期。
+
+### 用途和进入下一步的限制
+
+- **版本源：** Colorlight LEDSETTING、LEDVISION（官网标为Discontinued）、控制器固件，Huidu HDPlayer。仅版本/型号名和官方链接通过预览，发布日期均未知；Colorlight固件版本部分只在官方链接文件名中。尚未验证下载门页、二进制正文、跨日版本对比、教程更新卡或下载中心。
+- **条件源：** EIA表5.6.A可读，当前表期为August 2026/2025，Commercial列可见；它是单表，不是新闻链接列表。Eurostat nrg_pc_205原入口只有页面壳。两个都未加入配置，也没有把数据期/本轮日期变成发布日期。
+- **发现源：** 保留既有Macroblock、Nationstar、Kinglight；新增Chipone、MEAN WELL、CZCL、G-energy、NovaStar、Colorlight、Huidu、OAAA和LEDinside。厂商/协会只证明其发布说法；媒体线索回原始事实。具体相关性和新鲜度须编辑判断。MEAN WELL当前按明确LED Display标题收录，可能漏掉未如此命名的相关电源。
+- **需求源：** 本G1任务不接询盘/GSC/Semrush；按新P0另行处理，不把新闻来源冒充客户画像。
+
+### 未完成与需要用户选择的入口缺口
+
+以下全部为UNKNOWN，未写 sources.json。原入口保留；本轮没有替换到其他站点、API、英文镜像或子分类。
+
+| 来源/用途 | 本次原入口 | 实际结果 | 需要选择的下一步 |
+|---|---|---|---|
+| ISA / 标识协会新闻 | [原入口](https://signs.org/news/) | getaddrinfo ENOTFOUND signs.org | 首次12条，后续校准预览DNS失败；本轮不重试、不写配置，原入口待正常访问后复核。 |
+| Huidu / 异步全彩固件 | [原入口](https://www.huidu.cn/CnDownload/index_100000010831811.html) | no items matched (html) | 固件总页无匹配条目；官网另有异步全彩子页，是否改选需用户决定。 |
+| Linsn / 灵星雨新闻 | [原入口](https://www.linsn.com/list/News-information) | no items matched (html) | 当前中文列表未返回静态内容；是否改选官方英文入口或保留人工链接输入。 |
+| Linsn / LEDStudio软件版本 | [原入口](https://www.linsn.com/list/18) | no items matched (html) | 当前中文列表未返回静态内容；是否改选官方英文入口或保留人工链接输入。 |
+| EIA / Electric Power Monthly表5.6.A | [原入口](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a) | no items matched (html) | 原表可读，但web_list无文章链接；是否保留人工条件资料输入或另行授权表格/版本读取。 |
+| NovaStar / 软件固件版本 | [原入口](https://www.novastar.tech/download/download.html?catid=7) | no items matched (html) | 下载总页无可采版本链接；是否选择官网具体软件/发布说明入口。 |
+| Sixteen:Nine / 数字标牌新闻 | [原入口](https://www.sixteen-nine.net/) | no items matched (html) | 原入口跳转invidis.com；是否接受出版品牌/入口变更，待用户选择。 |
+| Eurostat / nrg_pc_205 | [原入口](https://ec.europa.eu/eurostat/databrowser/view/NRG_PC_205/default/table?category=nrg.nrg_price.nrg_pc&lang=en) | no items matched (html) | 原入口仅页面壳；是否另行选择官方公开数据入口。 |
+| Linsn / 固件版本 | [原入口](https://www.linsn.com/list/firmware) | no items matched (html) | 当前中文列表未返回静态内容；是否改选官方英文入口或保留人工链接输入。 |
+| rAVe PUBS / AV新闻 | [原入口](https://ravepubs.com/) | HTTP 403 (entry read; preview not retried) | 原入口受阻；是否保留人工公开链接输入或另选官方入口。 |
+
+特别记录：ISA首次预览12条成功，校准日期配置后同一入口DNS报 getaddrinfo ENOTFOUND signs.org；按最后一次失败处理，未使用早先成功掩盖故障。Sixteen:Nine原入口自动转到 https://invidis.com/，页面提示两站合并；保留出版品牌/入口变更待用户选择，未自动注册invidis。rAVe首读HTTP403后未继续请求。
+
+### 测试与交付状态
+
+仅运行 node --import ./tests/standalone.ts --test --test-timeout=120000 tests/sources.standalone.test.ts：**19 tests / 19 pass / 0 fail**。新增测试只检查上述13个新LED候选存在、停用、网页全文关闭和RSS全文关闭；原框架示范源未受这些新断言约束。没有运行全量回归、重启服务、调用付费模型或提交Git。G1为可核验部分交付，10项缺口仍未完成，不能按通过计。
+
+## 2026-11-01及更早的历史记录（保留，非本轮通过证明）
+
+以下为原核验记录；其中“未写sources.json”等结论只描述当时。当前配置、G1通过/UNKNOWN状态以本文上方本轮记录和Grill决议为准。
+
 核验日期：**2026-11-01，America/Los_Angeles**。本次在线读取发生于当地当日；UTC 已为 2026-11-02。证据来自官方页面的实际浏览访问；明纬、卡莱特另做了本机普通 HTTP 读取。搜索索引仅帮助定位，不能代替原页读取。
 
 先接明纬、卡莱特，再预览 ISA 与 OAAA；Daktronics 保留为有条件的第五项。它们分别补电源、控制、渠道和屏体企业披露。这里的“先接”是给主 Agent 的实现顺序：**本轮没有注册、启用或测试生产采集器**。箱体结构已有两个可读官方材料；法规和月营收没有被硬凑成每日新闻。

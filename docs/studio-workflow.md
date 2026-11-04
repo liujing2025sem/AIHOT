@@ -1,5 +1,7 @@
 # 当前入口
 
+最新执行为 [Grill决议](aihot-grill-decisions-20261103.md) 的G1–G6。选题、客户画像、搜索CSV及独立中英文社媒的操作见 [选题工作流](studio-planning.md)。中文社媒/视频可公开且另审，Blog仍英文；下文早期“中文只内部”的描述仅适用于Blog。
+
 2026-11-01用户确认的Blog、英文公开稿、多方向选题、未证实资讯和逐项风险确认，见 [editorial-direction.md](editorial-direction.md)。以下历史流程中与该文件冲突的描述，以当前入口为准。
 
 # Studio 日常使用

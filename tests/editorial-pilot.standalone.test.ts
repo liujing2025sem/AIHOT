@@ -156,7 +156,7 @@ import { publicDraft } from '../packages/backend/src/admin/studio-publication.ts
 
 test('approved multi-direction Blog brief reaches file handoff without a mandatory buyer question',()=>{
  const p={...packet,editorial_policy:editorialDirection};const parsed=packetSchema.parse(p);assert.equal(parsed.editorial_policy?.daily_digest,true);
- const files=writingHandoffFiles(parsed);assert.match(files['WRITING_START_HERE.md'],/英文对外，中文仅内部审稿/);assert.match(files['EDITORIAL_DIRECTION.md'],/箱体/);assert.match(files['EDITORIAL_DIRECTION.md'],/未匹配既有采购问题不能单独作为淘汰理由/);
+ const files=writingHandoffFiles(parsed);assert.match(files['WRITING_START_HERE.md'],/Blog英文对外，中文Blog稿仅内部审稿/);assert.match(files['EDITORIAL_DIRECTION.md'],/中文社媒和中文视频可公开/);assert.match(files['EDITORIAL_DIRECTION.md'],/箱体/);assert.match(files['EDITORIAL_DIRECTION.md'],/未匹配既有采购问题不能单独作为淘汰理由/);
  assert.equal(editorialTopic('The driver IC MBI model'),'ic');assert.equal(editorialTopic('LED package and MiP'),'led-package');assert.equal(editorialTopic('Display cabinet with front maintenance'),'cabinet');
 });
 
