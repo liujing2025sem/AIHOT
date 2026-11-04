@@ -56,6 +56,46 @@ test('source revisions create a new card, old cards cannot be adopted, and the p
   for(let n=0;n<8;n++)await material(`cap-${suffix}-${n}`);
   await refreshRecommendations(actor);assert.equal((await recommendationOverview()).activeCount,5);assert.ok((await recommendationOverview()).capacityFullCount>0);
 });
+
+test('undated title-only versions are discovered once and body completion refreshes the pending card',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  const id=`ledvision-${suffix}`,versionSource='web-colorlight-ledvision',discovered=new Date(Date.now()-3600000);
+  await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${versionSource},'LEDVISION','web_list',false)`;
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status) VALUES(${id},${versionSource},${id},'https://example.com/ledvision','LEDVISION V9.7',${discovered},${discovered},NULL,'pending')`;
+  await saveStudioQuestion({document:{question:'LEDVISION 升级前需要检查什么？',roles:['集成商/安装商/招牌制作商'],scenario:'控制系统',dimension:'控制软件',keywords:['LEDVISION'],content_type:'tutorial',requires_first_party:true}},actor);
+  assert.equal((await refreshRecommendations(actor)).created,1);
+  const first=(await recommendationOverview()).rows.find(c=>c.article_id===id)!;
+  assert.equal(first.document.trigger,'E');assert.equal(first.document.evidence[0].date,null);assert.equal(first.document.evidence[0].discovered_at,discovered.toISOString());
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  const engineering=await material(`ledvision-engineering-${suffix}`,'Synthetic hands-on LEDVISION steps.',true);
+  await bindRecommendationEvidence(first.id,{article_ids:[engineering]},actor);
+  await sql`INSERT INTO article_revisions(article_id,revision,title,body_text) SELECT id,revision,title,body_text FROM articles WHERE id=${id}`;
+  await sql`UPDATE articles SET revision=2,body_status='ok',body_text='LEDVISION V9.7 download instructions.',updated_at=now() WHERE id=${id}`;
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  const filled=(await recommendationOverview()).rows.filter(c=>c.article_id===id);
+  assert.equal(filled.length,1);assert.equal(filled[0].id,first.id);assert.equal(filled[0].article_revision,2);assert.equal(filled[0].stale,false);
+  assert.deepEqual(filled[0].document.bound_article_ids,[engineering]);assert.equal(filled[0].document.evidence_checklist?.source_body,true);
+  await sql`INSERT INTO article_revisions(article_id,revision,title,body_text) SELECT id,revision,title,body_text FROM articles WHERE id=${id}`;
+  await sql`UPDATE articles SET revision=3,title='LEDVISION V9.8',body_text=NULL,body_status='pending',updated_at=now() WHERE id=${id}`;
+  assert.equal((await refreshRecommendations(actor)).created,1);
+  const changed=(await recommendationOverview()).rows.filter(c=>c.article_id===id);assert.equal(changed.length,2);
+  assert.equal(changed.find(c=>c.id===first.id)!.stale,true);assert.equal(changed.find(c=>!c.stale)!.document.trigger,'E');
+});
+
+test('news ages out on overview and adoption without needing another refresh, and stays readable',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  for(let n=0;n<5;n++)await material(`aging-${suffix}-${n}`);
+  await refreshRecommendations(actor);
+  const old=(await recommendationOverview()).rows[0];
+  await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{evidence,0,date}',to_jsonb((now()-interval '8 days')::text))`;
+  await sql`UPDATE articles SET published_at=now()-interval '8 days'`;
+  const aged=await recommendationOverview();assert.equal(aged.activeCount,0);assert.equal(aged.pendingCount,0);assert.equal(aged.rows.length,5);assert.ok(aged.rows.every(c=>c.expired&&!c.capacity_full));
+  await assert.rejects(decideRecommendation(old.id,{action:'adopt'},actor),/超过7天/);
+  const fresh=await material(`current-${suffix}`);
+  await refreshRecommendations(actor);
+  const current=await recommendationOverview();assert.equal(current.activeCount,1);assert.equal(current.pendingCount,1);assert.equal(current.rows.length,6);
+  assert.equal(current.rows.find(c=>c.article_id===fresh)!.expired,false);
+});
 test('repeated demand creates an evidence-pending task; binding continues it without using inquiry rows as facts',async()=>{
   await setRecommendationCapacity({weekly_limit:15,lookback_days:30},actor);
   const question=await saveStudioQuestion({document:{question:`安装运输要确认什么-${suffix}？`,roles:['集成商/安装商/招牌制作商'],scenario:'运输安装',dimension:'供货',keywords:['安装','运输','transport']}},actor);

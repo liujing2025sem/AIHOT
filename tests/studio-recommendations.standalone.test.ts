@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { enrichRecommendation, planRecommendations, type PlanningMaterial } from '../packages/backend/src/admin/studio-recommendations.ts';
+import { allocateRecommendationCapacity, enrichRecommendation, planRecommendations, type PlanningMaterial } from '../packages/backend/src/admin/studio-recommendations.ts';
+import preview from './fixtures/editorial-preview-20261103.json' with {type:'json'};
+import { pageOwnership } from '../site/editorial-ownership.ts';
 import { questionSchema, type StudioQuestionRow } from '../packages/backend/src/admin/studio-questions.ts';
 import { summarizeDemandSignals } from '../packages/backend/src/admin/studio-demand.ts';
 import { parseDemandCsv,demandCsvTemplate, type DemandRecord } from '../packages/backend/src/admin/studio-demand-csv.ts';
@@ -36,6 +38,51 @@ test('software versions become tutorial proposals with explicit first-party depe
   const question=q({dimension:'控制软件',content_type:'tutorial',requires_first_party:true,keywords:['NovaLCT']});
   const result=plan([question],[material({title:'NovaLCT v5.6.1 release notes',body_text:'NovaLCT software version 5.6.1 release notes.'})]);
   assert.equal(result[0].trigger,'E');assert.equal(result[0].action,'new_tutorial');assert.equal(result[0].requires_first_party,true);assert.equal(result[0].needs_material,true);
+});
+
+test('real undated LEDVISION titles create version cards with discovery dates, never fabricated publication dates',()=>{
+  const question=q({question:'LEDVISION 升级前需要检查什么？',content_type:'tutorial',requires_first_party:true,keywords:['LEDVISION']});
+  const entries=preview.previews.find(p=>p.id==='web-colorlight-ledvision')!.output.items;
+  assert.equal(entries.length,11);
+  for(const [i,entry] of entries.entries()){
+    assert.equal(entry.publishedAt,null);
+    const row=material({id:`ledvision-${i}`,source_id:'web-colorlight-ledvision',title:entry.title,url:entry.url,published_at:entry.publishedAt,discovered_at:'2026-11-02T08:30:00Z',body_text:null,body_status:'pending'});
+    const card=plan([question],[row])[0];
+    assert.equal(card.trigger,'E');assert.equal(card.action,'new_tutorial');assert.equal(card.needs_material,true);
+    assert.equal(card.evidence[0].date,null);assert.equal(card.evidence[0].discovered_at,'2026-11-02T08:30:00.000Z');
+    assert.equal(card.evidence[0].after,entry.title);
+    assert.equal(plan([question],[{...row,revision:2,previous_title:row.title,body_status:'ok',body_text:`${row.title} download instructions.`}])[0].key,card.key,'body completion retains one version identity');
+  }
+});
+
+test('uppercase version changes work without a body; undated ordinary news and unchanged versions do not become releases',()=>{
+  const question=q({keywords:['LEDVISION']});
+  const row=material({title:'LEDVISION V9.7',body_text:null,body_status:'pending',source_id:'web-colorlight-news'});
+  assert.equal(plan([question],[row])[0].trigger,'E');
+  assert.equal(plan([question],[{...row,published_at:null}]).length,0);
+  assert.equal(plan([question],[{...row,published_at:'2020-01-01',revision:2,previous_title:'LEDVISION v9.6'}])[0].trigger,'E');
+  assert.equal(plan([question],[{...row,revision:2,previous_title:'LEDVISION v9.7'}]).some(c=>c.trigger==='E'),false);
+});
+
+test('expired news remains visible without slots, while recent news is ordered by publication date',()=>{
+  const base=plan([],[material()])[0];
+  const row=(id:string,date:string,created:string,trigger:'A'|'D'='D')=>({id,status:'pending',created_at:created,document:{...base,trigger,priority:trigger==='A'?0:4,evidence:[{...base.evidence[0],date}]}});
+  const rows=[row('old-news','2026-10-26T12:00:00Z',now),row('older-recent','2026-11-01T12:00:00Z','2026-11-01'),row('newer-recent','2026-11-03T10:00:00Z',now),row('old-page-change','2020-01-01','2020-01-01','A')];
+  const queue=allocateRecommendationCapacity(rows,2,Date.parse(now));
+  assert.equal(queue.rows.length,4);assert.equal(queue.pendingCount,3);assert.equal(queue.activeCount,2);
+  const old=queue.rows.find(r=>r.id==='old-news')!;assert.equal(old.expired,true);assert.equal(old.capacity_full,false);
+  assert.deepEqual(queue.rows.filter(r=>!r.expired&&!r.capacity_full).map(r=>r.id),['old-page-change','newer-recent']);
+  assert.equal(queue.rows.find(r=>r.id==='older-recent')!.capacity_full,true);
+  const atBoundary=allocateRecommendationCapacity([row('boundary','2026-10-27T12:00:00Z',now)],1,Date.parse(now));
+  assert.equal(atBoundary.rows[0].expired,false);
+  assert.equal(allocateRecommendationCapacity([row('boundary','2026-10-27T12:00:00Z',now)],1,Date.parse(now)+1).rows[0].expired,true);
+});
+
+test('owned subdomains are owned without accepting lookalike domains',()=>{
+  assert.equal(pageOwnership('https://blog.chipshow.com/guide'),'own');
+  assert.equal(pageOwnership('https://docs.eu.unishineled.com/guide'),'own');
+  assert.equal(pageOwnership('https://fakechipshow.com/guide'),'competitor');
+  assert.equal(pageOwnership('https://chipshow.com.example.org/guide'),'competitor');
 });
 test('repeated demand remains mention counts and creates a research task proposal, never invented facts',()=>{
   const parsed=parseDemandCsv(demandCsvTemplate);assert.ok(parsed.ok);
