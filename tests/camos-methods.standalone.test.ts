@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import childProcess from 'node:child_process';
 import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { camosMethods } from '../packages/backend/src/admin/camos-methods.ts';
 
-const scratch = 'D:/CodexTemp/aihot-upgrade-20261101/camos-state';
+const scratch = path.join(os.tmpdir(), 'aihot-camos-state');
 let root: string;
 let oldRoot: string | undefined;
 let calls: { file: string; args: string[]; options: any }[];
