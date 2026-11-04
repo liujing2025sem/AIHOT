@@ -4,6 +4,7 @@ import { z } from 'zod';
 import sourcePack from '../../../../industry/sources.json' with { type: 'json' };
 import { sql } from '../db.ts';
 import { audit, Conflict } from '../audit.ts';
+import { hasEnglishKeyword } from './studio-question-match.ts';
 
 export const customerRoles = ['集成商/安装商/招牌制作商','分销商/代理商','终端业主/广告媒体主','租赁公司/政府与交通','未知'] as const;
 const SOURCES = sourcePack.sources;
@@ -15,6 +16,7 @@ const realUrl = z.string().max(2000).refine(value => {
 }, '请输入实际页面的HTTP(S) URL，未知留空');
 export const questionSchema = z.object({
   question: z.string().trim().min(4).max(500),
+  question_en: z.string().trim().max(500).default(''),
   roles: z.array(z.enum(customerRoles)).min(1).max(5),
   scenario: z.string().trim().min(1).max(100),
   dimension: z.enum(questionDimensions),
@@ -23,11 +25,14 @@ export const questionSchema = z.object({
   condition_refs: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
   source_ids: z.array(z.string().min(1).max(150)).max(30).default([]),
   demand_evidence: z.array(z.object({ type: z.enum(['inquiry','gsc','semrush','engineering','grill-example']), reference: z.string().min(1).max(300) }).strict()).max(30).default([]),
-  keywords: z.array(z.string().trim().min(2).max(80)).min(1).max(25),
+  keywords: z.array(z.string().trim().min(2).max(80)).max(50).default([]),
+  keywords_zh: z.array(z.string().trim().min(2).max(80)).max(25).default([]),
+  keywords_en: z.array(z.string().trim().min(2).max(80)).max(25).default([]),
   content_type: z.enum(['explainer','tutorial','tool','news']).default('explainer'),
   requires_first_party: z.boolean().default(false),
   active: z.boolean().default(true),
 }).strict().superRefine((q,ctx) => {
+  if(!hasEnglishKeyword(q))ctx.addIssue({code:'custom',path:['keywords_en'],message:'至少填写一个英文关键词，以便匹配英文信源'});
   if(q.content_type==='tutorial'&&!q.requires_first_party)ctx.addIssue({code:'custom',path:['requires_first_party'],message:'软件教程必须要求工程实机材料'});
 });
 export type StudioQuestion = z.infer<typeof questionSchema>;

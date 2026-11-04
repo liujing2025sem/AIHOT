@@ -5,7 +5,7 @@ import { studioQuestions, saveStudioQuestion, importStudioQuestions } from '@aih
 import { importDemandCsv, listStudioImports, withdrawStudioImport, demandProfiles, DemandCsvError } from '@aihot/backend/admin/studio-demand';
 import { demandCsvTemplate, demandCsvOptions } from '@aihot/backend/admin/studio-demand-csv';
 import { z } from 'zod';
-import { recommendationOverview, setRecommendationCapacity, refreshRecommendations, decideRecommendation } from '@aihot/backend/admin/studio-recommendations';
+import { recommendationOverview, setRecommendationCapacity, refreshRecommendations, decideRecommendation, bindRecommendationEvidence } from '@aihot/backend/admin/studio-recommendations';
 import { studioSearchSignals, importSearchSignals, searchTemplates } from '@aihot/backend/admin/studio-search-signals';
 import { listStudioSocial, deriveStudioSocial, saveStudioSocial, reviewStudioSocial, exportStudioSocial } from '@aihot/backend/admin/studio-social';
 import { adminHandler } from './admin-auth.ts';
@@ -26,6 +26,7 @@ export function registerAdminStudioPlanning(app: FastifyInstance) {
   app.post('/api/admin/studio/recommendations/capacity',adminHandler(async(req,_reply,admin)=>setRecommendationCapacity(body(req),actorOf(admin))));
   app.post('/api/admin/studio/recommendations/refresh',adminHandler(async(_req,_reply,admin)=>refreshRecommendations(actorOf(admin))));
   app.post('/api/admin/studio/recommendations/:id/decision',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await decideRecommendation(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/recommendations/:id/materials',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await bindRecommendationEvidence(param(req,'id'),body(req),actorOf(admin)))));
   app.get('/api/admin/studio/search-signals',adminHandler(async()=>studioSearchSignals()));
   app.post('/api/admin/studio/search-signals/import',adminHandler(async(req,_reply,admin)=>importSearchSignals(body(req),actorOf(admin))));
   app.delete('/api/admin/studio/search-signals/batches/:id',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await withdrawStudioImport(param(req,'id'),actorOf(admin)))));

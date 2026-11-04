@@ -12,7 +12,7 @@ import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
 import { createStudioTask, exportStudioTask } from '@aihot/backend/admin/studio';
 
 const actor='test:planning',suffix=tag();
-const doc={question:`户外招牌电费怎么计算-${suffix}？`,roles:['终端业主/广告媒体主'],scenario:'户外招牌',dimension:'费用',keywords:['电费','用电']};
+const doc={question:`户外招牌电费怎么计算-${suffix}？`,roles:['终端业主/广告媒体主'],scenario:'户外招牌',dimension:'费用',keywords:['电费','用电','power']};
 after(async()=>{await closeDb();});
 
 test('question map import is all-or-nothing, repeatable and never overwrites operator changes',async()=>{

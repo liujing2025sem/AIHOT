@@ -2,21 +2,42 @@
   "questions": [
     {
       "question": "尺寸有了，还缺什么才能询价？",
+      "question_en": "I know the screen dimensions, so what else do you need to quote an LED display?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "户外招牌",
       "dimension": "场景",
+      "keywords_zh": [
+        "尺寸",
+        "询价",
+        "观看",
+        "广告牌"
+      ],
+      "keywords_en": [
+        "billboard",
+        "dimensions",
+        "quotation",
+        "viewing distance"
+      ],
       "keywords": [
         "尺寸",
         "询价",
-        "观看"
+        "观看",
+        "广告牌",
+        "billboard",
+        "dimensions",
+        "quotation",
+        "viewing distance"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news",
+        "web-oaaa-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -27,22 +48,41 @@
       "active": true
     },
     {
-      "question": "户外招牌一年用多少电，哪些条件影响电费？",
+      "question": "户外招牌一年要花多少电费，怎么算才接近实际使用？",
+      "question_en": "How can I estimate the annual electricity cost of an outdoor LED sign under actual operating conditions?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "户外招牌",
       "dimension": "费用",
+      "keywords_zh": [
+        "用电",
+        "电费",
+        "运行时间"
+      ],
+      "keywords_en": [
+        "power",
+        "electricity",
+        "energy consumption",
+        "operating hours"
+      ],
       "keywords": [
         "用电",
         "电费",
-        "power"
+        "运行时间",
+        "power",
+        "electricity",
+        "energy consumption",
+        "operating hours"
       ],
       "content_type": "tool",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "web-g-energy-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -53,22 +93,39 @@
       "active": true
     },
     {
-      "question": "平均功率与最大功率应该怎样用于预算？",
+      "question": "估算电费时该用平均功率还是最大功率？",
+      "question_en": "Should I use average or maximum power to estimate the electricity cost of my LED display?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "户外招牌",
       "dimension": "费用",
-      "keywords": [
+      "keywords_zh": [
         "平均功率",
         "最大功率",
         "能耗"
+      ],
+      "keywords_en": [
+        "average power",
+        "maximum power",
+        "power consumption"
+      ],
+      "keywords": [
+        "平均功率",
+        "最大功率",
+        "能耗",
+        "average power",
+        "maximum power",
+        "power consumption"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "web-czcl-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -79,22 +136,41 @@
       "active": true
     },
     {
-      "question": "两套显示方案的功耗要先对齐哪些条件？",
+      "question": "两家都说自己的屏省电，我该怎么比才公平？",
+      "question_en": "How can I fairly compare energy consumption when two suppliers both claim their LED displays save energy?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "DOOH",
       "dimension": "工况",
+      "keywords_zh": [
+        "功耗",
+        "对比",
+        "亮度",
+        "节能"
+      ],
+      "keywords_en": [
+        "power consumption",
+        "brightness",
+        "energy saving"
+      ],
       "keywords": [
         "功耗",
         "对比",
-        "亮度"
+        "亮度",
+        "节能",
+        "power consumption",
+        "brightness",
+        "energy saving"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "web-macroblock-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -105,22 +181,43 @@
       "active": true
     },
     {
-      "question": "美国商业电价的数据期变化会影响哪份电费估算？",
+      "question": "我在美国装户外屏，估算电费该用哪个州、哪个月份的商业电价？",
+      "question_en": "Which state's commercial electricity rate and which billing period should I use to estimate the cost of an outdoor LED display in the US?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "DOOH",
       "dimension": "费用",
-      "keywords": [
-        "EIA",
+      "keywords_zh": [
         "电价",
-        "商业电价"
+        "商业电价",
+        "美国",
+        "数据期"
+      ],
+      "keywords_en": [
+        "EIA",
+        "commercial electricity",
+        "electricity rate",
+        "billing period"
+      ],
+      "keywords": [
+        "电价",
+        "商业电价",
+        "美国",
+        "数据期",
+        "EIA",
+        "commercial electricity",
+        "electricity rate",
+        "billing period"
       ],
       "content_type": "tool",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "rss-ledinside-news"
+      ],
       "condition_refs": [
         "EIA Electric Power Monthly 表5.6.A；数据期待核"
       ],
@@ -133,22 +230,43 @@
       "active": true
     },
     {
-      "question": "欧洲非家庭用户电价该怎样说明税费和统计口径？",
+      "question": "我在欧洲装户外屏，算电费该用含税还是不含税的电价？",
+      "question_en": "Should I use electricity prices including or excluding taxes to estimate the operating cost of an outdoor LED display in Europe?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "DOOH",
       "dimension": "费用",
-      "keywords": [
-        "Eurostat",
+      "keywords_zh": [
         "电价",
-        "税费"
+        "税费",
+        "欧洲",
+        "非家庭用户"
+      ],
+      "keywords_en": [
+        "Eurostat",
+        "electricity price",
+        "taxes",
+        "non-household"
+      ],
+      "keywords": [
+        "电价",
+        "税费",
+        "欧洲",
+        "非家庭用户",
+        "Eurostat",
+        "electricity price",
+        "taxes",
+        "non-household"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "rss-ledinside-news"
+      ],
       "condition_refs": [
         "Eurostat nrg_pc_205；数据期待核"
       ],
@@ -161,22 +279,39 @@
       "active": true
     },
     {
-      "question": "夜间自动调光需要哪些项目条件和当地依据？",
+      "question": "户外屏晚上太亮，能自动调暗吗，要先确认什么？",
+      "question_en": "Can my outdoor LED display dim automatically at night, and what should I confirm first?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "户外招牌",
       "dimension": "工况",
-      "keywords": [
+      "keywords_zh": [
         "调光",
         "夜间",
         "亮度"
       ],
+      "keywords_en": [
+        "dimming",
+        "brightness",
+        "night"
+      ],
+      "keywords": [
+        "调光",
+        "夜间",
+        "亮度",
+        "dimming",
+        "brightness",
+        "night"
+      ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-colorlight-news",
+        "web-novastar-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -187,22 +322,42 @@
       "active": true
     },
     {
-      "question": "电压波动较大的现场要向供应商确认什么？",
+      "question": "现场电压不稳，怎么选电源才适合这块屏？",
+      "question_en": "How should I choose a power supply for an LED display at a site with unstable voltage?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "新兴市场安装",
       "dimension": "工况",
+      "keywords_zh": [
+        "宽电压",
+        "供电",
+        "电源",
+        "电压波动"
+      ],
+      "keywords_en": [
+        "input voltage",
+        "power supply",
+        "voltage fluctuation"
+      ],
       "keywords": [
         "宽电压",
         "供电",
-        "电源"
+        "电源",
+        "电压波动",
+        "input voltage",
+        "power supply",
+        "voltage fluctuation"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "web-czcl-news",
+        "web-g-energy-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -213,22 +368,39 @@
       "active": true
     },
     {
-      "question": "停电后恢复播放需要哪些工程验证？",
+      "question": "停电再来电后，屏能自己恢复播放吗，采购前要确认什么？",
+      "question_en": "Will the LED display resume playback after a power outage, and what should I confirm before buying it?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "新兴市场安装",
       "dimension": "工况",
-      "keywords": [
+      "keywords_zh": [
         "停电",
         "恢复",
         "播放"
       ],
+      "keywords_en": [
+        "power outage",
+        "playback",
+        "recovery"
+      ],
+      "keywords": [
+        "停电",
+        "恢复",
+        "播放",
+        "power outage",
+        "playback",
+        "recovery"
+      ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-huidu-hdplayer",
+        "web-novastar-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -239,22 +411,41 @@
       "active": true
     },
     {
-      "question": "高温户外项目的电源和散热条件怎样核对？",
+      "question": "夏天高温又晒太阳，电源和散热该怎么选？",
+      "question_en": "How should I choose the power supply and cooling for an outdoor LED display exposed to summer heat and direct sunlight?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "户外招牌",
       "dimension": "工况",
-      "keywords": [
+      "keywords_zh": [
         "高温",
         "电源",
         "散热"
       ],
+      "keywords_en": [
+        "temperature",
+        "power supply",
+        "cooling",
+        "thermal"
+      ],
+      "keywords": [
+        "高温",
+        "电源",
+        "散热",
+        "temperature",
+        "power supply",
+        "cooling",
+        "thermal"
+      ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "web-g-energy-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -265,22 +456,39 @@
       "active": true
     },
     {
-      "question": "防雷与浪涌保护应向工程确认哪些资料？",
+      "question": "户外屏要做哪些防雷、浪涌保护和接地？",
+      "question_en": "What lightning protection, surge protection and grounding does an outdoor LED display need?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "户外招牌",
       "dimension": "维护",
-      "keywords": [
+      "keywords_zh": [
         "防雷",
         "浪涌",
         "接地"
       ],
+      "keywords_en": [
+        "lightning",
+        "surge",
+        "grounding"
+      ],
+      "keywords": [
+        "防雷",
+        "浪涌",
+        "接地",
+        "lightning",
+        "surge",
+        "grounding"
+      ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "web-czcl-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -291,22 +499,39 @@
       "active": true
     },
     {
-      "question": "进水后的检查边界和维护条件应怎样说明？",
+      "question": "户外屏进水后还能开机吗，应该先怎么处理？",
+      "question_en": "Can I power on an outdoor LED display after water gets inside, and what should I do first?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "户外招牌",
       "dimension": "维护",
-      "keywords": [
+      "keywords_zh": [
         "进水",
         "水损",
         "防护"
       ],
+      "keywords_en": [
+        "water ingress",
+        "water damage",
+        "protection"
+      ],
+      "keywords": [
+        "进水",
+        "水损",
+        "防护",
+        "water ingress",
+        "water damage",
+        "protection"
+      ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-meanwell-new-products",
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -317,22 +542,38 @@
       "active": true
     },
     {
-      "question": "这批屏怎么向货代问装柜？",
+      "question": "这批屏要装海运柜，问货代前我该准备什么？",
+      "question_en": "What information should I prepare before asking a freight forwarder how to load this shipment of LED displays into a container?",
       "roles": [
         "分销商/代理商"
       ],
       "scenario": "海运装柜",
       "dimension": "供货",
-      "keywords": [
+      "keywords_zh": [
         "装柜",
         "海运",
         "包装"
       ],
+      "keywords_en": [
+        "container",
+        "shipping",
+        "packaging"
+      ],
+      "keywords": [
+        "装柜",
+        "海运",
+        "包装",
+        "container",
+        "shipping",
+        "packaging"
+      ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -343,22 +584,42 @@
       "active": true
     },
     {
-      "question": "海运包装与到货验收需要哪些一手资料？",
+      "question": "海运过来的屏怎么检查包装和货物，发现破损怎么办？",
+      "question_en": "How should I inspect the packaging and LED displays after sea freight, and what should I do if anything is damaged?",
       "roles": [
         "分销商/代理商"
       ],
       "scenario": "海运装柜",
       "dimension": "供货",
+      "keywords_zh": [
+        "包装",
+        "运输",
+        "验收",
+        "破损"
+      ],
+      "keywords_en": [
+        "packaging",
+        "shipping",
+        "inspection",
+        "damage"
+      ],
       "keywords": [
         "包装",
         "运输",
-        "验收"
+        "验收",
+        "破损",
+        "packaging",
+        "shipping",
+        "inspection",
+        "damage"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -369,22 +630,41 @@
       "active": true
     },
     {
-      "question": "备件清单应按哪些维护任务配置？",
+      "question": "买屏时要配哪些备件，数量怎么定？",
+      "question_en": "Which spare parts should I order with my LED display, and how many do I need?",
       "roles": [
         "分销商/代理商"
       ],
       "scenario": "分销集成",
       "dimension": "维护",
-      "keywords": [
+      "keywords_zh": [
         "备件",
         "维护",
         "清单"
+      ],
+      "keywords_en": [
+        "spare parts",
+        "maintenance",
+        "module",
+        "power supply"
+      ],
+      "keywords": [
+        "备件",
+        "维护",
+        "清单",
+        "spare parts",
+        "maintenance",
+        "module",
+        "power supply"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news",
+        "web-meanwell-new-products"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -395,22 +675,40 @@
       "active": true
     },
     {
-      "question": "现货与海外仓承诺应核对哪些实际条件？",
+      "question": "供应商说有现货或海外仓，我怎么确认什么时候能收到货？",
+      "question_en": "How can I confirm the delivery date when a supplier says an LED display is in stock or available from an overseas warehouse?",
       "roles": [
         "分销商/代理商"
       ],
       "scenario": "分销集成",
       "dimension": "供货",
-      "keywords": [
+      "keywords_zh": [
         "现货",
         "海外仓",
         "交付"
+      ],
+      "keywords_en": [
+        "stock",
+        "overseas warehouse",
+        "delivery",
+        "lead time"
+      ],
+      "keywords": [
+        "现货",
+        "海外仓",
+        "交付",
+        "stock",
+        "overseas warehouse",
+        "delivery",
+        "lead time"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -421,22 +719,44 @@
       "active": true
     },
     {
-      "question": "两份报价究竟差在产品还是交付范围？",
+      "question": "两份屏的报价差很多，怎么判断差在配置还是包含的服务？",
+      "question_en": "How can I tell whether a large difference between two LED display quotes comes from the configuration or the services included?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "项目采购",
       "dimension": "供货",
+      "keywords_zh": [
+        "报价",
+        "交付",
+        "范围",
+        "配置"
+      ],
+      "keywords_en": [
+        "quotation",
+        "configuration",
+        "delivery",
+        "scope"
+      ],
       "keywords": [
         "报价",
         "交付",
-        "范围"
+        "范围",
+        "配置",
+        "quotation",
+        "configuration",
+        "delivery",
+        "scope"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news",
+        "web-meanwell-new-products",
+        "web-colorlight-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -447,22 +767,44 @@
       "active": true
     },
     {
-      "question": "控制卡、发送端和播放系统怎样核对兼容资料？",
+      "question": "现有控制卡、发送设备和播放系统能搭配使用吗，怎么确认？",
+      "question_en": "How can I check whether my control cards, sending equipment and playback system work together?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "室内商显",
       "dimension": "部件",
+      "keywords_zh": [
+        "控制卡",
+        "兼容",
+        "播放",
+        "发送设备"
+      ],
+      "keywords_en": [
+        "control card",
+        "receiving card",
+        "compatibility",
+        "playback"
+      ],
       "keywords": [
         "控制卡",
         "兼容",
-        "播放"
+        "播放",
+        "发送设备",
+        "control card",
+        "receiving card",
+        "compatibility",
+        "playback"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-colorlight-software",
+        "web-novastar-news",
+        "web-huidu-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -473,22 +815,40 @@
       "active": true
     },
     {
-      "question": "NovaLCT在实机上如何完成配置并处理报错？",
+      "question": "NovaLCT 连不上屏或配置时报错，先查什么？",
+      "question_en": "What should I check first when NovaLCT cannot connect to my LED display or reports a configuration error?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "控制系统部署",
       "dimension": "控制软件",
-      "keywords": [
-        "NovaLCT",
+      "keywords_zh": [
         "配置",
-        "报错"
+        "报错",
+        "连接"
+      ],
+      "keywords_en": [
+        "NovaLCT",
+        "configuration",
+        "connection",
+        "error"
+      ],
+      "keywords": [
+        "配置",
+        "报错",
+        "连接",
+        "NovaLCT",
+        "configuration",
+        "connection",
+        "error"
       ],
       "content_type": "tutorial",
       "requires_first_party": true,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-novastar-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -499,74 +859,46 @@
       "active": true
     },
     {
-      "question": "ViPlex Express操作教程需要记录哪些实机步骤和版本？",
+      "question": "ViPlex Express 怎么连接播放器并发送节目，失败时先查什么？",
+      "question_en": "How do I connect to a player and send content with ViPlex Express, and what should I check if it fails?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "控制系统部署",
       "dimension": "控制软件",
-      "keywords": [
+      "keywords_zh": [
+        "版本",
+        "连接",
+        "播放器",
+        "节目",
+        "发送"
+      ],
+      "keywords_en": [
         "ViPlex",
         "Express",
-        "版本"
+        "player",
+        "content",
+        "connection"
       ],
-      "content_type": "tutorial",
-      "requires_first_party": true,
-      "existing_url": "",
-      "existing_url_provenance": "operator_entered",
-      "source_ids": [],
-      "condition_refs": [],
-      "demand_evidence": [
-        {
-          "type": "grill-example",
-          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
-        }
-      ],
-      "active": true
-    },
-    {
-      "question": "LEDVISION更新后哪些实机操作需要重新验证？",
-      "roles": [
-        "集成商/安装商/招牌制作商"
-      ],
-      "scenario": "控制系统部署",
-      "dimension": "控制软件",
       "keywords": [
-        "LEDVISION",
-        "更新",
-        "版本"
-      ],
-      "content_type": "tutorial",
-      "requires_first_party": true,
-      "existing_url": "",
-      "existing_url_provenance": "operator_entered",
-      "source_ids": [],
-      "condition_refs": [],
-      "demand_evidence": [
-        {
-          "type": "grill-example",
-          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
-        }
-      ],
-      "active": true
-    },
-    {
-      "question": "LEDStudio实机连接和故障排查应怎样记录？",
-      "roles": [
-        "集成商/安装商/招牌制作商"
-      ],
-      "scenario": "控制系统部署",
-      "dimension": "控制软件",
-      "keywords": [
-        "LEDStudio",
+        "版本",
         "连接",
-        "故障"
+        "播放器",
+        "节目",
+        "发送",
+        "ViPlex",
+        "Express",
+        "player",
+        "content",
+        "connection"
       ],
       "content_type": "tutorial",
       "requires_first_party": true,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-novastar-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -577,22 +909,38 @@
       "active": true
     },
     {
-      "question": "HDPlayer实机播放与参数设置应保留哪些操作证据？",
+      "question": "LEDVISION 升级到新版本后，哪些操作需要重新验证？",
+      "question_en": "Which operations should I recheck on my LED display after upgrading LEDVISION to a new version?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "控制系统部署",
       "dimension": "控制软件",
+      "keywords_zh": [
+        "更新",
+        "版本",
+        "升级"
+      ],
+      "keywords_en": [
+        "LEDVISION",
+        "upgrade",
+        "version"
+      ],
       "keywords": [
-        "HDPlayer",
-        "播放",
-        "参数"
+        "更新",
+        "版本",
+        "升级",
+        "LEDVISION",
+        "upgrade",
+        "version"
       ],
       "content_type": "tutorial",
       "requires_first_party": true,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-colorlight-ledvision"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -603,22 +951,135 @@
       "active": true
     },
     {
-      "question": "升级控制软件或固件前应怎样记录备份和适用型号？",
+      "question": "LEDStudio 连不上屏或显示异常时，先查哪些设置？",
+      "question_en": "Which settings should I check first when LEDStudio cannot connect to my LED display or the display looks wrong?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "控制系统部署",
       "dimension": "控制软件",
+      "keywords_zh": [
+        "连接",
+        "故障",
+        "设置"
+      ],
+      "keywords_en": [
+        "LEDStudio",
+        "connection",
+        "settings",
+        "troubleshooting"
+      ],
+      "keywords": [
+        "连接",
+        "故障",
+        "设置",
+        "LEDStudio",
+        "connection",
+        "settings",
+        "troubleshooting"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "HDPlayer 播放不出节目时先查哪些设置？",
+      "question_en": "Which settings should I check first when HDPlayer cannot play my content on the LED display?",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords_zh": [
+        "播放",
+        "参数",
+        "节目"
+      ],
+      "keywords_en": [
+        "HDPlayer",
+        "playback",
+        "settings",
+        "content"
+      ],
+      "keywords": [
+        "播放",
+        "参数",
+        "节目",
+        "HDPlayer",
+        "playback",
+        "settings",
+        "content"
+      ],
+      "content_type": "tutorial",
+      "requires_first_party": true,
+      "existing_url": "",
+      "existing_url_provenance": "operator_entered",
+      "source_ids": [
+        "web-huidu-hdplayer"
+      ],
+      "condition_refs": [],
+      "demand_evidence": [
+        {
+          "type": "grill-example",
+          "reference": "待运营确认的选题示例；依据Grill问题线索和吴总V4，不代表已核客户事实或已有页面"
+        }
+      ],
+      "active": true
+    },
+    {
+      "question": "控制软件或固件升级前，怎么确认兼容、备份设置并准备恢复？",
+      "question_en": "How should I check compatibility, back up settings and prepare for recovery before updating control software or firmware?",
+      "roles": [
+        "集成商/安装商/招牌制作商"
+      ],
+      "scenario": "控制系统部署",
+      "dimension": "控制软件",
+      "keywords_zh": [
+        "固件",
+        "升级",
+        "备份",
+        "兼容",
+        "恢复"
+      ],
+      "keywords_en": [
+        "firmware",
+        "upgrade",
+        "backup",
+        "compatibility",
+        "recovery"
+      ],
       "keywords": [
         "固件",
         "升级",
-        "备份"
+        "备份",
+        "兼容",
+        "恢复",
+        "firmware",
+        "upgrade",
+        "backup",
+        "compatibility",
+        "recovery"
       ],
       "content_type": "tutorial",
       "requires_first_party": true,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-colorlight-software",
+        "web-colorlight-firmware"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -629,22 +1090,40 @@
       "active": true
     },
     {
-      "question": "黑屏或闪烁的排查步骤怎样用实机复现？",
+      "question": "屏突然黑屏或闪烁，先从哪里查起？",
+      "question_en": "Where should I start troubleshooting when my LED display suddenly goes black or flickers?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "控制系统部署",
       "dimension": "控制软件",
-      "keywords": [
+      "keywords_zh": [
         "黑屏",
         "闪烁",
         "排查"
       ],
+      "keywords_en": [
+        "black screen",
+        "flicker",
+        "troubleshooting"
+      ],
+      "keywords": [
+        "黑屏",
+        "闪烁",
+        "排查",
+        "black screen",
+        "flicker",
+        "troubleshooting"
+      ],
       "content_type": "tutorial",
       "requires_first_party": true,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-colorlight-software",
+        "web-novastar-news",
+        "web-huidu-hdplayer"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -655,22 +1134,43 @@
       "active": true
     },
     {
-      "question": "MiP灯珠封装尺寸与屏体性能指标如何区分？",
+      "question": "MiP 灯珠的封装尺寸和屏体性能指标怎么区分？",
+      "question_en": "How can I distinguish MiP LED package dimensions from the performance specifications of a complete LED display?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "小间距商显",
       "dimension": "部件",
-      "keywords": [
-        "MiP",
+      "keywords_zh": [
         "封装",
-        "屏体"
+        "屏体",
+        "灯珠",
+        "尺寸"
+      ],
+      "keywords_en": [
+        "MiP",
+        "package",
+        "dimensions",
+        "display performance"
+      ],
+      "keywords": [
+        "封装",
+        "屏体",
+        "灯珠",
+        "尺寸",
+        "MiP",
+        "package",
+        "dimensions",
+        "display performance"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-kinglight-news",
+        "web-nationstar-product-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -681,22 +1181,41 @@
       "active": true
     },
     {
-      "question": "COB维护方式应核实哪些工程条件？",
+      "question": "COB 屏坏了怎么修，现场维修还是要返厂？",
+      "question_en": "How is a faulty COB LED display repaired, and can it be serviced on site or does it need to go back to the factory?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "室内商显",
       "dimension": "维护",
-      "keywords": [
-        "COB",
+      "keywords_zh": [
         "维护",
-        "维修"
+        "维修",
+        "返厂"
+      ],
+      "keywords_en": [
+        "COB",
+        "maintenance",
+        "repair",
+        "service"
+      ],
+      "keywords": [
+        "维护",
+        "维修",
+        "返厂",
+        "COB",
+        "maintenance",
+        "repair",
+        "service"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news",
+        "web-nationstar-product-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -707,22 +1226,41 @@
       "active": true
     },
     {
-      "question": "刷新率数字相同，拍摄表现就相同吗？",
+      "question": "两块屏刷新率一样，为什么拍出来可能不一样？",
+      "question_en": "Why might two LED displays with the same refresh rate look different on camera?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "租赁舞台",
       "dimension": "部件",
+      "keywords_zh": [
+        "刷新率",
+        "扫描",
+        "拍摄"
+      ],
+      "keywords_en": [
+        "IC",
+        "refresh rate",
+        "scan",
+        "camera"
+      ],
       "keywords": [
         "刷新率",
         "扫描",
-        "IC"
+        "拍摄",
+        "IC",
+        "refresh rate",
+        "scan",
+        "camera"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-macroblock-news",
+        "web-chipone-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -733,22 +1271,39 @@
       "active": true
     },
     {
-      "question": "户外灯珠的亮度说法对应器件还是整屏？",
+      "question": "供应商说的亮度是灯珠亮度还是整屏亮度，怎么分清？",
+      "question_en": "How can I tell whether a supplier's brightness specification refers to an LED package or the complete display?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "户外招牌",
       "dimension": "部件",
-      "keywords": [
+      "keywords_zh": [
         "灯珠",
         "亮度",
         "整屏"
+      ],
+      "keywords_en": [
+        "brightness",
+        "LED package",
+        "display"
+      ],
+      "keywords": [
+        "灯珠",
+        "亮度",
+        "整屏",
+        "brightness",
+        "LED package",
+        "display"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-kinglight-news",
+        "web-nationstar-product-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -759,22 +1314,42 @@
       "active": true
     },
     {
-      "question": "前维护与后维护需要哪些现场空间和结构资料？",
+      "question": "我的安装位置适合前维护还是后维护，要留多大空间？",
+      "question_en": "Should I choose front or rear service for my installation, and how much maintenance space is needed?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "室内商显",
       "dimension": "维护",
+      "keywords_zh": [
+        "箱体",
+        "前维护",
+        "后维护",
+        "空间"
+      ],
+      "keywords_en": [
+        "cabinet",
+        "front service",
+        "rear service",
+        "maintenance"
+      ],
       "keywords": [
         "箱体",
         "前维护",
-        "后维护"
+        "后维护",
+        "空间",
+        "cabinet",
+        "front service",
+        "rear service",
+        "maintenance"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -785,22 +1360,40 @@
       "active": true
     },
     {
-      "question": "交通VMS项目需要整理哪些公开标准和适用范围？",
+      "question": "交通 VMS 屏用于我的项目，需要符合哪些当地标准？",
+      "question_en": "Which local standards apply to a variable message sign for my road project?",
       "roles": [
         "租赁公司/政府与交通"
       ],
       "scenario": "交通VMS",
       "dimension": "场景",
-      "keywords": [
-        "VMS",
+      "keywords_zh": [
         "交通",
-        "标准"
+        "标准",
+        "当地"
+      ],
+      "keywords_en": [
+        "VMS",
+        "variable message sign",
+        "traffic",
+        "standard"
+      ],
+      "keywords": [
+        "交通",
+        "标准",
+        "当地",
+        "VMS",
+        "variable message sign",
+        "traffic",
+        "standard"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -811,22 +1404,40 @@
       "active": true
     },
     {
-      "question": "交通显示的可读性应结合哪些现场条件说明？",
+      "question": "司机在多远能看清交通 VMS 屏，选屏要考虑什么？",
+      "question_en": "How far away can drivers read a variable message sign, and what should I consider when choosing one?",
       "roles": [
         "租赁公司/政府与交通"
       ],
       "scenario": "交通VMS",
       "dimension": "工况",
-      "keywords": [
-        "VMS",
+      "keywords_zh": [
         "可读性",
-        "观看"
+        "观看",
+        "距离"
+      ],
+      "keywords_en": [
+        "VMS",
+        "legibility",
+        "viewing distance",
+        "traffic"
+      ],
+      "keywords": [
+        "可读性",
+        "观看",
+        "距离",
+        "VMS",
+        "legibility",
+        "viewing distance",
+        "traffic"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -837,22 +1448,43 @@
       "active": true
     },
     {
-      "question": "DOOH内容更新与夜间运行需要怎样的运营条件？",
+      "question": "DOOH 屏怎么安排换广告和夜间播放，营业时间外要注意什么？",
+      "question_en": "How should I schedule ad changes and nighttime playback on a DOOH display, including outside business hours?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "DOOH",
       "dimension": "场景",
-      "keywords": [
-        "DOOH",
+      "keywords_zh": [
         "夜间",
-        "运营"
+        "运营",
+        "广告",
+        "排期"
+      ],
+      "keywords_en": [
+        "DOOH",
+        "scheduling",
+        "night",
+        "playback"
+      ],
+      "keywords": [
+        "夜间",
+        "运营",
+        "广告",
+        "排期",
+        "DOOH",
+        "scheduling",
+        "night",
+        "playback"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-oaaa-news",
+        "web-huidu-hdplayer"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -863,22 +1495,44 @@
       "active": true
     },
     {
-      "question": "远程播放系统需要记录哪些权限和维护职责？",
+      "question": "多块屏远程发节目，谁能改内容、谁负责维护，怎么设置？",
+      "question_en": "How should I set up content editing permissions and maintenance responsibilities for remotely managed LED displays?",
       "roles": [
         "终端业主/广告媒体主"
       ],
       "scenario": "室内商显",
       "dimension": "维护",
+      "keywords_zh": [
+        "远程",
+        "播放",
+        "权限",
+        "维护"
+      ],
+      "keywords_en": [
+        "remote",
+        "playback",
+        "permissions",
+        "maintenance"
+      ],
       "keywords": [
         "远程",
         "播放",
-        "权限"
+        "权限",
+        "维护",
+        "remote",
+        "playback",
+        "permissions",
+        "maintenance"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-huidu-hdplayer",
+        "web-colorlight-software",
+        "web-novastar-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -889,22 +1543,41 @@
       "active": true
     },
     {
-      "question": "租赁项目的拆装与交付检查应提供哪些工程资料？",
+      "question": "租赁屏反复拆装，交给下一场活动前该检查什么？",
+      "question_en": "What should I check before handing a rental LED display over to the next event after repeated assembly and dismantling?",
       "roles": [
         "租赁公司/政府与交通"
       ],
       "scenario": "租赁舞台",
       "dimension": "维护",
-      "keywords": [
+      "keywords_zh": [
         "租赁",
         "拆装",
         "交付"
+      ],
+      "keywords_en": [
+        "rental",
+        "assembly",
+        "inspection",
+        "event"
+      ],
+      "keywords": [
+        "租赁",
+        "拆装",
+        "交付",
+        "rental",
+        "assembly",
+        "inspection",
+        "event"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "rss-ledinside-news",
+        "web-colorlight-news"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
@@ -915,23 +1588,46 @@
       "active": true
     },
     {
-      "question": "供应商换了灯珠、IC或电源，原方案要重核什么？",
+      "question": "供应商换了灯珠、IC 或电源，原方案哪些地方要重新确认？",
+      "question_en": "What should I recheck in my LED display design if the supplier changes the LED packages, driver ICs or power supplies?",
       "roles": [
         "集成商/安装商/招牌制作商"
       ],
       "scenario": "项目采购",
       "dimension": "部件",
-      "keywords": [
+      "keywords_zh": [
         "灯珠",
-        "IC",
         "电源",
         "变更"
+      ],
+      "keywords_en": [
+        "IC",
+        "LED package",
+        "driver",
+        "power supply",
+        "replacement"
+      ],
+      "keywords": [
+        "灯珠",
+        "电源",
+        "变更",
+        "IC",
+        "LED package",
+        "driver",
+        "power supply",
+        "replacement"
       ],
       "content_type": "explainer",
       "requires_first_party": false,
       "existing_url": "",
       "existing_url_provenance": "operator_entered",
-      "source_ids": [],
+      "source_ids": [
+        "web-kinglight-news",
+        "web-nationstar-product-news",
+        "web-macroblock-news",
+        "web-chipone-news",
+        "web-meanwell-new-products"
+      ],
       "condition_refs": [],
       "demand_evidence": [
         {
