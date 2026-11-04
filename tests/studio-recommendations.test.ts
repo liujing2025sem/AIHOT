@@ -9,6 +9,7 @@ import { createStudioTask,bindStudioTaskMaterials,exportStudioTask,generateStudi
 import { importDemandCsv } from '@aihot/backend/admin/studio-demand';
 import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
 import { importSearchSignals } from '@aihot/backend/admin/studio-search-signals';
+import preview from './fixtures/editorial-preview-20261103.json' with {type:'json'};
 const suffix=tag(),actor=`test:recommendations:${suffix}`,source='web-macroblock-news';
 after(closeDb);
 beforeEach(async()=>{
@@ -20,6 +21,13 @@ async function material(id:string,body='The manufacturer describes LED power con
   await sql`INSERT INTO sources(id,name,kind,enabled,first_party) VALUES(${sourceId},'Synthetic planning source',${external?'external':'web_list'},false,${external}) ON CONFLICT(id) DO NOTHING`;
   await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,body_text) VALUES(${id},${sourceId},${id},${`https://example.com/${id}`},'LED power supply update',now(),now(),now(),'ok',${body})`;
   return id;
+}
+async function importVersionHistory(){
+  const entries=preview.previews.filter(p=>['web-huidu-hdplayer','web-colorlight-software','web-colorlight-ledvision','web-colorlight-firmware'].includes(p.id)).flatMap(p=>p.output.items.map((entry,i)=>({...entry,source_id:p.id,id:`history-${suffix}-${p.id}-${i}`})));
+  assert.equal(entries.length,22);
+  for(const sourceId of new Set(entries.map(entry=>entry.source_id)))await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${sourceId},${sourceId},'web_list',false)`;
+  for(const entry of entries)await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,backfill_reason) VALUES(${entry.id},${entry.source_id},${entry.id},${entry.url},${entry.title},now(),now(),${entry.publishedAt},'pending','first-import')`;
+  return entries;
 }
 test('cards require an explicit capacity, reuse the same version, require rejection reason, and adopt atomically once',async()=>{
   await material(`card-material-${suffix}`);
@@ -80,6 +88,56 @@ test('undated title-only versions are discovered once and body completion refres
   assert.equal((await refreshRecommendations(actor)).created,1);
   const changed=(await recommendationOverview()).rows.filter(c=>c.article_id===id);assert.equal(changed.length,2);
   assert.equal(changed.find(c=>c.id===first.id)!.stale,true);assert.equal(changed.find(c=>!c.stale)!.document.trigger,'E');
+});
+
+test('R1-0 refresh carries first-import history: 22 real records produce zero cards, then synthetic undated V9.8 produces one E once',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  const entries=await importVersionHistory();
+  const first=await refreshRecommendations(actor);
+  assert.equal(first.scanned,22);assert.equal(first.candidates,0);assert.equal(first.created,0);
+  let overview=await recommendationOverview();
+  assert.equal(overview.historicalVersionCount,22);assert.equal(overview.rows.length,0);
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  const original=entries.find(entry=>entry.title==='LEDVISION V9.7')!,id=`synthetic-ledvision-v9-8-${suffix}`;
+  // Synthetic counterfactual only: fixture URL reused, no invented publication date or source body.
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status) VALUES(${id},${original.source_id},${id},${original.url},'LEDVISION V9.8',now(),now(),NULL,'pending')`;
+  const next=await refreshRecommendations(actor);
+  assert.equal(next.candidates,1);assert.equal(next.created,1);
+  overview=await recommendationOverview();
+  assert.equal(overview.historicalVersionCount,22);assert.equal(overview.rows.length,1);
+  const card=overview.rows[0];
+  assert.equal(card.article_id,id);assert.equal(card.document.trigger,'E');assert.equal(card.document.evidence[0].date,null);
+  assert.equal(card.document.evidence[0].url,original.url);assert.equal(card.document.evidence[0].after,'LEDVISION V9.8');
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  overview=await recommendationOverview();
+  assert.equal(overview.historicalVersionCount,22);assert.deepEqual(overview.rows.map(row=>row.id),[card.id]);
+});
+
+test('R1-0 refresh suppresses same-version historical body completion but allows a same-item synthetic V9.8 with the persistent marker',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  const entries=await importVersionHistory(),original=entries.find(entry=>entry.title==='LEDVISION V9.7')!;
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  await sql`INSERT INTO article_revisions(article_id,revision,title,body_text) SELECT id,revision,title,body_text FROM articles WHERE id=${original.id}`;
+  // Synthetic completion control uses the real title as body, not invented source paragraphs.
+  await sql`UPDATE articles SET revision=2,body_status='ok',body_text=title,updated_at=now() WHERE id=${original.id}`;
+  const completed=await refreshRecommendations(actor);
+  assert.equal(completed.candidates,0);assert.equal(completed.created,0);assert.equal((await recommendationOverview()).rows.length,0);
+  await sql`INSERT INTO article_revisions(article_id,revision,title,body_text) SELECT id,revision,title,body_text FROM articles WHERE id=${original.id}`;
+  await sql`UPDATE articles SET revision=3,title='LEDVISION V9.8',body_text=NULL,body_status='pending',updated_at=now() WHERE id=${original.id}`;
+  const changed=await refreshRecommendations(actor);
+  assert.equal(changed.candidates,1);assert.equal(changed.created,1);
+  assert.equal((await sql`SELECT backfill_reason FROM articles WHERE id=${original.id}`)[0].backfill_reason,'first-import');
+  const overview=await recommendationOverview();
+  assert.equal(overview.historicalVersionCount,22);assert.equal(overview.rows.length,1);
+  assert.equal(overview.rows[0].article_id,original.id);assert.equal(overview.rows[0].document.trigger,'E');
+  assert.equal(overview.rows[0].document.evidence[0].date,null);
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  assert.deepEqual((await recommendationOverview()).rows.map(row=>row.id),overview.rows.map(row=>row.id));
+  await sql`INSERT INTO article_revisions(article_id,revision,title,body_text) SELECT id,revision,title,body_text FROM articles WHERE id=${original.id}`;
+  await sql`UPDATE articles SET revision=4,body_text=title,body_status='ok',updated_at=now() WHERE id=${original.id}`;
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  const filled=(await recommendationOverview()).rows[0];
+  assert.equal(filled.id,overview.rows[0].id);assert.equal(filled.article_revision,4);assert.equal(filled.stale,false);
 });
 
 test('news ages out on overview and adoption without needing another refresh, and stays readable',async()=>{

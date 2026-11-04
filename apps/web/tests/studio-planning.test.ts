@@ -8,14 +8,14 @@ import path from 'node:path';
 for(const width of [1440,390])test(`editorial cards show the change and missing evidence above the fold at ${width}`,async()=>{
   let bound=false,adopted=false;
   const card={id:'card-fixture',status:'pending',task_id:null,stale:false,completed:false,baseline_found:null,capacity_full:false,document:{trigger:'A',title:'MBI123刷新率变化影响什么？',change:'1920 Hz → 3840 Hz',reason:'合成控制对照，不是业务结果。',action:'update_page',channels:['blog','social'],existing_url:'https://chipshow.com/refresh',requires_first_party:false,needs_material:true,demand_mentions:2,evidence:[{url:'https://maker.example.test/ic',date:'2026-11-03',revision:2,before:'MBI123 refresh rate is 1920 Hz.',after:'MBI123 refresh rate is 3840 Hz.'}],affected_page:{url:'https://chipshow.com/refresh',paragraph:'The existing page cites MBI123 at 1920 Hz.',article_id:'old-page',revision:1},evidence_checklist:{source_body:true,existing_page_body:false,first_party:null}}};
-  const version={...card,id:'version-fixture',document:{...card.document,trigger:'E',title:'LEDVISION V9.7 升级前检查什么？',change:'LEDVISION V9.7',action:'new_tutorial',existing_url:'',requires_first_party:true,affected_page:null,evidence:[{url:'https://maker.example.test/ledvision',date:null,discovered_at:'2026-11-03T08:30:00Z',revision:1,after:'LEDVISION V9.7'}],evidence_checklist:{source_body:false,existing_page_body:null,first_party:false}}};
+  const version={...card,id:'version-fixture',document:{...card.document,trigger:'E',title:'LEDVISION V9.8 升级前检查什么？',change:'LEDVISION V9.8',action:'new_tutorial',existing_url:'',requires_first_party:true,affected_page:null,evidence:[{url:'https://maker.example.test/ledvision',date:null,discovered_at:'2026-11-03T08:30:00Z',revision:1,after:'LEDVISION V9.8'}],evidence_checklist:{source_body:false,existing_page_body:null,first_party:false}}};
   const expired={...card,id:'expired-news',expired:true,document:{...card.document,trigger:'D',title:'八天前的短讯',action:'new_brief',existing_url:'',affected_page:null,evidence:[{url:'https://maker.example.test/old-news',date:'2026-10-26',revision:1,after:'An earlier LED announcement.'}],evidence_checklist:{source_body:true,existing_page_body:null,first_party:null}}};
   const api=fakeApi(async(url,_res,req)=>{
     let input='';for await(const chunk of req)input+=chunk;
     if(url.pathname==='/api/admin/me')return {name:'Synthetic operator',csrf:'fixture',dev:false};
     if(url.pathname.endsWith('/materials')&&req.method==='POST'){bound=true;card.document.evidence_checklist.existing_page_body=true;return {id:card.id};}
     if(url.pathname.endsWith('/decision')){adopted=true;return {task_id:'fixture-task'};}
-    if(url.pathname.endsWith('/recommendations'))return {rows:[{...card,id:'old-card',stale:true,document:{...card.document,title:'已过期的旧版'}},card,version,expired],weeklyLimit:5,lookbackDays:30,pendingCount:2,activeCount:2,capacityFullCount:0,ownershipConfigured:true,metrics:{total:4,adopted:0,rejected:0,adoptionRate:null,update_opportunities:1,updates_completed:0,baseline_missed_updates:0,baseline_unknown:1,denominator:'采纳+否决',reasons:[]},note:'合成检查'};
+    if(url.pathname.endsWith('/recommendations'))return {rows:[{...card,id:'old-card',stale:true,document:{...card.document,title:'已过期的旧版'}},card,version,expired],weeklyLimit:5,lookbackDays:30,pendingCount:2,activeCount:2,capacityFullCount:0,historicalVersionCount:22,ownershipConfigured:true,metrics:{total:4,adopted:0,rejected:0,adoptionRate:null,update_opportunities:1,updates_completed:0,baseline_missed_updates:0,baseline_unknown:1,denominator:'采纳+否决',reasons:[]},note:'合成检查'};
     if(url.pathname.endsWith('/questions'))return {rows:[],options:{roles:['未知'],dimensions:['部件'],sources:[]}};
     if(url.pathname.endsWith('/demand/profiles'))return {groups:[],lastImportedAt:null,totals:{recordCount:0,groupCount:0},countingBasis:'登记提及'};
     if(url.pathname.endsWith('/demand/batches'))return {rows:[]};
@@ -28,6 +28,7 @@ for(const width of [1440,390])test(`editorial cards show the change and missing 
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width,height:900}}),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     await visit(page,web.origin+'/admin/studio/planning');
+    await expect(page.getByText(/已记录 22 个历史版本/)).toBeVisible();
     await expect(page.getByRole('heading',{name:'已过期的旧版',exact:true})).toHaveCount(0);
     const first=page.getByRole('heading',{name:card.document.title}).locator('xpath=ancestor::section[1]');
     await expect(first).toBeVisible();const change=first.getByTitle(card.document.evidence[0].before,{exact:true});await expect(change).toBeVisible();

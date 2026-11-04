@@ -17,7 +17,7 @@ const invalid=(message:string):never=>{throw Object.assign(new Error(message),{s
 const policyKey='studio.recommendations.weekly_limit';
 const daysKey='studio.recommendations.lookback_days',refreshKey='studio.recommendations.last_refresh';
 const plain=(s:string)=>s.replace(/\s+/g,' ').trim();
-export type PlanningMaterial={id:string;revision:number;title:string;body_text:string|null;body_status:string;url:string;source_id:string;published_at:string|Date|null;discovered_at?:string|Date|null;previous_revision?:number|null;previous_title?:string|null;previous_body?:string|null;first_party?:boolean;source_kind?:string;reference_only?:boolean};
+export type PlanningMaterial={id:string;revision:number;title:string;body_text:string|null;body_status:string;url:string;source_id:string;published_at:string|Date|null;discovered_at?:string|Date|null;backfill_reason?:string|null;imported_title?:string|null;previous_revision?:number|null;previous_title?:string|null;previous_body?:string|null;first_party?:boolean;source_kind?:string;reference_only?:boolean};
 export type Recommendation={key:string;trigger:'A'|'E'|'B'|'C'|'D';question_id:string|null;article_id:string|null;article_revision:number|null;title:string;change:string;evidence:{url:string;date:string|null;discovered_at?:string|null;revision:number|null;before?:string;after?:string;query?:string}[];reason:string;action:'new_brief'|'new_explainer'|'new_tutorial'|'update_page';channels:string[];existing_url:string;requires_first_party:boolean;needs_material:boolean;demand_mentions:number;priority:number;bound_article_ids?:string[];evidence_checklist?:{source_body:boolean;existing_page_body:boolean|null;first_party:boolean|null};affected_page?:{url:string;paragraph:string|null;article_id:string|null;revision:number|null}|null};
 type RecommendationCounts={total:number;adopted:number;rejected:number;update_opportunities:number;updates_completed:number;baseline_missed_updates:number;baseline_unknown:number};
 type StoredRecommendation={id:string;status:string;created_at:Date;document:Recommendation;stale?:boolean;article_id:string|null;article_revision:number|null;current_revision?:number|null;question_id:string|null;task_id:string|null;baseline_found:boolean|null;completed:boolean;[key:string]:unknown};
@@ -57,6 +57,9 @@ export function planRecommendations(input:{questions:StudioQuestionRow[];materia
     const hasPrevious=!!material.previous_title||!!material.previous_body;
     const isVersion=(versionSource||/NovaLCT|ViPlex|LEDVISION|LEDStudio|HDPlayer|firmware|固件|软件版本/i.test(text))&&currentVersions.length>0;
     const hasVersionChange=hasPrevious&&currentVersions.some(v=>!previousVersions.includes(v));
+    // The first revision keeps the baseline even after a later version receives body-only edits.
+    const importedVersions=versions(material.imported_title??material.previous_title??material.title);
+    if(versionSource&&material.backfill_reason==='first-import'&&!changed&&!currentVersions.some(v=>!importedVersions.includes(v)))continue;
     const best=changed?.q??ranked[0]?.q;
     const trigger:Recommendation['trigger']|null=changed?'A':isVersion&&(hasVersionChange||fresh&&(!hasPrevious||versionSource)||versionSource&&!date)?'E':fresh&&(!!best||!!editorialTopic(text))?'D':null;
     if(!trigger)continue;
@@ -106,6 +109,7 @@ async function cardMaterials(cards:Recommendation[],db=sql){
 export async function recommendationOverview(){
   const [setting]=await sql`SELECT value FROM settings WHERE key=${policyKey}`;
   const [days]=await sql`SELECT value FROM settings WHERE key=${daysKey}`;
+  const [history]=await sql<{n:number}[]>`SELECT count(*)::int AS n FROM articles WHERE source_id=ANY(${editorialVersionSourceIds}) AND backfill_reason='first-import'`;
   const rows=await sql<StoredRecommendation[]>`SELECT r.*,CASE WHEN r.document->>'article_id' IS NOT NULL THEN a.id IS NULL OR a.revision<>r.article_revision ELSE false END AS stale FROM studio_recommendations r LEFT JOIN articles a ON a.id=r.article_id ORDER BY (r.document->>'priority')::int,r.created_at DESC,r.id`;
   const material=await cardMaterials(rows.map(r=>r.document));
   const questions=await studioQuestions();
@@ -116,7 +120,7 @@ export async function recommendationOverview(){
     count(*) FILTER(WHERE document->>'action'='update_page' AND baseline_found IS NULL)::int AS baseline_unknown FROM studio_recommendations`;
   const reasons=await sql`SELECT rejection_reason AS reason,count(*)::int AS count FROM studio_recommendations WHERE status='rejected' GROUP BY rejection_reason ORDER BY count(*) DESC,rejection_reason`;
   const decided=counts.adopted+counts.rejected;
-  return {...queue,lookbackDays:days?.value??null,ownershipConfigured:editorialOwnedDomains.length>0,weeklyLimit:setting?.value??null,metrics:{...counts,adoptionRate:decided?counts.adopted/decided:null,denominator:'采纳数+否决数；稍后再看与未处理不计分母',reasons},note:'人工分钟和调用成本继续由现有回执记录，不作为本期验收门槛。'};
+  return {...queue,historicalVersionCount:history.n,lookbackDays:days?.value??null,ownershipConfigured:editorialOwnedDomains.length>0,weeklyLimit:setting?.value??null,metrics:{...counts,adoptionRate:decided?counts.adopted/decided:null,denominator:'采纳数+否决数；稍后再看与未处理不计分母',reasons},note:'人工分钟和调用成本继续由现有回执记录，不作为本期验收门槛。'};
 }
 export async function setRecommendationCapacity(input:unknown,actor:string){
   const body=z.object({weekly_limit:z.number().int().min(5).max(15),lookback_days:z.number().int().positive().optional()}).strict().parse(input);
@@ -131,8 +135,9 @@ export async function refreshRecommendations(actor:string){
   if(!days)invalid('先由运营设置回看天数，再整理建议。');
   const [last]=await sql`SELECT value FROM settings WHERE key=${refreshKey}`;
   const scanAt=new Date().toISOString(),questions=await studioQuestions(),allowed=[...new Set([...editorialSourceIds,...questions.rows.flatMap(q=>q.document.source_ids)])];
-  const materials=allowed.length?await sql<PlanningMaterial[]>`SELECT a.id,a.revision,a.title,a.body_text,a.body_status,a.url,a.source_id,a.published_at,a.discovered_at,s.first_party,s.kind AS source_kind,old.revision AS previous_revision,old.title AS previous_title,old.body_text AS previous_body
+  const materials=allowed.length?await sql<PlanningMaterial[]>`SELECT a.id,a.revision,a.title,a.body_text,a.body_status,a.url,a.source_id,a.published_at,a.discovered_at,a.backfill_reason,initial.title AS imported_title,s.first_party,s.kind AS source_kind,old.revision AS previous_revision,old.title AS previous_title,old.body_text AS previous_body
     FROM articles a JOIN sources s ON s.id=a.source_id LEFT JOIN LATERAL(SELECT revision,title,body_text FROM article_revisions WHERE article_id=a.id AND revision<a.revision ORDER BY revision DESC LIMIT 1) old ON true
+    LEFT JOIN LATERAL(SELECT title FROM article_revisions WHERE article_id=a.id AND a.backfill_reason='first-import' ORDER BY revision LIMIT 1) initial ON true
     WHERE a.source_id=ANY(${allowed}) AND (a.updated_at>COALESCE(${last?.value??null}::timestamptz,${scanAt}::timestamptz-${days.value}*interval '1 day') OR COALESCE(a.published_at,a.discovered_at)>=${scanAt}::timestamptz-${days.value}*interval '1 day')`:[];
   const pages=await cardMaterials(questions.rows.filter(q=>q.document.existing_url).map(q=>({existing_url:q.document.existing_url} as Recommendation)));
   const [profiles,search]=await Promise.all([demandProfiles(),sql`SELECT s.record,s.batch_id FROM studio_search_signals s JOIN studio_import_batches b ON b.id=s.batch_id ORDER BY b.created_at DESC,s.id`]);

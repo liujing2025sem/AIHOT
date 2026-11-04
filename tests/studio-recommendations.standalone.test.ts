@@ -55,6 +55,35 @@ test('real undated LEDVISION titles create version cards with discovery dates, n
   }
 });
 
+const versionHistory=preview.previews.filter(p=>['web-huidu-hdplayer','web-colorlight-software','web-colorlight-ledvision','web-colorlight-firmware'].includes(p.id)).flatMap(p=>p.output.items.map((entry,i)=>material({id:`history-${p.id}-${i}`,source_id:p.id,title:entry.title,url:entry.url,published_at:entry.publishedAt,backfill_reason:'first-import',body_text:null,body_status:'pending'})));
+
+test('R1-0 real first-import version history: 22 records create no cards; one synthetic undated V9.8 creates only one E',()=>{
+  assert.equal(versionHistory.length,22);
+  assert.equal(new Set(versionHistory.map(row=>row.source_id)).size,4);
+  assert.deepEqual(versionHistory.filter(row=>row.source_id==='web-colorlight-firmware').map(row=>row.title),['U6 Max','U9 Max','U15 Max']);
+  assert.deepEqual(plan([],versionHistory),[],'first-import history cannot fall back to any material card');
+  const original=versionHistory.find(row=>row.title==='LEDVISION V9.7')!;
+  // Synthetic counterfactual, not a real release/download: retain the fixture URL and unknown publication date.
+  const next={...original,id:'synthetic-ledvision-v9-8',title:'LEDVISION V9.8',backfill_reason:null};
+  const cards=plan([],[...versionHistory,next]);
+  assert.equal(cards.length,1);assert.equal(cards[0].trigger,'E');assert.equal(cards[0].article_id,next.id);
+  assert.equal(cards[0].evidence[0].date,null);assert.equal(cards[0].evidence[0].url,original.url);assert.equal(cards[0].evidence[0].after,next.title);
+});
+
+test('R1-0 first-import marker survives a synthetic same-item version change, while same-version body completion stays quiet',()=>{
+  const original=versionHistory.find(row=>row.title==='LEDVISION V9.7')!;
+  // Synthetic body-completion control reuses the fixture title; it is not fetched source body evidence.
+  const completed={...original,revision:2,previous_revision:1,previous_title:original.title,previous_body:null,body_status:'ok',body_text:original.title};
+  assert.deepEqual(plan([],[completed]),[]);
+  const changed={...completed,title:'LEDVISION V9.8',body_text:null,body_status:'pending'}; // Synthetic counterfactual.
+  const cards=plan([],[changed]);
+  assert.equal(changed.backfill_reason,'first-import');
+  assert.equal(cards.length,1);assert.equal(cards[0].trigger,'E');assert.equal(cards[0].article_id,original.id);
+  assert.equal(cards[0].evidence[0].date,null);
+  const filledNewVersion={...changed,revision:3,imported_title:original.title,previous_title:changed.title,body_status:'ok',body_text:changed.title};
+  assert.equal(plan([],[filledNewVersion])[0].key,cards[0].key,'body edits of a post-import version retain that version card');
+});
+
 test('uppercase version changes work without a body; undated ordinary news and unchanged versions do not become releases',()=>{
   const question=q({keywords:['LEDVISION']});
   const row=material({title:'LEDVISION V9.7',body_text:null,body_status:'pending',source_id:'web-colorlight-news'});
