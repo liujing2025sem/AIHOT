@@ -22,7 +22,7 @@ export const packetSchema = z.object({
     body_status: z.string(), body_text: z.string().nullable(),
   }).strict()).max(12),
   draft_article_ids: z.array(safeId),
-  editorial_plan:z.object({card_id:safeId,question_id:z.string().nullable(),action:z.enum(['new_brief','new_explainer','new_tutorial','update_page']),question:z.string().min(1),existing_url:z.string(),requires_first_party:z.boolean()}).strict().optional(),
+  editorial_plan:z.object({card_id:safeId,question_id:z.string().nullable(),selection_origin:z.enum(['operator','automatic']).optional(),action:z.enum(['new_brief','new_explainer','new_tutorial','update_page']),question:z.string().min(1),existing_url:z.string(),requires_first_party:z.boolean()}).strict().optional(),
   reader_profile: z.object({countingBasis:z.string(),lastImportedAt:z.string().nullable(),totals:z.object({recordCount:z.number().int().nonnegative(),groupCount:z.number().int().nonnegative()}).strict(),descriptions:z.array(z.string()).max(20)}).strict().optional(),
   editorial_policy: z.object({ version: z.string(), publication_site: z.literal('chipshow.com'), placement: z.literal('blog'), public_language: z.literal('en'), review_language: z.literal('zh'), directions: z.array(z.string()), daily_digest: z.literal(true), allow_unconfirmed: z.literal(true), canonical_path: z.null() }).strict().optional(),
   methods: z.object({ status: z.enum(['connected','not_configured','unavailable']), ruleIds: z.array(z.string()), text: z.string(), provenance: z.record(z.string(),z.unknown()), reason: z.string().optional() }).optional(),
