@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql, type Db } from '../db.ts';
 import { audit } from '../audit.ts';
+import { sha256 } from '../lib/ids.ts';
 import { parseDemandCsv, type DemandCsvIssue, type DemandRecord } from './studio-demand-csv.ts';
 
 export type StudioImportKind = 'inquiry' | 'gsc' | 'semrush';
@@ -20,15 +21,24 @@ export async function importDemandCsv(input: { csv: string; filename?: string },
   const parsed = parseDemandCsv(input.csv);
   if (!parsed.ok) throw new DemandCsvError(parsed.errors);
   const id = `studio-import-${randomUUID()}`;
+  const fingerprint=sha256(JSON.stringify(parsed.records.map(record=>JSON.stringify(Object.fromEntries(Object.entries(record).sort(([a],[b])=>a.localeCompare(b))))).sort()));
   // Validate the entire batch before the first query. Filename and rejected cells never enter the audit.
   return sql.begin(async tx => {
-    const [batch] = await tx<StudioImportBatch[]>`INSERT INTO studio_import_batches (id, kind, row_count, created_by)
-      VALUES (${id}, 'inquiry', ${parsed.records.length}, ${actor}) RETURNING id, kind, row_count, created_by, created_at`;
+    const [overlap]=await tx`SELECT count(*)::int AS n FROM jsonb_array_elements(${tx.json(parsed.records)}::jsonb) incoming(record)
+      WHERE EXISTS(SELECT 1 FROM studio_demand_signals s WHERE s.record=incoming.record)`;
+    // Legacy batches have no fingerprint. Compare their complete multiset without changing stored rows.
+    const [legacy]=await tx`SELECT b.id FROM studio_import_batches b JOIN studio_demand_signals s ON s.batch_id=b.id
+      WHERE b.kind='inquiry' AND b.content_fingerprint IS NULL GROUP BY b.id
+      HAVING jsonb_agg(s.record ORDER BY s.record::text)=(SELECT jsonb_agg(value ORDER BY value::text) FROM jsonb_array_elements(${tx.json(parsed.records)}::jsonb)) LIMIT 1`;
+    if(legacy)throw Object.assign(new Error('相同内容的需求批次已存在，整批未导入。'),{statusCode:400});
+    const [batch] = await tx<StudioImportBatch[]>`INSERT INTO studio_import_batches (id, kind, row_count, created_by,content_fingerprint)
+      VALUES (${id}, 'inquiry', ${parsed.records.length}, ${actor},${fingerprint}) ON CONFLICT DO NOTHING RETURNING id, kind, row_count, created_by, created_at`;
+    if(!batch)throw Object.assign(new Error('相同内容的需求批次已存在，整批未导入。'),{statusCode:400});
     const rows = parsed.records.map(record => ({ id: `studio-demand-${randomUUID()}`, batch_id: id, record: tx.json(record) }));
     await tx`INSERT INTO studio_demand_signals ${tx(rows, 'id', 'batch_id', 'record')}`;
     await audit(actor, 'studio.import.create', `studio-import:${id}`, null, null,
       { kind: 'inquiry', row_count: parsed.records.length }, { db: tx });
-    return batch;
+    return {...batch,overlapping_rows:overlap.n};
   });
 }
 

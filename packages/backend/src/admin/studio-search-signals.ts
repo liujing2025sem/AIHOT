@@ -5,7 +5,7 @@ import { sql } from '../db.ts';
 import { audit } from '../audit.ts';
 import { readCsv, piiCode } from './studio-demand-csv.ts';
 const invalid=(message:string):never=>{throw Object.assign(new Error(message),{statusCode:400});};
-export type SearchSignal={kind:'gsc'|'semrush';query:string;page:string;position:number;impressions:number|null;clicks:number|null;volume:number|null;period:string|null};
+export type SearchSignal={kind:'gsc'|'semrush';query:string;page:string;position:number;impressions:number|null;clicks:number|null;volume:number|null;period:string|null;batch_id?:string};
 const aliases:Record<string,string>={query:'query',queries:'query','热门查询':'query','查询':'query',keyword:'query','关键词':'query',page:'page',url:'page','网页':'page','着陆页':'page',position:'position','排名':'position','平均排名':'position',impressions:'impressions','展示':'impressions','展示次数':'impressions',clicks:'clicks','点击':'clicks','点击次数':'clicks',volume:'volume','search volume':'volume','搜索量':'volume',period:'period','数据期':'period',ctr:'ignored'};
 function publicUrl(value:string){try{const u=new URL(value);return /^https?:$/.test(u.protocol)&&!u.username&&!u.password;}catch{return false;}}
 export function parseSearchSignals(kind:'gsc'|'semrush',csv:string):SearchSignal[]{

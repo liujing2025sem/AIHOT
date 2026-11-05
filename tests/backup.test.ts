@@ -19,6 +19,14 @@ import { runBackup } from "@aihot/backend/operations/backup";
 import { submitFeedback } from "@aihot/backend/operations/feedback";
 
 const run = promisify(execFile);
+// A9 probes on Windows 10.0.26200 / Node v24.22.1, 2026-11-03:
+// SIGTERM kills without invoking the handler; SIGSTOP/SIGCONT throw ERR_UNKNOWN_SIGNAL;
+// execFile of an extensionless shebang fixture returns ENOENT; the self-symlink returns EPERM.
+// These exceptions concern the actual fixture mechanisms, not backup success/restore behavior.
+const posixSignals = { skip: process.platform === "win32" && "Requires delivered SIGTERM, SIGSTOP/SIGCONT and POSIX process-group cleanup; Windows probes terminate/ERR_UNKNOWN_SIGNAL" };
+const posixExecutable = { skip: process.platform === "win32" && "Requires executable shebang fixtures and POSIX PATH lookup; Windows execFile probe returns ENOENT" };
+const symlinkLoop = { skip: process.platform === "win32" && "This Windows host rejects the self-symlink fixture with EPERM, so it cannot exercise the required ELOOP; verify on POSIX" };
+
 const T = tag();
 const originalDataDir = config.dataDir;
 const originalFetch = globalThis.fetch;
@@ -144,7 +152,11 @@ test("both attachment roots restore nested paths and bytes, without caches or pr
 
 // One root present and the other absent is the first test (screenshots kept, uploads absent).
 for (const dirs of [[], ["uploads", "feedback-screenshots"]]) {
-  test(`missing/empty roots produce an extractable archive: ${dirs.join("+") || "neither"}`, async () => {
+  test(`missing/empty roots produce an extractable archive: ${dirs.join("+") || "neither"}`, {
+    // Actual Node 24 run: native Windows tar fails "Couldn\'t open /dev/null".
+    // runBackup uses -T /dev/null only when neither attachment root exists. Keep that assertion on POSIX.
+    skip: process.platform === "win32" && !dirs.length && "Native Windows tar cannot open the production empty-backup input /dev/null; verify the neither-root case on POSIX",
+  }, async () => {
     for (const dir of dirs) await mkdir(path.join(config.dataDir, dir));
     const summary = await runBackup(NOW);
     assert.equal(summary.uploaded, true);
@@ -154,7 +166,7 @@ for (const dirs of [[], ["uploads", "feedback-screenshots"]]) {
   });
 }
 
-test("an unreadable upload directory cannot become a successful empty backup", async () => {
+test("an unreadable upload directory cannot become a successful empty backup", symlinkLoop, async () => {
   assert.equal((await runBackup(NOW)).uploaded, true);
   const shipped = objects.size;
   const [last] = await sql`SELECT value FROM settings WHERE key = 'backup.last'`;
@@ -189,7 +201,7 @@ exec "$BACKUP_TEST_TAR" "$@"
   }
 }
 
-test("packing retries once and a successful retry preserves the screenshot", async () => {
+test("packing retries once and a successful retry preserves the screenshot", posixExecutable, async () => {
   await save("feedback-screenshots/retry.png");
   await withPackingFailures(1, async count => {
     assert.equal((await runBackup(NOW)).uploaded, true);
@@ -199,7 +211,7 @@ test("packing retries once and a successful retry preserves the screenshot", asy
   assert.deepEqual(await readFile(path.join(data, "feedback-screenshots/retry.png")), PNG);
 });
 
-test("persistent packing failure still sends the database and reports incomplete backup", async () => {
+test("persistent packing failure still sends the database and reports incomplete backup", posixExecutable, async () => {
   await save("feedback-screenshots/failure.png");
   await withPackingFailures(2, async count => {
     await assert.rejects(runBackup(NOW), /database backed up, but the file archive failed: fictional packing failure/);
@@ -222,7 +234,7 @@ test("local retention keeps three dump/archive pairs without deleting source att
   assert.deepEqual(await readFile(path.join(config.dataDir, "feedback-screenshots/retained.png")), PNG);
 });
 
-test("a failed database dump keeps connection credentials out of argv and the reported error", async () => {
+test("a failed database dump keeps connection credentials out of argv and the reported error", posixExecutable, async () => {
   const bin = path.join(config.dataDir, "dump-bin");
   await mkdir(bin);
   const captured = path.join(bin, "invocation.json");
@@ -268,7 +280,7 @@ process.exit(2);
 // A release must let the real dump/archive finish and record its uploaded pair before the worker exits.
 // Killing every process with SIGTERM used to interrupt pg_dump (and make tar need a second attempt).
 for (const phase of ["pg_dump", "tar"] as const) {
-  test(`worker stop drains a real ${phase} without terminating or restarting it`, { timeout: 30_000 }, async () => {
+  test(`worker stop drains a real ${phase} without terminating or restarting it`, { ...posixSignals, timeout: 30_000 }, async () => {
     const locked = await sql.reserve();
     await sql`CREATE TABLE IF NOT EXISTS backup_shutdown_probe (id integer)`;
     await locked`BEGIN`;
@@ -343,6 +355,8 @@ for (const phase of ["pg_dump", "tar"] as const) {
 }
 
 test("a real dump preserves libpq query parameter escaping", async () => {
+  // Exercise libpq on every platform without entering the unrelated /dev/null archive branch.
+  await save("uploads/query-options.bin", Buffer.from("fictional query parameter probe"));
   const originalUrl = config.databaseUrl;
   config.databaseUrl = `${originalUrl}${originalUrl.includes("?") ? "&" : "?"}options=-c%20statement_timeout%3D0&application_name=fictional%2Bbackup`;
   try { assert.equal((await runBackup(NOW)).uploaded, true); }
