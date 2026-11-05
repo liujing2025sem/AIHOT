@@ -69,18 +69,25 @@ export const TAG_SYNONYMS: Readonly<Record<string, string>> = {
 // ── 公司与主体 ──────────────────────────────────────────────────────────────────────────
 
 /**
- * 公司主题：id → 显示名、卡片上显示的标签（null 表示只用 entity:<id> 归类）、别名。
+ * 主体主题（公司、机构、媒体）：id → 显示名、卡片上显示的标签（null 表示只用 entity:<id> 归类）、别名。
  * aliases 给结构抽取模型看；orgNames 是这家公司发消息时开头用的组织名（公司、实验室、团队），
  * 在它自己的主题页上读者知道说的是谁，可以省去；otherNames 是公司的其他称呼（官方账号名、子品牌）。
  * 所有这些名字都用来认出说的是哪家公司，比如把事实的主体对到发布方。
  */
 export const ENTITIES: Record<string, { name: string; displayTag: string | null; aliases: string[]; orgNames?: string[]; otherNames?: string[] }> = {
   chipshow: { name: "Chipshow / 齐普", displayTag: null, aliases: ["Chipshow", "齐普光电", "齐普"], orgNames: ["Chipshow", "齐普光电", "齐普"] },
-  novastar: { name: "NovaStar / 诺瓦星云", displayTag: null, aliases: ["NovaStar", "诺瓦星云"], orgNames: ["NovaStar", "诺瓦星云"] },
-  nationstar: { name: "Nationstar / 国星光电", displayTag: null, aliases: ["Nationstar", "国星光电"], orgNames: ["Nationstar", "国星光电"] },
-  kinglight: { name: "Kinglight / 晶台光电", displayTag: null, aliases: ["Kinglight", "晶台光电"], orgNames: ["Kinglight", "晶台光电"] },
-  macroblock: { name: "Macroblock / 聚积科技", displayTag: null, aliases: ["Macroblock", "聚积科技", "聚積科技"], orgNames: ["Macroblock", "聚积科技", "聚積科技"] },
+  novastar: { name: "NovaStar / 诺瓦星云", displayTag: null, aliases: ["NovaStar", "诺瓦星云", "诺瓦"], orgNames: ["NovaStar", "诺瓦星云", "诺瓦"] },
+  nationstar: { name: "Nationstar / 国星光电", displayTag: null, aliases: ["Nationstar", "国星光电", "国星"], orgNames: ["Nationstar", "国星光电", "国星"] },
+  kinglight: { name: "Kinglight / 晶台光电", displayTag: null, aliases: ["Kinglight", "晶台光电", "晶台"], orgNames: ["Kinglight", "晶台光电", "晶台"] },
+  macroblock: { name: "Macroblock / 聚积科技", displayTag: null, aliases: ["Macroblock", "聚积科技", "聚積科技", "聚积", "聚積"], orgNames: ["Macroblock", "聚积科技", "聚積科技", "聚积", "聚積"] },
   meanwell: { name: "MEAN WELL / 明纬", displayTag: null, aliases: ["MEAN WELL", "MEANWELL", "明纬", "明緯"], orgNames: ["MEAN WELL", "明纬", "明緯"] },
+  colorlight: { name: "Colorlight / 卡莱特", displayTag: null, aliases: ["Colorlight", "卡莱特"], orgNames: ["Colorlight", "卡莱特"] },
+  chipone: { name: "Chipone / 集创北方", displayTag: null, aliases: ["Chipone", "集创北方"], orgNames: ["Chipone", "集创北方"] },
+  czcl: { name: "CZCL / 创联", displayTag: null, aliases: ["CZCL", "创联"], orgNames: ["CZCL", "创联"] },
+  "g-energy": { name: "G-energy / 巨能伟业", displayTag: null, aliases: ["G-energy", "巨能伟业"], orgNames: ["G-energy", "巨能伟业"] },
+  huidu: { name: "Huidu / 灰度科技", displayTag: null, aliases: ["Huidu", "灰度科技"], orgNames: ["Huidu", "灰度科技"] },
+  oaaa: { name: "OAAA / 户外广告协会", displayTag: null, aliases: ["OAAA"], orgNames: ["OAAA"] },
+  ledinside: { name: "LEDinside / 行业媒体", displayTag: null, aliases: ["LEDinside"], orgNames: ["LEDinside"] },
   daktronics: { name: "Daktronics / 达科", displayTag: null, aliases: ["Daktronics", "达科电子"], orgNames: ["Daktronics", "达科电子"] },
   "world-labs": { name: "World Labs", displayTag: null, aliases: ["World Labs"] },
   "thinking-machines": { name: "Thinking Machines Lab", displayTag: null, aliases: ["Thinking Machines"] },
@@ -108,11 +115,18 @@ export const ENTITIES: Record<string, { name: string; displayTag: string | null;
  */
 export const IDENTITY_LEXICON: ReadonlyArray<{ id: string; name: string; patterns: RegExp[] }> = [
   { id: "chipshow", name: "Chipshow / 齐普", patterns: [/\bchipshow\b/i, /齐普光电|齐普/u] },
-  { id: "novastar", name: "NovaStar / 诺瓦星云", patterns: [/\bnovastar\b/i, /诺瓦星云/u] },
-  { id: "nationstar", name: "Nationstar / 国星光电", patterns: [/\bnationstar\b/i, /国星光电/u] },
-  { id: "kinglight", name: "Kinglight / 晶台光电", patterns: [/\bkinglight\b/i, /晶台光电/u] },
-  { id: "macroblock", name: "Macroblock / 聚积科技", patterns: [/\bmacroblock\b/i, /聚[积積]科技/u] },
+  { id: "novastar", name: "NovaStar / 诺瓦星云", patterns: [/\bnovastar\b/i, /诺瓦(?:星云)?/u] },
+  { id: "nationstar", name: "Nationstar / 国星光电", patterns: [/\bnationstar\b/i, /国星(?:光电)?/u] },
+  { id: "kinglight", name: "Kinglight / 晶台光电", patterns: [/\bkinglight\b/i, /晶台(?:光电)?/u] },
+  { id: "macroblock", name: "Macroblock / 聚积科技", patterns: [/\bmacroblock\b/i, /聚[积積](?:科技)?/u] },
   { id: "meanwell", name: "MEAN WELL / 明纬", patterns: [/\bmeanwell\b/i, /\bMEAN\s+WELL\b/, /\bMean\s+Well\b/, /明[纬緯]/u] },
+  { id: "colorlight", name: "Colorlight / 卡莱特", patterns: [/\bcolorlight\b/i, /卡莱特/u] },
+  { id: "chipone", name: "Chipone / 集创北方", patterns: [/\bchipone\b/i, /集创北方/u] },
+  { id: "czcl", name: "CZCL / 创联", patterns: [/\bczcl\b/i, /创联/u] },
+  { id: "g-energy", name: "G-energy / 巨能伟业", patterns: [/\bg-energy\b/i, /巨能伟业/u] },
+  { id: "huidu", name: "Huidu / 灰度科技", patterns: [/\bhuidu\b/i, /灰度科技/u] },
+  { id: "oaaa", name: "OAAA / 户外广告协会", patterns: [/\boaaa\b/i] },
+  { id: "ledinside", name: "LEDinside / 行业媒体", patterns: [/\bledinside\b/i] },
   { id: "daktronics", name: "Daktronics / 达科", patterns: [/\bdaktronics\b/i, /达科电子/u] },
   { id: "openai", name: "OpenAI", patterns: [/openai|chatgpt|\bgpt-?[o\d]|\bsora\b|\bcodex\b/i] },
   { id: "anthropic", name: "Anthropic", patterns: [/anthropic|\bclaude\b/i, /\b(?:opus|sonnet|haiku)\s*\d+(?:[.\-]\d+)*\b/i, /\bfable\s*\d+(?:[.\-]\d+)*\b|\bmythos\b/i] },
@@ -174,3 +188,4 @@ export const IDENTITY_CONTEXT_ALIASES: ReadonlyArray<{ entityId: string; pattern
   { entityId: "meta", pattern: /@AIatMeta\b/i },
   { entityId: "zhipu", pattern: /\bZhipu(?:\s+AI\b|['’]s\b)/i },
 ];
+
