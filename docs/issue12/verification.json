@@ -1,0 +1,56 @@
+{
+  "baseline_commit": "12e3d92e18553dd7660c89a07860e950953057d8",
+  "scope": "independent pure policy candidate; no production integration",
+  "node": "24.22.1",
+  "command": "node --test tests/source-purpose-policy.standalone.test.ts",
+  "tests": 22,
+  "pass": 22,
+  "fail": 0,
+  "raw_log": "test-results.txt",
+  "not_run": [
+    "full repository typecheck",
+    "PostgreSQL integration suite",
+    "web build",
+    "UI screenshots",
+    "HTTP/model concurrency replay",
+    "production migration and rollback"
+  ],
+  "additional_check_note": "node --check on .ts rejected TypeScript syntax; this command is not a TypeScript checker. Node test runner executed the .ts files successfully. No typecheck claimed.",
+  "new_purposes": 68,
+  "enabled_new_purposes": 0,
+  "source_ids_preserved": 34,
+  "legacy_files_changed": 0,
+  "database_writes": 0,
+  "production_switch_changes": 0,
+  "model_calls": 0,
+  "artifacts": [
+    {
+      "path": "docs/issue12/DESIGN.md",
+      "sha256": "484cda87ad878ea8181676a4f591674e1ced0745b9eeda8ce433ea7dd11cad43"
+    },
+    {
+      "path": "docs/issue12/migration-inventory.json",
+      "sha256": "e2ebe41e0e6e8837775c2afd7669f199249cc7ed96bbc7b2941e6a8627627480"
+    },
+    {
+      "path": "docs/issue12/public-replays.json",
+      "sha256": "79dc8113874d8757083e50f42cf7d5db99ac8dc09cea08e3fd86c806cf4a3183"
+    },
+    {
+      "path": "docs/issue12/test-results.txt",
+      "sha256": "fed05b9a74c1531e7ab425a9be6967ce4e1f6241e2d906856b555e4d3268fb32"
+    },
+    {
+      "path": "industry/source-purposes.json",
+      "sha256": "8265200a91d7e840caf254b37a81c13f27726a51f3a3f3cf47da68e8bb128e59"
+    },
+    {
+      "path": "site/source-purpose-policy.ts",
+      "sha256": "1f3705b1733091c91ed77af83879880591ec7f0f2df88b719757a4827d5afb8b"
+    },
+    {
+      "path": "tests/source-purpose-policy.standalone.test.ts",
+      "sha256": "6000ca30803a591ed0912ef1d9be2d4678332109e041f4e1fdf9e8ced157ef22"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "warning": "Public source facts verified; material IDs, prior registration, affected tutorial and approvals are synthetic replay inputs. Hashes cover fixture metadata, not downloaded original bytes. No live ingest/collection or software download.",
+  "observed_on": "2026-11-04 America/Los_Angeles",
+  "specification": {
+    "evidence": {
+      "revision": 1,
+      "document_kind": "specification",
+      "entity_ids": [
+        "meanwell"
+      ],
+      "evidence_ready": true,
+      "conflict": false,
+      "first_baseline": true,
+      "publication_at": null,
+      "event_at": null,
+      "collected_at": "2026-11-05T04:00:00Z",
+      "previous_ref": null,
+      "substantive_change": null,
+      "version_change_verified": false,
+      "affected_page": null,
+      "news_value": "UNKNOWN",
+      "article_id": "TEST_ONLY_lrs350",
+      "source_id": "TEST_ONLY_manual_spec_source",
+      "original_url": "https://www.meanwell.com/Upload/PDF/LRS-350/LRS-350-SPEC.PDF",
+      "content_hash": "cb0b665086e8b9497af07bb4ef1c6e5133c5c4131c902c8f37a350fd47762810"
+    },
+    "verified_document_date": "2025-09-12",
+    "date_meaning": "document revision date; initial publication and effective dates UNKNOWN",
+    "locator": "PDF page 1 footer; page 2 note 1",
+    "facts_zh": "LRS-350系列原厂规格文件；参数需连同输入电压、负载和环境温度条件保存。",
+    "binding_status": "UNKNOWN: configured web-meanwell-new-products is a news-list source; this PDF is outside its listed collection scope. Use an existing approved external material source only after inventory confirmation. TEST_ONLY id is not seeded."
+  },
+  "software": {
+    "evidence": {
+      "revision": 2,
+      "document_kind": "software_release",
+      "entity_ids": [
+        "colorlight"
+      ],
+      "evidence_ready": true,
+      "conflict": false,
+      "first_baseline": false,
+      "publication_at": null,
+      "event_at": null,
+      "collected_at": "2026-11-05T04:00:00Z",
+      "previous_ref": {
+        "article_id": "TEST_ONLY_ledsetting_226",
+        "revision": 1
+      },
+      "substantive_change": true,
+      "version_change_verified": true,
+      "affected_page": "https://example.invalid/registered-ledsetting-tutorial",
+      "news_value": "UNKNOWN",
+      "article_id": "TEST_ONLY_ledsetting_26",
+      "source_id": "web-colorlight-software",
+      "original_url": "https://en.colorlightinside.com/service/download/?cat=242",
+      "content_hash": "b5d7c03db13972335087134a676002c3753197779497f0559a9a270a032b8fe4"
+    },
+    "versions": [
+      "2.2.6",
+      "2.6"
+    ],
+    "locator": "official download page LEDSETTING V2.6 and V2.2.6 sections",
+    "facts_zh": "2.6说明新增固件管理并扩展设备支持；2.2.6说明包含校正流程优化。发布日期未确认。",
+    "version_relation": "Replay assumes an already registered 2.2.6 baseline and later discovery of 2.6. This run does not prove a chronological live observation.",
+    "download_status": "Links resolve to ZIP; search reader cannot parse ZIP; binaries not downloaded or executed."
+  }
+}
