@@ -1,0 +1,1163 @@
+{
+  "schema_version": 1,
+  "mode": "DESIGN_ONLY_NOT_LOADED",
+  "baseline_commit": "12e3d92e18553dd7660c89a07860e950953057d8",
+  "bindings": [
+    {
+      "source_id": "rss-openai-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-google-deepmind",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-google-research",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-hugging-face",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-microsoft-research",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-nvidia-blog",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-aws-ml",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-github-ai",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-mistral",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-bair",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-the-verge-ai",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-techcrunch-ai",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-ars-technica-ai",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-mit-tech-review-ai",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-the-decoder",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-simon-willison",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-import-ai",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-latent-space",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-macroblock-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-kinglight-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-nationstar-product-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-meanwell-new-products",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-colorlight-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-oaaa-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-chipone-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-czcl-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-g-energy-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-huidu-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-huidu-hdplayer",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-colorlight-software",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-novastar-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "rss-ledinside-news",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-colorlight-ledvision",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    },
+    {
+      "source_id": "web-colorlight-firmware",
+      "config_revision": 1,
+      "purposes": {
+        "supply_chain": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        },
+        "news": {
+          "enabled": false,
+          "priority": null,
+          "priority_reason": "UNKNOWN: operator confirmation required",
+          "review_status": "UNKNOWN",
+          "review_ref": null,
+          "interval_minutes": null,
+          "scope": {
+            "document_kinds": [],
+            "entity_ids": []
+          },
+          "backfill_policy": "UNKNOWN",
+          "destinations": []
+        }
+      }
+    }
+  ]
+}

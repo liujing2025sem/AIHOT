@@ -1,0 +1,30 @@
+✔ 34 source identities preserved; all 68 new purpose bindings disabled and UNKNOWN (2.903102ms)
+✔ migration is deterministic and leaves legacy data including approvals untouched (0.23903ms)
+✔ duplicate source identity blocks migration (0.296877ms)
+✔ enabled UNKNOWN purpose fails closed (0.195545ms)
+✔ news priority/cadence edit leaves supply settings intact and requires reapproval (0.40465ms)
+✔ both purposes due produce one collection request with two references (0.30584ms)
+✔ faster news cadence does not make supply review due (0.155034ms)
+✔ global and source collection switches both remain hard gates (0.15255ms)
+✔ failed review never advances last success (0.211048ms)
+✔ real old MEAN WELL specification baseline yields evidence review and zero news (0.495336ms)
+✔ real Colorlight version comparison yields maintenance; undated news held independently (0.221273ms)
+✔ first software import never becomes news even with synthetic recent publication date (0.136416ms)
+✔ a known event date still requires an independent news value decision (0.242695ms)
+✔ approved news value creates only a review candidate; never approval or publication (0.255956ms)
+✔ low value publicity cannot remove technical evidence (0.156285ms)
+✔ conflicts in a shared material hold both uses, preserving reference (0.218118ms)
+✔ version claim without predecessor reference is held (0.21244ms)
+✔ same material revision has one reference per purpose across repeated replay (0.194703ms)
+✔ future and invalid dates cannot be replaced by collection date (0.157607ms)
+✔ unchanged text or layout-only delta generates no update actions (0.161103ms)
+✔ scope and source binding prevent accidental cross-purpose delivery (0.167422ms)
+✔ disabling both purpose policies yields no new routes and keeps input immutable (0.277198ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 190.978261
