@@ -8,7 +8,10 @@
 import "./setup.ts";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { after, test } from "node:test";
 import { config } from "@aihot/backend/config";
 import { extractFromUrl, pageRules } from "@aihot/backend/content/extract";
@@ -25,6 +28,49 @@ const source = (config: Record<string, unknown>) => ({ id: "test-list", config }
 
 const ledSourceIds = new Set(["web-macroblock-news", "web-kinglight-news", "web-nationstar-product-news"]);
 const ledSources = (JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8")).sources as Array<SourceRow & { site_fulltext: boolean; syndicate_fulltext: boolean }>).filter(s => ledSourceIds.has(s.id));
+
+test("crawl preflight refuses incomplete or duplicate evidence before writing a report", () => {
+  const read = (name: string) => JSON.parse(readFileSync(new URL(`../${name}`, import.meta.url), "utf8"));
+  const original = {
+    sources: read("industry/sources.json"), plan: read("industry/led-source-plan.json"),
+    preview: read("tests/fixtures/editorial-preview-20261103.json"),
+    verification: readFileSync(new URL("../docs/led-source-verification.md", import.meta.url), "utf8"),
+  };
+  const cases: Array<[string, (input: typeof original) => void]> = [
+    ["Missing configured LED source", i => { i.sources.sources = i.sources.sources.filter((s: {id: string}) => s.id !== "web-kinglight-news"); }],
+    ["Missing preview evidence", i => { i.preview.previews = i.preview.previews.filter((p: {id: string}) => p.id !== "web-kinglight-news"); }],
+    ["duplicate source ID", i => { i.sources.sources.push(i.sources.sources[0]); }],
+    ["duplicate candidate ID", i => { i.plan.candidates.push(i.plan.candidates[0]); }],
+    ["duplicate candidate entry", i => { i.plan.candidates.push({...i.plan.candidates[0], id: "duplicate-entry-test"}); }],
+    ["duplicate existing source reference", i => { i.plan.existing_source_refs.push(i.plan.existing_source_refs[0]); }],
+    ["duplicate preview source ID", i => { i.preview.previews.push(i.preview.previews[0]); }],
+    ["Preview sample count mismatch", i => { i.preview.previews[0].output.items.pop(); }],
+    ["Missing verification counts", i => { i.verification = i.verification.split("\n").filter(line => !line.startsWith("| web-kinglight-news |")).join("\n"); }],
+    ["duplicate verification source ID", i => { i.verification += "\n" + i.verification.split("\n").find(line => line.startsWith("| web-kinglight-news |")); }],
+  ];
+  for (const [expected, mutate] of [["", () => {}] as [string, (input: typeof original) => void], ...cases]) {
+    const dir = mkdtempSync(path.join(tmpdir(), "aihot-preflight-"));
+    try {
+      const input = structuredClone(original); mutate(input);
+      for (const name of ["scripts", "industry", "tests/fixtures", "docs"]) mkdirSync(path.join(dir, name), {recursive: true});
+      copyFileSync(new URL("../scripts/crawl-quality-baseline.mjs", import.meta.url), path.join(dir, "scripts/crawl-quality-baseline.mjs"));
+      for (const [name, value] of [["industry/sources.json", input.sources], ["industry/led-source-plan.json", input.plan], ["tests/fixtures/editorial-preview-20261103.json", input.preview]] as const) writeFileSync(path.join(dir, name), JSON.stringify(value));
+      writeFileSync(path.join(dir, "docs/led-source-verification.md"), input.verification);
+      const result = spawnSync(process.execPath, [path.join(dir, "scripts/crawl-quality-baseline.mjs")], {encoding: "utf8", timeout: 10_000});
+      assert.equal(result.error, undefined);
+      if (expected) {
+        assert.notEqual(result.status, 0, expected);
+        assert.ok(result.stderr.includes(expected), result.stderr);
+        assert.equal(existsSync(path.join(dir, "docs/crawl-quality")), false, "invalid evidence must not produce a report");
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        const report = JSON.parse(readFileSync(path.join(dir, "docs/crawl-quality/2026-11-06-preflight.json"), "utf8"));
+        assert.equal(report.status, "PREFLIGHT_ONLY_L0_NOT_COMPLETE");
+        assert.equal(report.collection_runs, 0);
+      }
+    } finally { rmSync(dir, {recursive: true, force: true}); }
+  }
+});
 
 const pages: Record<string, () => string> = {
   // A news site's feed: a teaser that ends in "Read the full story", next to a post whose feed carries it whole.

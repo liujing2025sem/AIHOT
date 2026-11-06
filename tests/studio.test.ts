@@ -264,6 +264,63 @@ test('public export is English with source/date/status, internal review remains 
 });
 
 
+test('approval freezes source precision and offset, and legacy approvals must be reviewed again',async()=>{
+ const [original]=await sql`SELECT published_at,publication_time FROM articles WHERE id=${article}`;
+ const [originalSource]=await sql`SELECT config FROM sources WHERE id=${source}`;
+ try {
+  await sql`UPDATE articles SET published_at='2026-10-22T16:00:00Z',publication_time='2026-10-23' WHERE id=${article}`;
+  const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
+  const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+  const approve=async()=>{
+   let d=(await studioDraft(row.id))!;
+   if(d.status==='approved'){await reviewStudioDraft(d.id,{version:d.version,action:'return',note:'重新核对来源日期'},actor);d=(await studioDraft(row.id))!;}
+   await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(row.id))!;
+   await reviewStudioDraft(d.id,{version:d.version,action:'approve',confirmations:d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);
+  };
+  await approve();
+  assert.match((await exportStudioDraft(row.id,'md'))!.body,/October 23, 2026/);
+  // Ingestion can recover precision without changing revision or the stored instant.
+  await sql`UPDATE articles SET publication_time='2026-10-22T16:00:00.000Z' WHERE id=${article}`;
+  await assert.rejects(exportStudioDraft(row.id,'json'),e=>(e as {code?:string}).code==='conflict'&&/日期精度或时区/.test((e as Error).message));
+  await approve();assert.match((await exportStudioDraft(row.id,'md'))!.body,/00:00:00 UTC\+08:00/);
+  await sql`UPDATE sources SET config=${sql.json({...originalSource.config,publishedAtUtcOffset:'-04:00'})} WHERE id=${source}`;
+  await assert.rejects(exportStudioDraft(row.id,'html'),/日期精度或时区/);
+  await approve();assert.match((await exportStudioDraft(row.id,'md'))!.body,/October 22, 2026/);
+  // A record from before source-date snapshots cannot borrow today's context silently.
+  await sql`UPDATE audit_log SET after=after-'source_date' WHERE subject=${`studio-draft:${row.id}`} AND action='studio.draft.approve'`;
+  await assert.rejects(exportStudioDraft(row.id,'json'),/重新审稿/);
+  await approve();assert.ok(await exportStudioDraft(row.id,'json'));
+ } finally {
+  await sql`UPDATE articles SET published_at=${original.published_at},publication_time=${original.publication_time} WHERE id=${article}`;
+  await sql`UPDATE sources SET config=${sql.json(originalSource.config)} WHERE id=${source}`;
+ }
+});
+
+test('export waits for an in-flight revocation and cannot return the previously approved snapshot',async()=>{
+ const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ let d=(await studioDraft(row.id))!;await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(row.id))!;
+ await reviewStudioDraft(d.id,{version:d.version,action:'approve',confirmations:d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);
+ const locked=gate<void>(),release=gate<void>();
+ const writer=sql.begin(async tx=>{
+  await tx`UPDATE studio_drafts SET status='draft',version=version+1,reviewed_by=NULL,reviewed_at=NULL WHERE id=${row.id}`;
+  locked.open();await release.promise;
+ });
+ await locked.promise;
+ let completed=false;
+ const output=exportStudioDraft(row.id,'json').then(value=>({value,error:null}),error=>({value:null,error})).finally(()=>{completed=true;});
+ try {
+  let blocked=false;
+  for(let i=0;i<200&&!completed;i++){
+   const waiting=await sql`SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE 'SELECT * FROM studio_drafts WHERE id=%FOR SHARE%'`;
+   if(waiting.length){blocked=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.equal(blocked,true,'export must wait for the writer transaction instead of reading the old approval');
+ } finally {release.open();await writer;}
+ const result=await output;assert.ok(result.error);assert.match(result.error.message,/审稿/);
+});
+
 test('Chinese text in public English fields is rejected at receive and save',async()=>{
  const {task,response}=await input();response.drafts[0].body_en=`这是仅供内部审稿的中文正文。 ${response.drafts[0].source.url}`;
  await assert.rejects(receiveStudioTask(task.id,response,actor),/公开英文稿 body_en.*字符/);
@@ -275,6 +332,8 @@ test('withdrawing one confirmation from an approved draft revokes approval and e
  const {task,response}=await input();await receiveStudioTask(task.id,response,actor);const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
  let d=(await studioDraft(row.id))!;await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(d.id))!;
  const confirmations=d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}));await reviewStudioDraft(d.id,{version:d.version,action:'approve',confirmations},actor);d=(await studioDraft(d.id))!;
+ for(let i=0;i<21;i++){await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations},actor);d=(await studioDraft(row.id))!;}
+ assert.ok(await exportStudioDraft(d.id,'json'));
  await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations:confirmations.slice(1)},actor);d=(await studioDraft(d.id))!;
  assert.equal(d.status,'in_review');assert.equal(d.reviewed_by,null);await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
 });

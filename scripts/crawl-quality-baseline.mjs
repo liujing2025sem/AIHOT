@@ -9,7 +9,18 @@ const sources = read('industry/sources.json').sources;
 const plan = read('industry/led-source-plan.json');
 const preview = read('tests/fixtures/editorial-preview-20261103.json');
 const verification = readFileSync(path.join(root,'docs/led-source-verification.md'),'utf8');
-const previewTotals = new Map([...verification.matchAll(/^\|\s*((?:web|rss)-[^| ]+)\s*\|\s*(\d+)\s*\|[^\n]+\|\s*\d+\/\d+\s*\|$/gm)].map(m=>[m[1],Number(m[2])]));
+function uniqueIds(values,label){
+  if(values.some(id=>typeof id!=='string'||!id)||new Set(values).size!==values.length)throw Error('Invalid or duplicate '+label);
+}
+uniqueIds(sources.map(s=>s.id),'source ID');
+uniqueIds(plan.candidates.map(c=>c.id),'candidate ID');
+uniqueIds(plan.candidates.map(c=>c.official_entry),'candidate entry');
+uniqueIds(plan.existing_source_refs.map(s=>s.source_id),'existing source reference');
+uniqueIds(preview.previews.map(p=>p.id),'preview source ID');
+const verificationRows = [...verification.matchAll(/^\|\s*((?:web|rss)-[^| ]+)\s*\|\s*(\d+)\s*\|[^\n]+\|\s*(\d+)\/(\d+)\s*\|$/gm)];
+uniqueIds(verificationRows.map(m=>m[1]),'verification source ID');
+const previewTotals = new Map(verificationRows.map(m=>[m[1],Number(m[2])]));
+const sampleCounts = new Map(verificationRows.map(m=>[m[1],{undated:Number(m[3]),items:Number(m[4])}]));
 const byId = new Map(preview.previews.map(p=>[p.id,p.output.items]));
 const baselineIds = new Set(['web-huidu-hdplayer','web-colorlight-software','web-colorlight-ledvision','web-colorlight-firmware']);
 const referenceIds = new Set(['led-energy-star-displays','led-eu-display-ecodesign','led-macroblock-monthly-revenue','led-cninfo-investor-records','led-eia-electricity','led-roe-carbon-markii','led-absen-kv3-manual','led-huidu-firmware','led-linsn-software','led-novastar-software','led-eurostat-nrg-pc-205','led-linsn-firmware']);
@@ -22,6 +33,14 @@ for(const candidate of plan.candidates){
 }
 const runtimeIds = new Set([...plan.existing_source_refs.map(s=>s.source_id),...mapped.values()]);
 if([...byId.keys()].some(id=>!runtimeIds.has(id)))throw Error('Preview source missing from LED scope');
+if([...previewTotals.keys()].some(id=>!runtimeIds.has(id)))throw Error('Verification source missing from LED scope');
+for(const id of runtimeIds){
+  if(!sources.some(s=>s.id===id))throw Error('Missing configured LED source: '+id);
+  if(!byId.has(id))throw Error('Missing preview evidence: '+id);
+  const expected=sampleCounts.get(id),items=byId.get(id);
+  if(!expected)throw Error('Missing verification counts: '+id);
+  if(items.length!==expected.items||items.filter(i=>!i.publishedAt).length!==expected.undated||previewTotals.get(id)<items.length)throw Error('Preview sample count mismatch: '+id);
+}
 const percent = (n,d) => d ? Number((100*n/d).toFixed(2)) : null;
 function counts(items){
   const total=items.length,dated=items.filter(i=>i.publishedAt).length;

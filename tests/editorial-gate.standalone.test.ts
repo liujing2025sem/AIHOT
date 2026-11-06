@@ -31,10 +31,11 @@ test('public exports keep the source calendar day and date-only precision withou
   const d = { ...structuredClone(draft), source: { ...binding, published_at: '2026-10-22T16:00:00.000Z' } };
   const published = publicDraft(d, undefined, { publicationTime: '2026-10-23', utcOffset: '+08:00' });
   assert.match(published.body, /October 23, 2026 \(date only; time not provided\)/);
-  assert.equal(published.source.published_at, '2026-10-23');
+  assert.equal(published.source.published_at, d.source.published_at);
+  assert.equal(published.source.publication_date, '2026-10-23');
   assert.equal(published.source.publication_precision, 'day');
   assert.equal(published.source.publication_time, null);
-  assert.doesNotMatch(JSON.stringify(published), /2026-10-22T16:00/);
+  assert.doesNotMatch(published.body, /2026-10-22T16:00/);
   assert.equal(d.source.published_at, '2026-10-22T16:00:00.000Z');
 });
 
@@ -46,7 +47,8 @@ test('public exports use the source offset for timed dates and do not invent pre
   const legacy = publicDraft(d, undefined, { publicationTime: null, utcOffset: '-04:00' });
   assert.match(legacy.body, /original precision unknown/);
   assert.equal(legacy.source.publication_time, null);
-  assert.equal(publicDraft(d).source.published_at, null);
+  assert.equal(publicDraft(d).source.published_at, d.source.published_at);
+  assert.equal(publicDraft(d).source.publication_date, null);
   assert.match(publicDraft({ ...d, source: { ...d.source, published_at: null } }).body, /date: not provided/);
 });
 
@@ -66,6 +68,31 @@ test('public date formatting preserves uncertainty labels and public English che
   assert.match(published.title, /^Unconfirmed report:/);
   assert.match(published.body, /Unconfirmed report/);
   assert.throws(() => publicDraft({ ...d, body_en: '内部中文。' }), /公开英文稿/);
+});
+
+test('public exports reject impossible dates and timezone-free metadata before Date.parse can normalize them', () => {
+  const exportDate = (at: string, publicationTime: string | null) => publicDraft(
+    { ...structuredClone(draft), source: { ...binding, published_at: at } }, undefined,
+    { publicationTime, utcOffset: '+00:00' },
+  );
+  for (const value of ['2026-02-30T12:00:00Z', '2026-04-31T12:00:00Z', '2026-10-23T24:00:00Z', '2026-10-23T12:00:00+14:30']) {
+    assert.throws(() => exportDate(value, null), /Invalid/, value);
+  }
+  for (const value of ['2026-02-30T12:00:00Z', '2026-03-02 12:00', '2026-03-02T12:00:00']) {
+    assert.throws(() => exportDate('2026-03-02T12:00:00Z', value), /Invalid/, value);
+  }
+  const valid = exportDate('2024-02-29T23:30:00Z', '2024-03-01T01:30:00+02:00');
+  assert.equal(valid.source.publication_date, '2024-02-29');
+  assert.equal(valid.source.publication_precision, 'time');
+});
+
+test('public exports reject conflicting calendar metadata even when the binding contains only a day', () => {
+  const d = { ...structuredClone(draft), source: { ...binding, published_at: '2026-10-23' } };
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: '2026-10-24', utcOffset: '+08:00' }), /changed/);
+  const valid = publicDraft(d, undefined, { publicationTime: '2026-10-23', utcOffset: '-04:00' });
+  assert.equal(valid.source.publication_date, '2026-10-23');
+  assert.equal(valid.source.published_at, '2026-10-23');
+  assert.equal(valid.source.publication_precision, 'day');
 });
 
 test('clean manufacturer draft has no automatic block; context is optional', () => {
