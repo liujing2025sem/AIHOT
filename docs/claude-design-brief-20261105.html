@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AIHOT · 给 Claude 的产品设计任务书</title>
+<style>
+:root{color-scheme:light;--paper:#f5f3ed;--ink:#1d3035;--muted:#56696d;--line:#d8e0dc;--accent:#176454;--soft:#e6eee8;--white:#fffefa}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}a{color:var(--accent);text-underline-offset:3px}button,select{font:inherit}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #b56e17;outline-offset:4px}main{max-width:1140px;margin:auto;padding:36px 32px 54px}.eyebrow{font-size:12px;font-weight:700;letter-spacing:2px;color:var(--accent)}h1{font-size:clamp(28px,4.5vw,46px);line-height:1.23;letter-spacing:-1px;margin:14px 0}h2{font-size:25px;line-height:1.35;margin:4px 0 15px}h3{font-size:19px;line-height:1.45;margin:0 0 10px}p{margin:9px 0 17px}.lead{font-size:19px;max-width:850px}.muted,small{color:var(--muted)}.meta{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.tag{background:var(--soft);border-radius:99px;padding:4px 12px;font-size:13px}.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:30px 0 27px;overflow-x:auto}.tabs button{border:0;border-bottom:3px solid transparent;background:transparent;color:var(--muted);padding:13px 18px;white-space:nowrap;cursor:pointer}.tabs button[aria-selected=true]{color:var(--accent);border-color:var(--accent);font-weight:700}.panel[hidden]{display:none}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card,.surface{background:var(--white);border:1px solid var(--line);border-radius:15px;padding:24px}.card .num{font-size:12px;letter-spacing:2px;color:var(--accent);font-weight:700;margin-bottom:10px}.deliverable{padding-top:12px;margin-bottom:0;border-top:1px solid var(--line);font-size:14px;color:var(--accent)}.note{border-left:3px solid var(--accent);padding:12px 18px;background:var(--soft);border-radius:0 10px 10px 0;margin:20px 0}.note p:last-child{margin-bottom:0}.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:22px 0}.step{padding:20px 16px;border:1px solid var(--line);border-radius:12px;background:var(--white)}.step b{display:block;margin-bottom:8px}.step span{font-size:14px;color:var(--muted)}.step .order{color:var(--accent);font-size:12px;font-weight:700}.table-scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;margin-top:18px;font-size:15px}th,td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{background:var(--soft);font-weight:600}ul,ol{padding-left:23px}li+li{margin-top:8px}.scenario{margin:24px 0}.scenario label{font-weight:700;display:block;margin-bottom:8px}select{max-width:100%;width:100%;background:var(--white);border:1px solid var(--line);border-radius:8px;padding:11px;color:var(--ink)}.scenario-detail{margin-top:14px}.runtime{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:16px;margin:22px 0;align-items:center}.runtime>div{padding:22px;background:var(--white);border:1px solid var(--line);border-radius:14px}.runtime .core{background:var(--ink);color:#fff}.runtime .core p{color:#d7e5de}.runtime small{display:block;margin-top:7px}.runtime .core small{color:#d7e5de}.proof{font-size:14px;margin-top:20px}textarea{resize:vertical;width:100%;min-height:310px;background:#f7f8f5;border:1px solid var(--line);border-radius:9px;padding:16px;line-height:1.7;color:var(--ink);font-family:inherit;font-size:15px}.copy-row{display:flex;align-items:center;gap:14px;margin-top:13px}.primary{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:10px 18px;cursor:pointer}.links{display:flex;gap:17px;flex-wrap:wrap;margin:19px 0}.footer{border-top:1px solid var(--line);margin-top:32px;padding-top:18px;font-size:13px;color:var(--muted)}code{font-size:.9em;overflow-wrap:anywhere}noscript p{padding:12px;background:var(--soft)}
+@media(max-width:700px){main{padding:22px 18px 35px}.grid,.runtime{grid-template-columns:1fr}.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.tabs{margin-top:22px}.tabs button{padding:11px 12px}.card,.surface{padding:20px}.lead{font-size:17px}h2{font-size:22px}.copy-row{align-items:flex-start;flex-direction:column}td,th{padding:10px}.footer{line-height:1.8}}
+@media print{.tabs,.copy-row,.scenario select,.scenario label{display:none}.panel[hidden]{display:block}.panel{break-before:page}.panel:first-of-type{break-before:auto}main{padding:0}.card{break-inside:avoid}.scenario-detail[hidden]{display:block}.footer{margin-top:15px}body{background:white}textarea{height:380px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="eyebrow">AIHOT / DESIGN COMMISSION / 2026.11.05</div>
+<h1>让 Claude 主导下一步产品设计</h1>
+<p class="lead">围绕“每天值得做什么、怎样省力审稿、内容如何持续维护”做取舍。Claude交付方案与交互原型，Codex把它实现成能独立使用的Studio。</p>
+<div class="meta"><span class="tag">本轮：设计委托</span><span class="tag">同一核心，支持电脑与云端</span><span class="tag">业务、合并、发布由用户决定</span></div>
+<p class="muted">工程依据：PR #11 / 8c8f76e，尚未合并。本页是任务书阅读版；下方流程是待设计内容，尚未实施。</p>
+</header>
+<nav class="tabs" role="tablist" aria-label="设计任务书栏目">
+<button type="button" id="tab-design" role="tab" aria-controls="design" aria-selected="true">设计重点</button>
+<button type="button" id="tab-dependencies" role="tab" aria-controls="dependencies" aria-selected="false" tabindex="-1">流程与依赖</button>
+<button type="button" id="tab-runtime" role="tab" aria-controls="runtime" aria-selected="false" tabindex="-1">独立运行</button>
+<button type="button" id="tab-handoff" role="tab" aria-controls="handoff" aria-selected="false" tabindex="-1">交给 Claude</button>
+</nav>
+<noscript><p>当前未启用JavaScript，以下按顺序显示全部栏目。</p></noscript>
+<section id="design" class="panel" role="tabpanel" aria-labelledby="tab-design">
+<h2>把有限的 Opus 算力用在六个选择上</h2>
+<p class="muted">每一项都要求说明：推荐什么、放弃什么、运营少做哪一步、用什么事实判断是否有效。</p>
+<div class="grid">
+<article class="card"><div class="num">01 / 每天的入口</div><h3>打开以后，先做哪件事？</h3><p>新消息、旧页变化、未完成稿如何排列？没有新增时，怎样让运营安心结束，而不必逐个页面找工作？</p><p class="deliverable">交付：一个主工作面，以及首次使用与日常使用的最短路径。</p></article>
+<article class="card"><div class="num">02 / 值得做的判断</div><h3>这条材料应该变成什么？</h3><p>短讯、解释文、旧页更新、参考资料、暂缓或不写。卡片必须让人直接看见变化、证据和处理理由。</p><p class="deliverable">交付：可行动的卡片；覆盖旧MiP资料、误配新闻、无日期新版本。</p></article>
+<article class="card"><div class="num">03 / 低负担审稿</div><h3>怎样核对一次，就少做一次重复工作？</h3><p>把证据核对与编辑判断组织清楚。改标题、数值或来源版本，分别影响哪些确认？受阻稿能否原地修改后继续？</p><p class="deliverable">交付：同一篇MiP“待修 → 核对 → 可交付”的三态原型。</p></article>
+<article class="card"><div class="num">04 / 可维护的内容</div><h3>一条证据如何用于多处内容？</h3><p>批准过的原厂声明可用于解释文和参考表；来源更正后，需要知道哪些已有页面受到影响，以及应改哪一句。</p><p class="deliverable">交付：一条MiP声明从采用、复用到修订的完整例子。</p></article>
+<article class="card"><div class="num">05 / 独立执行</div><h3>外部Agent退出后，谁继续工作？</h3><p>浏览器刷新、调用超时、付费结果已收到但尚未成稿，都应该有可理解的状态与恢复动作。</p><p class="deliverable">交付：人工触发独立运行、限定范围自动草稿的边界与异常交互。</p></article>
+<article class="card"><div class="num">06 / 创意的投入顺序</div><h3>先做好哪一个有辨识度的能力？</h3><p>版本追踪、参数解释、供应商询问清单、来源变化提醒，选一个先做。与同源、同模型、有上期摘要的定时任务比较。</p><p class="deliverable">交付：一个旗舰能力、一个明确舍弃的方向、一个业务验证样例。</p></article>
+</div>
+<div class="note"><strong>给Claude留下真正的设计空间</strong><p>提出两种决策路径不同的工作台结构，推荐其中一种。原型要体现信息顺序、阅读节奏、主动作和异常提示；界面风格由Claude决定。</p></div>
+</section>
+<section id="dependencies" class="panel" role="tabpanel" aria-labelledby="tab-dependencies">
+<h2>先让内容可追溯，再让变化能找到页面</h2>
+<div class="flow">
+<div class="step"><div class="order">01</div><b>原文与主体</b><span>谁发布、谁声明、讨论哪种产品；原文日期及精度。</span></div>
+<div class="step"><div class="order">02</div><b>证据与稿件</b><span>封装／模组／整屏的对象区别；修订、核对、批准。</span></div>
+<div class="step"><div class="order">03</div><b>实际页面登记</b><span>将公开URL和采用的稿件、证据版本关联。</span></div>
+<div class="step"><div class="order">04</div><b>变化带来行动</b><span>找出受影响页面，给出修改位置与新依据。</span></div>
+</div>
+<div class="table-scroll"><table><thead><tr><th>想得到的能力</th><th>真正的前置条件</th><th>要避免的误解</th></tr></thead><tbody>
+<tr><td>来源变化提醒</td><td>原文版本、声明、实际页面之间有关系</td><td>没有页面登记，就无法确定影响哪页哪段。</td></tr>
+<tr><td>参数参考表</td><td>主体、指标对象、值和单位、条件、来源版本</td><td>“未披露条件”应如实保存，不能要求模型补齐事实。</td></tr>
+<tr><td>AI引用观察</td><td>真实观察记录与自有页面识别</td><td>记录被引用页面不必等待完整参数库；参数差异核对才需要它。</td></tr>
+<tr><td>稳定的原厂归属</td><td>发布者、被引用厂商、讨论产品分别识别</td><td>增加简称只能解决识别，媒体引用不自动变成原厂证据。</td></tr>
+</tbody></table></div>
+<div class="surface scenario"><label for="scenario">用一个真实场景约束设计</label><select id="scenario"><option value="mip">首篇MiP：已有响应，修好后继续</option><option value="change">来源更正：找出应更新的内容</option><option value="quiet">没有实质增量：运营可以结束</option></select>
+<div class="scenario-detail" data-scenario="mip"><h3>运营不应重新购买一次模型结果</h3><p>保存的Flash响应 → 修正别名与日期 → 导入候选 → 用户粘贴Claude编辑版 → 重算受影响问题 → 人工批准 → 导出。首篇小修可独立进行，不等整套设计。</p><p class="muted">只读回放：45处WARN → 30个聚合问题，其中26项重点、4项常规。并非目标机界面验收；编辑后须重新计算。</p></div>
+<div class="scenario-detail" data-scenario="change"><h3>页面更新要能回答“改哪一句”</h3><p>来源出现新版本 → 定位已采用的声明 → 列出关联稿件／页面 → 展示旧说法、新依据与建议修改 → 人确认 → 更新后回读。页面登记是这条链的前置。</p><p class="muted">这是需要设计的未来路径，不表示页面更新与回读已经完成。</p></div>
+<div class="scenario-detail" data-scenario="quiet"><h3>“今天不用写”也是有价值的结果</h3><p>区分没有新材料、只有重复材料、证据尚不完整、已有页面已经回答四种情况。告诉运营为何无须行动，保留可追溯依据。</p><p class="muted">设计评价看少翻了多少来源、少做了多少重复判断，不以卡片数量代替价值。</p></div>
+</div>
+<p class="proof">当前事实与代码定位见<a href="claude-design-brief-20261105.md">完整Markdown任务书</a>。卡片、审稿与提示数量均保留其证据范围，不将样例当效果证明。</p>
+</section>
+<section id="runtime" class="panel" role="tabpanel" aria-labelledby="tab-runtime">
+<h2>同一个Studio，选择适合你的部署位置</h2>
+<p>WorkBuddy负责辅助安装和维修。日常采编由Studio完成，进程不应依附于WorkBuddy正在进行的聊天。</p>
+<div class="runtime"><div><h3>Windows电脑</h3><p>WorkBuddy辅助安装、升级和目标机验证。</p><small>关闭Agent后，服务和已保存任务仍应可用。</small></div><div class="core"><h3>共同运行核心</h3><p>素材与证据 → 选题 → Flash调用 → 稿件与审稿 → 导出</p><small>沿用同一套业务逻辑、任务记录和调用回执。</small></div><div><h3>Linux／云端</h3><p>适配Python、启动方式与私密配置。</p><small>同一份业务数据选择一个写入实例，不默认双向同步。</small></div></div>
+<div class="grid"><article class="card"><h3>先完成：人工触发、独立运行</h3><p>人在浏览器点击成稿。Studio独立调用OpenCode Flash并保存结果。刷新页面、退出外部Agent后还能继续；发布仍由人决定。</p><p class="deliverable">验收：真实走完一篇；关闭外部Agent后服务和状态仍可用。</p></article><article class="card"><h3>再启用：有范围的自动草稿</h3><p>按批准信源、任务范围和预算定时执行，遇到证据不足或结果未知时清楚地停在可恢复位置。</p><p class="deliverable">单独验收：调度、启动托管、备份与提醒；不能用手动成功代签。</p></article></div>
+<div class="note"><strong>设计与工程的接口</strong><p>Claude定义人看到的状态、恢复动作和自动化范围。Codex负责进程托管、Python适配、迁移、调用去重及任务接入。用户决定预算、开关、合并和发布。</p></div>
+<p class="muted">已知：Studio已经直接调用Flash；完整选题到成稿调度尚未接入。另发现26031字符的CAMOS方法在system与user请求重复出现，可由Codex先去重并实测质量与输入用量，当前不报节省比例。</p>
+</section>
+<section id="handoff" class="panel" role="tabpanel" aria-labelledby="tab-handoff">
+<h2>一次委托，拿到可实现的设计</h2>
+<p>Claude必读仅一份任务书。需要核实界面时，再看三张已有截图；不用重复下载完整业务库或重跑整套工程测试。</p>
+<div class="surface"><h3>可直接交给Claude</h3><textarea id="prompt" readonly aria-label="给Claude的设计委托">请从GitHub分支 codex/aihot-r1-first-article-20261103 读取 docs/claude-design-brief-20261105.md。
+
+这轮请主导产品设计与统筹，围绕六个问题提出取舍：日常入口、值得做的判断、低负担审稿、内容复用与更新、独立运行、旗舰能力。给出两种决策路径不同的界面结构并明确推荐一个，再用短HTML或SVG画出同一篇MiP“待修→核对→可交付”三态；视觉与交互由你设计。
+
+请交付一个旗舰能力、依赖图、三态原型和下一块可交给Codex的实现任务。正文建议1500–2500字，避免重写大型PRD。只按需读截图或代码；本轮不重复全库侦察和全量测试。
+
+同一Studio必须支持WorkBuddy辅助部署和独立运行。Codex负责代码与实测，用户决定预算、开关、合并和发布。首篇别名/日期小修可并行，不等待整个方案。不要将待设计能力写成已实施结果。</textarea><div class="copy-row"><button class="primary" type="button" id="copy">复制委托</button><span id="copy-status" role="status" class="muted">也可在文本框内全选复制。</span></div></div>
+<div class="links"><a href="claude-design-brief-20261105.md">完整任务书</a><a href="https://github.com/liujing2025sem/AIHOT/pull/11">现有PR与工程回执</a><a href="https://github.com/liujing2025sem/AIHOT/blob/claude/bold-clarke-3sxamm/docs/aihot-geo-program-plan-20261105.md">Claude 11月5日计划</a></div>
+<details><summary>需要时再看：三张现有界面截图</summary><ul><li><a href="assets/operator-guide/08-manual-card-bound.png">已绑定证据的人工卡</a></li><li><a href="assets/operator-guide/09-task-ready.png">待成稿任务</a></li><li><a href="assets/operator-guide/10-first-generation-blocked.png">首篇受阻状态</a></li></ul></details>
+<p class="proof">直接回答、表格和图解可以帮助阅读与核对，但不能保证被AI引用。Google说明AI搜索功能没有额外技术要求或专用schema，效果仍需观察：<a href="https://developers.google.com/search/docs/appearance/ai-features">Google Search官方说明</a>。</p>
+</section>
+<footer class="footer">本轮交付是设计输入与分工更新。尚未实施“晶台”别名、日期导出和旧响应重导入，未调用付费模型、未批准稿件、未合并或发布。正式工程依据为PR与提交；本阅读版不新增业务状态库。</footer>
+</main>
+<script>
+const tabs=[...document.querySelectorAll('[role="tab"]')];
+function activate(tab,focus=false){tabs.forEach(item=>{const selected=item===tab;item.setAttribute('aria-selected',String(selected));item.tabIndex=selected?0:-1;document.getElementById(item.getAttribute('aria-controls')).hidden=!selected;});if(focus)tab.focus();}
+tabs.forEach((tab,index)=>{tab.addEventListener('click',()=>activate(tab));tab.addEventListener('keydown',event=>{let next;if(event.key==='ArrowRight')next=(index+1)%tabs.length;if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;if(event.key==='Home')next=0;if(event.key==='End')next=tabs.length-1;if(next!==undefined){event.preventDefault();activate(tabs[next],true);}});});activate(tabs[0]);
+const selector=document.getElementById('scenario');function showScenario(){document.querySelectorAll('[data-scenario]').forEach(item=>{item.hidden=item.dataset.scenario!==selector.value;});}selector.addEventListener('change',showScenario);showScenario();
+document.getElementById('copy').addEventListener('click',async()=>{const prompt=document.getElementById('prompt'),status=document.getElementById('copy-status');try{if(!navigator.clipboard)throw new Error('clipboard unavailable');await navigator.clipboard.writeText(prompt.value);status.textContent='已复制，可以直接发给Claude。';}catch{prompt.focus();prompt.select();status.textContent='已选中全文，请按 Ctrl+C 或 Command+C 复制。';}});
+</script>
+</body>
+</html>

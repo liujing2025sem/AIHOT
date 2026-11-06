@@ -4,7 +4,7 @@ import { after,beforeEach,test } from 'node:test';
 import { closeDb,sql } from '@aihot/backend/db';
 import { config } from '@aihot/backend/config';
 import { saveStudioQuestion } from '@aihot/backend/admin/studio-questions';
-import { setRecommendationCapacity,refreshRecommendations,recommendationOverview,decideRecommendation,bindRecommendationEvidence } from '@aihot/backend/admin/studio-recommendations';
+import { setRecommendationCapacity,refreshRecommendations,recommendationOverview,decideRecommendation,bindRecommendationEvidence,createManualRecommendation } from '@aihot/backend/admin/studio-recommendations';
 import { createStudioTask,bindStudioTaskMaterials,exportStudioTask,generateStudioTask,receiveStudioTask } from '@aihot/backend/admin/studio';
 import { importDemandCsv } from '@aihot/backend/admin/studio-demand';
 import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
@@ -29,6 +29,45 @@ async function importVersionHistory(){
   for(const entry of entries)await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,backfill_reason) VALUES(${entry.id},${entry.source_id},${entry.id},${entry.url},${entry.title},now(),now(),${entry.publishedAt},'pending','first-import')`;
   return entries;
 }
+test('operator topics reuse one card, bind dated technical evidence and adopt without claiming automatic discovery',async()=>{
+  const question=await saveStudioQuestion({document:{question:'MiP封装与整屏性能怎么区分？',roles:['集成商/安装商/招牌制作商'],scenario:'小间距商显',dimension:'部件',keywords:['MiP'],content_type:'explainer'}},actor);
+  await setRecommendationCapacity({weekly_limit:10,lookback_days:180},actor);
+  const materialId=await material(`manual-mip-${suffix}`,'The manufacturer describes a MiP LED package; its specifications are not whole-display measurements.');
+  await sql`UPDATE articles SET published_at='2021-05-01T00:00:00Z' WHERE id=${materialId}`;
+  assert.equal((await refreshRecommendations(actor)).created,0);
+  const request={question_id:question.id,question_version:question.version};
+  const [first,again]=await Promise.all([createManualRecommendation(request,actor),createManualRecommendation(request,actor)]);
+  assert.equal(first.id,again.id);assert.equal(Number(first.created)+Number(again.created),1);
+  let overview=await recommendationOverview(),card=overview.rows.find(r=>r.id===first.id)!;
+  assert.equal(card.document.trigger,'M');assert.equal(card.document.demand_mentions,0);assert.deepEqual(card.document.evidence,[]);
+  assert.equal(card.document.evidence_checklist?.source_body,false);assert.equal(card.expired,false);
+  assert.equal(overview.metrics.total,0);assert.equal(overview.metrics.manual_total,1);assert.equal(overview.metrics.adoptionRate,null);
+  assert.equal((await sql`SELECT count(*)::int AS n FROM studio_tasks`)[0].n,0);
+  await bindRecommendationEvidence(first.id,{article_ids:[materialId]},actor);
+  card=(await recommendationOverview()).rows.find(r=>r.id===first.id)!;
+  assert.equal(card.document.evidence_checklist?.source_body,true);assert.equal(card.document.evidence[0].date,'2021-05-01T00:00:00.000Z');
+  const adopted=await decideRecommendation(first.id,{action:'adopt'},actor),reused=await decideRecommendation(first.id,{action:'adopt'},actor);
+  assert.equal(adopted!.task_id,reused!.task_id);
+  const packet=(await exportStudioTask(adopted!.task_id))!.request;
+  assert.equal(packet.editorial_plan!.selection_origin,'operator');assert.equal(packet.editorial_plan!.question,question.document.question);
+  assert.equal(packet.articles[0].binding.published_at,'2021-05-01T00:00:00.000Z');
+  overview=await recommendationOverview();assert.equal(overview.metrics.adopted,0);assert.equal(overview.metrics.manual_adopted,1);assert.equal(overview.metrics.adoptionRate,null);
+});
+
+test('manual topics require a current active question and retain tutorial evidence requirements',async()=>{
+  await assert.rejects(createManualRecommendation({question_id:'missing',question_version:1},actor),/启用的问题/);
+  const document={question:'LEDVISION升级前先做什么？',roles:['集成商/安装商/招牌制作商'],scenario:'控制系统',dimension:'控制软件',keywords:['LEDVISION'],content_type:'tutorial',requires_first_party:true};
+  const question=await saveStudioQuestion({document},actor);
+  await assert.rejects(createManualRecommendation({question_id:question.id,question_version:question.version+1},actor),/问题已修改/);
+  const first=await createManualRecommendation({question_id:question.id,question_version:question.version},actor);
+  const card=(await recommendationOverview()).rows.find(r=>r.id===first.id)!;
+  assert.equal(card.document.requires_first_party,true);assert.equal(card.document.evidence_checklist?.first_party,false);
+  const updated=await saveStudioQuestion({id:question.id,version:question.version,document:{...document,active:false}},actor);
+  await assert.rejects(createManualRecommendation({question_id:question.id,question_version:updated.version},actor),/启用的问题/);
+  const brief=await saveStudioQuestion({document:{...document,question:'本周LED行业有什么新闻？',content_type:'news',requires_first_party:false}},actor);
+  await assert.rejects(createManualRecommendation({question_id:brief.id,question_version:brief.version},actor),/时讯请使用近期新闻卡/);
+});
+
 test('cards require an explicit capacity, reuse the same version, require rejection reason, and adopt atomically once',async()=>{
   await material(`card-material-${suffix}`);
   assert.equal((await recommendationOverview()).rows.length,0);

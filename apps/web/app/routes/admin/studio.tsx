@@ -122,8 +122,8 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
   return <AdminPage title="采编工作台" subtitle="从原始资讯到可交付稿件，所有内容都保留来源。" actions={<div className="flex flex-wrap gap-4"><Link className="text-sm text-accent" to="/admin/studio/planning">今日值得处理 →</Link><Link className="text-sm text-accent" to="/admin/studio/social">社媒派生与导出 →</Link><Link className="text-sm text-accent" to="/admin/channels">API 渠道设置 →</Link></div>}>
     {tab==='review'&&data.planningMetrics&&<Card title="本期选题成效" className="mb-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="已采纳" value={data.planningMetrics.adopted}/><Stat label="已否决" value={data.planningMetrics.rejected}/>
-        <Stat label="推荐采纳率" value={data.planningMetrics.adoptionRate===null?'未知':`${(data.planningMetrics.adoptionRate*100).toFixed(1)}%`}/>
+        <Stat label="自动建议已采纳" value={data.planningMetrics.adopted}/><Stat label="自动建议已否决" value={data.planningMetrics.rejected}/>
+        <Stat label="自动建议采纳率" value={data.planningMetrics.adoptionRate===null?'未知':`${(data.planningMetrics.adoptionRate*100).toFixed(1)}%`}/>
         <Stat label="旧页更新机会" value={data.planningMetrics.update_opportunities}/><Stat label="已记录完成" value={data.planningMetrics.updates_completed} hint="人工记录，不是CMS回读"/>
       </div>
       <p className="mt-3 text-xs leading-6 text-ink-3">采纳率分母：{data.planningMetrics.denominator}。基线未发现的旧页更新：{data.planningMetrics.baseline_missed_updates}；尚未对照：{data.planningMetrics.baseline_unknown}。人工分钟和调用成本继续记录，不作本期门槛。</p>
