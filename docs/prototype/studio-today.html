@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio 今日 · 原型</title>
+<style>
+:root{--bg:#f5f6f8;--paper:#fff;--ink:#14202b;--ink2:#3d4b57;--ink3:#6b7884;--line:#e3e7ec;--accent:#0f6e66;--accent-soft:#e6f3f1;--red:#c2410c;--red-soft:#fdeee6;--amber:#a16207;--amber-soft:#fdf4df;--green:#15803d;--green-soft:#e8f6ec;--blue:#2457a6;--blue-soft:#e8effa;--radius:12px;--shadow:0 1px 2px rgba(20,32,43,.06),0 4px 16px rgba(20,32,43,.05)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1418;--paper:#171e24;--ink:#e8edf1;--ink2:#c2ccd4;--ink3:#8b98a3;--line:#273039;--accent:#3fb6aa;--accent-soft:#13312e;--red:#f4864f;--red-soft:#3a2116;--amber:#e3b04b;--amber-soft:#352a12;--green:#5ccf86;--green-soft:#13301f;--blue:#7aa7ef;--blue-soft:#172539;--shadow:none}}
+:root[data-theme="dark"]{--bg:#0f1418;--paper:#171e24;--ink:#e8edf1;--ink2:#c2ccd4;--ink3:#8b98a3;--line:#273039;--accent:#3fb6aa;--accent-soft:#13312e;--red:#f4864f;--red-soft:#3a2116;--amber:#e3b04b;--amber-soft:#352a12;--green:#5ccf86;--green-soft:#13301f;--blue:#7aa7ef;--blue-soft:#172539;--shadow:none}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}
+button{font:inherit;cursor:pointer}a{color:var(--accent)}
+.app{display:grid;grid-template-columns:200px 1fr 300px;min-height:100vh}
+.side{background:var(--paper);border-right:1px solid var(--line);padding:18px 12px}
+.brand{font-weight:700;font-size:15px;padding:0 8px 16px}
+.nav button{display:flex;justify-content:space-between;width:100%;border:0;background:none;color:var(--ink2);padding:9px 10px;border-radius:8px;text-align:left}
+.nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav .count{font-size:12px;color:var(--ink3)}
+.main{padding:22px 28px;min-width:0}
+.rail{border-left:1px solid var(--line);background:var(--paper);padding:22px 18px}
+h1{font-size:22px;margin:0}h2{font-size:15px;margin:0}
+.sub{color:var(--ink3);font-size:13px}
+.budget{display:flex;align-items:center;gap:14px;margin:12px 0 22px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px;box-shadow:var(--shadow)}
+.bar{flex:1;height:8px;background:var(--line);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+.lane{margin-bottom:22px}.lane-h{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--line);color:var(--ink2)}
+.tag.red{background:var(--red-soft);color:var(--red)}.tag.amber{background:var(--amber-soft);color:var(--amber)}.tag.green{background:var(--green-soft);color:var(--green)}.tag.blue{background:var(--blue-soft);color:var(--blue)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);margin-bottom:10px}
+.card.block{border-left:4px solid var(--red)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.grow{flex:1;min-width:0}
+.meta{color:var(--ink3);font-size:12px}
+.btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 12px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost{border-color:transparent;color:var(--ink3)}
+.trend{display:grid;grid-template-columns:1fr 150px;gap:14px}
+.spark{width:150px;height:44px}
+.countdown{font-variant-numeric:tabular-nums;color:var(--amber);font-weight:600}
+.num{background:var(--green-soft);color:var(--green);border-radius:4px;padding:0 3px;font-weight:600;cursor:help}
+.num.look{background:var(--amber-soft);color:var(--amber)}
+.focus{border:2px solid var(--accent)}
+.kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--ink2)}
+.btn.primary .kbd{color:#fff;border-color:rgba(255,255,255,.65)}
+.reasons{display:none;gap:6px;flex-wrap:wrap;margin-top:10px}.reasons.on{display:flex}
+.done{display:none;text-align:center;padding:26px}.done.on{display:block}
+.stat{margin-bottom:16px}.stat b{font-size:22px}.mini{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:4px}.mini i{display:block;height:100%;background:var(--accent)}
+.view{display:none}.view.on{display:block}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.doc{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;max-height:70vh;overflow:auto}
+.doc p{margin:0 0 12px}.doc h3{font-size:15px;margin:16px 0 8px}
+.hl{background:var(--amber-soft);outline:2px solid var(--amber);border-radius:3px}
+.q{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--paper)}
+.q.ok{opacity:.6}
+details summary{cursor:pointer;color:var(--ink3);font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+.note{font-size:12px;color:var(--ink3);margin-top:20px}
+@media (max-width:1100px){.app{grid-template-columns:1fr}.side,.rail{border:0}.side{display:flex;gap:6px;overflow-x:auto;padding:10px 16px}.brand{display:none}.nav{display:flex;gap:4px}.nav button{white-space:nowrap}.main{padding:16px}.split,.trend{grid-template-columns:1fr}.spark{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">Chipshow Studio</div>
+    <nav class="nav" aria-label="主导航">
+      <button aria-current="page" data-view="today">今日 <span class="count" id="navLeft">12</span></button>
+      <button data-view="review">审核示例 <span class="count">MiP</span></button>
+      <button data-view="radar">热点雷达 <span class="count">5</span></button>
+      <button disabled>周报编排 <span class="count">第 45 周</span></button>
+      <button disabled>资产与活列表</button>
+      <button disabled>设置</button>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <!-- 今日 -->
+    <section class="view on" id="view-today">
+      <div class="row"><div class="grow"><h1>今日</h1><div class="sub">11 月 6 日（北京时间）· 按“会不会过期、值不值钱”排好了顺序</div></div><span class="tag">示例数据</span></div>
+      <div class="budget"><div><b id="minutesLeft">32</b> 分钟</div><div class="bar" aria-label="今日进度"><i id="progress"></i></div><div class="meta"><span id="doneCount">0</span>/12 已处理</div></div>
+
+      <div class="lane">
+        <div class="lane-h"><h2>先处理</h2><span class="tag red">阻断 2</span><span class="meta">不处理会影响已发布内容</span></div>
+        <div class="card block"><div class="row"><div class="grow"><b>守护页：广告牌尺寸指南在 AI 概览中的展示比上月减少</b><div class="meta">GSC 导入 11 月 4 日 · 贡献全站约 4 成估算流量 · 预计 6 分钟</div></div><button class="btn primary" data-done="6">查看原因</button></div></div>
+        <div class="card block"><div class="row"><div class="grow"><b>MiP 解释文：还有 1 处日期需要改</b><div class="meta">原文 10 月 23 日（北京时间），稿件写成 10 月 22 日 · 预计 2 分钟</div></div><button class="btn primary" data-goto="review">去改</button></div></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-h"><h2>热点窗口</h2><span class="tag amber">会过期</span><span class="meta">48 小时内发布才有热度</span></div>
+        <div class="card trend"><div><div class="row"><span class="tag red">激增</span><b>示例：某体育场启用环形 LED 大屏</b></div><div class="meta">11 个独立发布者 · 匹配问题：司机能在多远看清 VMS？/ 大屏怎么选像素间距 · 剩余 <span class="countdown" data-hours="31">31:00:00</span></div><p style="margin:8px 0">建议角度：这类环屏的尺寸、像素间距和观看距离怎么配；写完在「全球大型 LED 屏」活列表加一行。</p><div class="row"><button class="btn primary" data-done="15">开始写 · 约 15 分钟</button><button class="btn ghost" data-done="0">不蹭（选理由）</button></div></div><svg class="spark" viewBox="0 0 150 44" aria-label="48 小时热度"><polyline fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber)" points="0,40 20,39 40,38 60,36 80,30 100,22 115,14 130,8 150,4"/></svg></div>
+        <div class="card trend"><div><div class="row"><span class="tag amber">上升</span><b>示例：某控制系统新版本发布</b></div><div class="meta">版本追踪页将自动更新 · 已登记教程 1 篇需复核 · 剩余 <span class="countdown" data-hours="44">44:00:00</span></div><div class="row" style="margin-top:8px"><button class="btn primary" data-done="10">复核教程 · 约 10 分钟</button></div></div><svg class="spark" viewBox="0 0 150 44"><polyline fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)" points="0,38 25,37 50,34 75,30 100,27 125,22 150,19"/></svg></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-h"><h2>快讯快审</h2><span class="tag blue">进本周周报</span><span class="meta"><span class="kbd">A</span> 通过 <span class="kbd">E</span> 修改 <span class="kbd">X</span> 不要 <span class="kbd">J</span>/<span class="kbd">K</span> 切换</span></div>
+        <div id="briefs"></div>
+        <div class="card done" id="briefsDone"><b>本批快讯处理完了</b><div class="meta">已进入第 45 周周报，周一 10:00 生成</div></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-h"><h2>深度与资产</h2><span class="tag">按日程</span></div>
+        <div class="card"><div class="row"><div class="grow"><b>LEDVISION 教程：等工程实机记录</b><div class="meta">缺：当前版本的截图和报错处理 · 负责人：工程 · 周五</div></div><button class="btn">提醒工程</button></div></div>
+        <div class="card"><div class="row"><div class="grow"><b>上游新品参数登记表：新增 3 行待核</b><div class="meta">来自已批准稿件的声明 · 预计 12 分钟</div></div><button class="btn" data-done="12">核对</button></div></div>
+      </div>
+    </section>
+
+    <!-- 审核示例 -->
+    <section class="view" id="view-review">
+      <div class="row"><div class="grow"><h1>MiP LED Package Size vs. Display Specs</h1><div class="sub">技术解释文 · 原文 Kinglight 10 月 23 日（北京时间）· 预计 8 分钟</div></div><button class="btn" data-goto="today">返回今日</button></div>
+      <div style="margin:14px 0">
+        <h2 style="margin-bottom:8px">需要你判断的 2 件事</h2>
+        <div class="q" id="q1"><b>1. 日期</b>：稿件写 October 22，原文所在时区是 10 月 23 日。<div class="row" style="margin-top:6px"><button class="btn primary" onclick="fix('q1')">改为 October 23</button></div></div>
+        <div class="q" id="q2"><b>2. 市场预测数字</b>：原文的 40.5% 增长率没有写出处。这段要保留吗？<div class="row" style="margin-top:6px"><button class="btn" onclick="fix('q2')">删掉这段</button><button class="btn ghost" onclick="fix('q2')">保留并写明“行业数据，未注明出处”</button></div></div>
+        <details><summary>已自动核对 41 项：数字都能在原文找到，厂商归属完整，英文零汉字</summary><p class="meta">鼠标移到绿色数字上可以看到对应的原文句子。</p></details>
+      </div>
+      <div class="split">
+        <div class="doc" aria-label="稿件">
+          <p><b>Package size describes the LED component.</b> Brightness, contrast, color gamut and transparency describe a finished display.</p>
+          <h3>Which numbers describe the package and which describe the display</h3>
+          <table><tr><th>Part</th><th>Package size</th><th>Display-level figures (vendor-stated)</th></tr>
+          <tr><td>MC0606</td><td><span class="num" data-q="s1">0.65 × 0.65 mm</span></td><td>Up to <span class="num" data-q="s2">2,000 nits</span>, <span class="num" data-q="s2">100,000:1</span></td></tr>
+          <tr><td>MC1010-M3</td><td><span class="num" data-q="s3">1.0 × 1.0 mm</span></td><td>Up to <span class="num" data-q="s3">6,000 nits</span></td></tr>
+          <tr><td>ID0909</td><td>Not stated</td><td>Up to <span class="num" data-q="s4">3,500 nits</span>, over <span class="num" data-q="s4">94%</span> transparency</td></tr></table>
+          <h3>Source</h3>
+          <p>Kinglight, published <span class="num look" id="dateSpan">October 22, 2026</span>.</p>
+        </div>
+        <div class="doc" aria-label="原文">
+          <p class="meta">原文 · Kinglight News · 版本 1 · 7,617 字符（原型里是示意摘录；实现时显示绑定版本的逐字原文）</p>
+          <p id="s1">… MC0606, with a package size of 0.65 × 0.65 mm …</p>
+          <p id="s2">Displays using this product can achieve a brightness of up to 2,000 nits and a contrast ratio of 100,000:1 …</p>
+          <p id="s3">MC1010-M2 and MC1010-M3, with a package size of 1.0 × 1.0 mm … up to 4,000 nits and 6,000 nits …</p>
+          <p id="s4">ID0909 … flip-chip … up to 3,500 nits and transparency of over 94% …</p>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="approve" disabled>批准并生成发布包</button><span class="meta" id="approveHint">先处理上面 2 件事</span></div>
+    </section>
+
+    <!-- 热点雷达 -->
+    <section class="view" id="view-radar">
+      <h1>热点雷达</h1><div class="sub">过去 48 小时 · 只统计独立发布者，转载不重复计数 · 风险清单内的话题已自动排除</div>
+      <table style="margin-top:14px;background:var(--paper);border:1px solid var(--line);border-radius:12px">
+        <tr><th>话题（示例）</th><th>热度</th><th>独立发布者</th><th>匹配问题</th><th></th></tr>
+        <tr><td>体育场环形 LED 大屏</td><td><span class="tag red">激增</span></td><td>11</td><td>像素间距与观看距离</td><td><button class="btn primary">蹭这个</button></td></tr>
+        <tr><td>MicroLED 电视新品</td><td><span class="tag amber">上升</span></td><td>7</td><td>MiP / COB 区别</td><td><button class="btn primary">蹭这个</button></td></tr>
+        <tr><td>户外广告牌亮度规定</td><td><span class="tag">新</span></td><td>3</td><td>夜间亮度与调光</td><td><button class="btn">留观察</button></td></tr>
+        <tr><td style="color:var(--ink3)">某屏企诉讼</td><td colspan="4" style="color:var(--ink3)">已按风险清单排除：同行负面</td></tr>
+      </table>
+    </section>
+    <p class="note">原型：数据为示例，MiP 审核页的数字来自真实原文。实现时复用现有 Studio 组件，不引入新的 UI 库。</p>
+  </main>
+
+  <aside class="rail" aria-label="本周北极星">
+    <h2 style="margin-bottom:14px">本周北极星</h2>
+    <div class="stat"><div class="meta">已发布并回读的 URL</div><b id="urls">2</b> / 5<div class="mini"><i style="width:40%"></i></div></div>
+    <div class="stat"><div class="meta">进入周报的快讯</div><b id="briefCount">6</b> / 10<div class="mini"><i id="briefBar" style="width:60%"></i></div></div>
+    <div class="stat"><div class="meta">本周审核时间</div><b id="mins">74</b> 分钟 / 240</div>
+    <div class="stat"><div class="meta">新 URL 的 GSC 展示（近 4 周）</div><svg viewBox="0 0 260 50" style="width:100%;height:50px"><polyline fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)" points="0,46 65,44 130,38 195,30 260,22"/></svg></div>
+    <div class="stat"><div class="meta">固定 20 问中的齐普引用</div><b>0</b> / 1 <span class="meta">（月度存档）</span></div>
+    <div class="stat"><div class="meta">抽检错误</div><b style="color:var(--green)">0</b></div>
+  </aside>
+</div>
+
+<script>
+const briefs=[
+ {t:'示例：某电源厂商发布宽电压 LED 显示电源新品',s:'厂商称输入范围覆盖 <span class="num">90–264 VAC</span>，面向电网不稳定地区的户外屏。',src:'原厂新闻 · 11 月 5 日（北京时间）',why:'对中非、拉美项目：可以少配稳压设备，询价时要问降额曲线。'},
+ {t:'示例：某封装厂商推出户外高亮器件',s:'据厂商称器件亮度提升，具体数值以原文为准。',src:'原厂新闻 · 11 月 4 日（北京时间）',why:'户外招牌采购：问清楚是器件亮度还是整屏亮度。'},
+ {t:'示例：行业协会发布季度户外广告支出数据',s:'协会称数字户外广告支出同比增长，原文附统计口径。',src:'协会新闻 · 11 月 3 日（北京时间）',why:'媒体业主扩屏的需求信号。'},
+ {t:'示例：某控制卡厂商更新播放软件',s:'新版本支持更多分辨率模板。',src:'下载页 · 发现于 11 月 5 日，原日期未提供',why:'已登记教程需要复核。'}
+];
+let i=0,done=0,minutes=32;
+const total=12, wrap=document.getElementById('briefs');
+function render(){
+  wrap.innerHTML='';
+  briefs.forEach((b,k)=>{if(b.gone)return;const c=document.createElement('div');c.className='card'+(k===i?' focus':'');c.innerHTML=`<div class="row"><div class="grow"><b>${b.t}</b><div class="meta">${b.src} · 约 2 分钟</div><p style="margin:6px 0">${b.s}</p><div class="meta">对采购的影响：${b.why}</div></div></div><div class="row" style="margin-top:8px"><button class="btn primary" onclick="act(${k},'A')">通过 <span class="kbd">A</span></button><button class="btn" onclick="act(${k},'E')">修改 <span class="kbd">E</span></button><button class="btn ghost" onclick="act(${k},'X')">不要 <span class="kbd">X</span></button></div><div class="reasons" id="r${k}"><button class="btn" onclick="drop(${k})">1 重复</button><button class="btn" onclick="drop(${k})">2 没有具体变化</button><button class="btn" onclick="drop(${k})">3 与客户无关</button><button class="btn" onclick="drop(${k})">4 风险项</button></div>`;wrap.appendChild(c)});
+  const left=briefs.filter(b=>!b.gone).length;document.getElementById('briefsDone').classList.toggle('on',left===0);
+}
+function tick(n){done++;minutes=Math.max(0,minutes-n);document.getElementById('doneCount').textContent=done;document.getElementById('minutesLeft').textContent=minutes;document.getElementById('progress').style.width=Math.round(done/total*100)+'%';document.getElementById('navLeft').textContent=total-done;}
+function next(){const open=briefs.map((b,k)=>b.gone?-1:k).filter(k=>k>=0);i=open.find(k=>k>i)??open[0]??0;render();}
+function act(k,a){i=k;if(a==='X'){document.getElementById('r'+k).classList.add('on');return;}if(a==='E'){alert('原型：打开左右对照编辑，改完自动重新检查');return;}briefs[k].gone=true;tick(2);const bc=document.getElementById('briefCount');bc.textContent=+bc.textContent+1;document.getElementById('briefBar').style.width=Math.min(100,+bc.textContent*10)+'%';next();}
+function drop(k){briefs[k].gone=true;tick(1);next();}
+document.addEventListener('keydown',e=>{if(!document.getElementById('view-today').classList.contains('on'))return;const open=briefs.map((b,k)=>b.gone?-1:k).filter(k=>k>=0);if(!open.length)return;if(e.key==='j'||e.key==='J'){i=open.find(k=>k>i)??open[0];render()}if(e.key==='k'||e.key==='K'){i=[...open].reverse().find(k=>k<i)??open[open.length-1];render()}if('aAeExX'.includes(e.key))act(i,e.key.toUpperCase());if('1234'.includes(e.key)&&document.getElementById('r'+i)?.classList.contains('on'))drop(i);});
+document.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',()=>{b.closest('.card').style.opacity=.45;b.disabled=true;tick(+b.dataset.done)}));
+function show(v){document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='view-'+v));document.querySelectorAll('.nav button').forEach(b=>b.toggleAttribute('aria-current',b.dataset.view===v)||b.dataset.view===v&&b.setAttribute('aria-current','page'));}
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.view)));
+document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.goto)));
+document.querySelectorAll('.num[data-q]').forEach(n=>{n.addEventListener('mouseenter',()=>{document.querySelectorAll('.hl').forEach(x=>x.classList.remove('hl'));const t=document.getElementById(n.dataset.q);t.classList.add('hl');t.scrollIntoView({block:'nearest',behavior:'smooth'})});n.title='原文有对应句子（悬停高亮）'});
+const fixed=new Set();function fix(id){document.getElementById(id).classList.add('ok');fixed.add(id);if(id==='q1'){const d=document.getElementById('dateSpan');d.textContent='October 23, 2026';d.classList.remove('look')}if(fixed.size===2){document.getElementById('approve').disabled=false;document.getElementById('approveHint').textContent='可以批准了；批准后生成标题、slug、meta、HTML 和内链建议'}}
+document.getElementById('approve').addEventListener('click',()=>alert('原型：生成发布包；发布后填入官网 URL，系统回读，一致才计入北极星'));
+setInterval(()=>document.querySelectorAll('.countdown').forEach(c=>{let s=c.dataset.s?+c.dataset.s:+c.dataset.hours*3600;s=Math.max(0,s-1);c.dataset.s=s;const h=String(Math.floor(s/3600)).padStart(2,'0'),m=String(Math.floor(s%3600/60)).padStart(2,'0'),x=String(s%60).padStart(2,'0');c.textContent=`${h}:${m}:${x}`}),1000);
+render();
+</script>
+</body>
+</html>
