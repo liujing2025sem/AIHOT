@@ -1,5 +1,7 @@
 # AIHOT 云端接续入口 · 2026-11-04
 
+**2026-11-05设计分工更新：** 用户要求Claude主导产品设计、方案取舍与验收，Codex负责工程实现；同一Studio支持WorkBuddy辅助部署和独立运行。先读[Claude设计任务书](docs/claude-design-brief-20261105.md)或[分栏阅读版](docs/claude-design-brief-20261105.html)。这是设计委托，未实施别名/日期修复，也未启动PR-1至PR-6；下列运行证据仍为11月4日记录。
+
 **用户已决定：从本机/WorkBuddy转为云端Codex继续开发与对接。目标对话是 `01a15213-930a-75f7-9a11-1ab19667a09e`。不要再要求用户转述整个项目，也不要重复采集、导入或调用首篇模型。**
 
 仓库 `liujing2025sem/AIHOT`；工作分支 `codex/aihot-r1-first-article-20261103`；持续回执 [PR #11](https://github.com/liujing2025sem/AIHOT/pull/11)。先检出该分支最新提交，不能只检出main；主动选题代码为619789d，部署后的文档更新为9ff0a1a。本入口后续提交只补云端接续、恢复工具和真实运行证据。
