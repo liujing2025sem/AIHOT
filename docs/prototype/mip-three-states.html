@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MiP 三态审核 · 原型</title>
+<style>
+:root{--bg:#f5f6f8;--paper:#fff;--ink:#14202b;--ink2:#3d4b57;--ink3:#6b7884;--line:#e3e7ec;--accent:#0f6e66;--accent-soft:#e6f3f1;--red:#c2410c;--red-soft:#fdeee6;--amber:#a16207;--amber-soft:#fdf4df;--green:#15803d;--green-soft:#e8f6ec;--radius:12px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1418;--paper:#171e24;--ink:#e8edf1;--ink2:#c2ccd4;--ink3:#8b98a3;--line:#273039;--accent:#3fb6aa;--accent-soft:#13312e;--red:#f4864f;--red-soft:#3a2116;--amber:#e3b04b;--amber-soft:#352a12;--green:#5ccf86;--green-soft:#13301f}}
+:root[data-theme="dark"]{--bg:#0f1418;--paper:#171e24;--ink:#e8edf1;--ink2:#c2ccd4;--ink3:#8b98a3;--line:#273039;--accent:#3fb6aa;--accent-soft:#13312e;--red:#f4864f;--red-soft:#3a2116;--amber:#e3b04b;--amber-soft:#352a12;--green:#5ccf86;--green-soft:#13301f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif}
+button,input{font:inherit}button{cursor:pointer}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 8px}.sub,.meta{color:var(--ink3);font-size:12.5px}
+.tabs{display:flex;gap:6px;margin:16px 0;flex-wrap:wrap}.tabs button{border:1px solid var(--line);background:var(--paper);color:var(--ink2);padding:7px 14px;border-radius:99px}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.steps{display:flex;gap:0;margin:6px 0 16px;flex-wrap:wrap}.step{padding:6px 14px;border:1px solid var(--line);background:var(--paper);color:var(--ink3);font-size:13px}.step:first-child{border-radius:99px 0 0 99px}.step:last-child{border-radius:0 99px 99px 0}
+.step.on.s1{background:var(--red-soft);color:var(--red);font-weight:600}.step.on.s2{background:var(--amber-soft);color:var(--amber);font-weight:600}.step.on.s3{background:var(--green-soft);color:var(--green);font-weight:600}
+.banner{border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;font-weight:600}.banner.red{background:var(--red-soft);color:var(--red)}.banner.amber{background:var(--amber-soft);color:var(--amber)}.banner.green{background:var(--green-soft);color:var(--green)}
+.grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+.box{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.sent{border-radius:8px;padding:6px 8px;margin:4px -8px}.sent[contenteditable="true"]{outline:1px dashed var(--line)}.sent.bad{background:var(--red-soft)}.sent.look{background:var(--amber-soft)}
+.claim{border-radius:4px;padding:0 3px;font-weight:600;cursor:help}.claim.new{background:var(--amber-soft);color:var(--amber)}.claim.ok{background:var(--green-soft);color:var(--green)}.claim.reuse{background:var(--green-soft);color:var(--green);text-decoration:underline dotted}
+.item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--paper)}.item.done{opacity:.55}
+.btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 12px}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.src p{margin:0 0 10px}.hl{background:var(--amber-soft);outline:2px solid var(--amber);border-radius:3px}
+.rule{font-size:12.5px;color:var(--ink2);border-left:3px solid var(--line);padding-left:10px;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.diff del{color:var(--red);text-decoration:line-through}.diff ins{color:var(--green);text-decoration:none;font-weight:600}
+.view{display:none}.view.on{display:block}
+input[type=url]{border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:280px;background:var(--paper);color:var(--ink)}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--line);color:var(--ink2)}
+@media (max-width:860px){.grid{grid-template-columns:1fr}input[type=url]{min-width:0;width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row"><div style="flex:1"><h1>MiP LED Package Size vs. Display Specs</h1><div class="sub">技术解释文 · 原文 Kinglight News，10 月 23 日（原文日历日期）· 版本 1</div></div><span class="tag">原型 · MiP 数字来自真实原文；来源更正为演示假设</span></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="flow">三态审核（可点击推进）</button>
+    <button role="tab" aria-selected="false" data-tab="fix">来源更正演示</button>
+    <button role="tab" aria-selected="false" data-tab="rules">确认失效规则</button>
+  </div>
+
+  <section class="view on" id="view-flow">
+    <div class="steps"><span class="step s1" id="st1">① 待修</span><span class="step s2" id="st2">② 核对</span><span class="step s3" id="st3">③ 可交付</span></div>
+    <div class="banner red" id="banner">还有 1 处必须修改：中文内审稿里的数字缺少厂商归属</div>
+    <div class="grid">
+      <div class="box">
+        <h2>稿件（中文内审稿片段与英文表格）</h2>
+        <div class="sent bad" id="zh1" contenteditable="false">封装尺寸属于器件：MC0606 为 <span class="claim new" data-src="p1">0.65 × 0.65 mm</span>，MC1010-M2/M3 为 <span class="claim new" data-src="p3">1.0 × 1.0 mm</span>。</div>
+        <div class="row" id="fixRow" style="margin:6px 0 12px"><button class="btn primary" id="doFix">改为“晶台光电称…”</button><button class="btn" id="editZh">自己改这句</button><span class="meta">原因：这句话没有写出是谁说的。全文同一个原因，改一处就会重新检查全部。</span></div>
+        <table>
+          <tr><th>Part</th><th>Package size</th><th>Display-level figures (vendor-stated)</th></tr>
+          <tr><td>MC0606</td><td><span class="claim new" data-src="p1">0.65 × 0.65 mm</span></td><td>Up to <span class="claim new" data-src="p2">2,000 nits</span>, <span class="claim new" data-src="p2">100,000:1</span></td></tr>
+          <tr id="rowM3"><td>MC1010-M3</td><td><span class="claim new" data-src="p3">1.0 × 1.0 mm</span></td><td class="sent" id="m3cell">Up to <span class="claim new" data-src="p3" id="m3claim">6,000 nits</span></td></tr>
+          <tr><td>ID0909</td><td>Not stated</td><td>Up to <span class="claim new" data-src="p4">3,500 nits</span>, over <span class="claim new" data-src="p4">94%</span> transparency</td></tr>
+        </table>
+        <p class="meta" style="margin-top:10px">Source line：Kinglight, published <span class="claim new" id="dateClaim">October 22, 2026</span>.</p>
+        <p class="meta">复用的已核声明：0 条（这是第一篇；以后的文章会直接复用这里核对过的数字，显示为绿色下划线）</p>
+      </div>
+      <div class="box">
+        <h2 id="rightTitle">需要处理</h2>
+        <div id="questions">
+          <div class="item" id="qBlock"><b>必须修改</b>：16 个数字缺少厂商归属（全部来自同一原因）。<div class="meta">修改后才能进入下一步，不能勾选放行。</div></div>
+        </div>
+        <div class="src box" style="margin-top:12px;padding:12px">
+          <div class="meta" style="margin-bottom:6px">原文对照（悬停稿件中的数字，这里高亮对应句子；实现时显示逐字原文）</div>
+          <p id="p1">… MC0606 … package size … 0.65 × 0.65 mm …</p>
+          <p id="p2">Displays using this product can achieve … 2,000 nits … 100,000:1 …</p>
+          <p id="p3">MC1010-M2 and MC1010-M3 … 1.0 × 1.0 mm … 4,000 nits and 6,000 nits …</p>
+          <p id="p4">ID0909 … flip-chip … 3,500 nits … over 94% …</p>
+        </div>
+        <div class="row" style="margin-top:12px"><button class="btn primary" id="approve" disabled>批准</button><span class="meta" id="approveHint">先处理必须修改的项</span></div>
+        <div id="deliver" style="display:none;margin-top:12px" class="item">
+          <b>发布包</b><div class="meta">标题、slug（mip-led-package-size-vs-display-specs）、meta、HTML、内链建议已生成 · 版本 3 已锁定</div>
+          <div class="row" style="margin-top:8px"><input type="url" id="url" placeholder="发布后粘贴官网 URL"><button class="btn" id="readback">回读核对</button></div>
+          <div class="meta" id="rbResult"></div>
+          <div class="row" style="margin-top:8px"><button class="btn" id="editAfter">再改一下表格里的 6,000 nits 这句（演示失效）</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-fix">
+    <div class="banner amber">来源更正 · Kinglight 改了 1 个数字，影响 3 处（演示假设：原文第 2 版把 6,000 nits 改为 5,500 nits）</div>
+    <div class="box">
+      <div class="meta">原文第 2 版逐字引用（演示）：“… MC1010-M3 … up to 5,500 nits …”· 声明“MC1010-M3 屏体最高 6,000 nits（厂商称）”已标为待复核</div>
+      <table style="margin-top:10px">
+        <tr><th>位置</th><th>原句 → 建议句</th><th>状态</th><th></th></tr>
+        <tr><td>MiP 文章 · 表格第 3 行<div class="meta">已发布，有 URL</div></td><td class="diff">Up to <del>6,000 nits</del> <ins>5,500 nits</ins></td><td id="f1">需更新</td><td><button class="btn" data-f="f1">采用</button></td></tr>
+        <tr><td>上游新品参数登记表 · 第 7 行</td><td class="diff">MC1010-M3 · display brightness · <del>6,000</del> <ins>5,500</ins> nits · vendor-stated</td><td id="f2">需更新</td><td><button class="btn" data-f="f2">采用</button></td></tr>
+        <tr><td>LinkedIn 英文帖 · 第 2 句</td><td class="diff">… up to <del>6,000</del> <ins>5,500</ins> nits with MC1010-M3 …</td><td id="f3">需更新</td><td><button class="btn" data-f="f3">采用</button></td></tr>
+      </table>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="allFix">全部采用</button><span class="meta" id="fixHint">采用后，每个稿件生成新版本；只有这条声明的确认失效，其他确认保留；重新批准并回读后算完成。</span></div>
+    </div>
+    <p class="meta">对照基线：定时检索的做法发现不了原厂改口，除非有人恰好重读这篇原文。</p>
+  </section>
+
+  <section class="view" id="view-rules">
+    <div class="box">
+      <h2>哪些修改会让确认失效</h2>
+      <div class="rule">改动含有已确认声明的句子 → 只有这条声明的确认失效。</div>
+      <div class="rule">改动不含声明的句子 → 各项确认保留，批准失效，重新批准只需点一次。</div>
+      <div class="rule">改标题、日期或 meta → 只有对应那一项的确认失效。</div>
+      <div class="rule">原文出现新版本 → 绑定这份原文的所有确认失效；来自其他来源的复用声明不受影响。</div>
+      <div class="rule">编辑门规则升级 → 重新检查；出现新的必须修改项，回到“待修”。</div>
+    </div>
+  </section>
+</div>
+<script>
+let state=1;const $=id=>document.getElementById(id);
+function setState(s){state=s;['st1','st2','st3'].forEach((id,k)=>$(id).classList.toggle('on',k+1===s));const b=$('banner');
+ if(s===1){b.className='banner red';b.textContent='还有 1 处必须修改：中文内审稿里的数字缺少厂商归属';}
+ if(s===2){b.className='banner amber';b.textContent='核对中：没有必须修改的项，还有需要你判断的问题';}
+ if(s===3){b.className='banner green';b.textContent='可交付：版本已锁定，可以生成发布包';}
+ refresh();}
+function refresh(){const open=[...document.querySelectorAll('#questions .item:not(.done)')].length;const ap=$('approve');ap.disabled=!(state===2&&open===0);$('approveHint').textContent=state===1?'先处理必须修改的项':state===2?(open?`还有 ${open} 个问题`:'可以批准了'):'已批准';$('deliver').style.display=state===3?'block':'none';}
+function toCheck(){ $('zh1').classList.remove('bad');$('zh1').innerHTML='晶台光电称，MC0606 封装为 <span class="claim new" data-src="p1">0.65 × 0.65 mm</span>，MC1010-M2/M3 为 <span class="claim new" data-src="p3">1.0 × 1.0 mm</span>。';$('fixRow').style.display='none';
+ $('questions').innerHTML=`<div class="item" id="qDate"><b>1. 日期</b>：稿件写 October 22，原文日历日期是 October 23。<div class="row" style="margin-top:6px"><button class="btn primary" onclick="answer('qDate',true)">改为 October 23</button></div></div>
+ <div class="item" id="qMkt"><b>2. 市场预测段落</b>：40.5% 增长率没有写出处，与读者的问题无关。<div class="row" style="margin-top:6px"><button class="btn" onclick="answer('qMkt')">删掉这段</button><button class="btn" onclick="answer('qMkt')">保留并写明“行业数据，未注明出处”</button></div></div>
+ <div class="item" id="qClaims"><b>3. 新声明 9 条</b>：数字都能在原文找到，请对照右侧原文确认一次。<div class="row" style="margin-top:6px"><button class="btn" onclick="answer('qClaims',false,true)">已对照，全部确认</button></div></div>`;
+ hover();setState(2);}
+function answer(id,date,claims){$(id).classList.add('done');if(date){const d=$('dateClaim');d.textContent='October 23, 2026';d.className='claim ok';}if(claims)document.querySelectorAll('.claim.new').forEach(c=>{if(c.id!=='dateClaim')c.className='claim ok'});refresh();}
+$('doFix').onclick=toCheck;$('editZh').onclick=()=>{$('zh1').contentEditable='true';$('zh1').focus();$('editZh').textContent='改完了，重新检查';$('editZh').onclick=toCheck;};
+$('approve').onclick=()=>setState(3);
+$('readback').onclick=()=>{const u=$('url').value.trim();$('rbResult').textContent=/^https:\/\/(www\.)?chipshow\.com\//.test(u)?'回读一致：标题、正文、日期、来源链接与批准版本相同 · 计入本周北极星':'请填入 chipshow.com 的实际文章 URL';};
+$('editAfter').onclick=()=>{const c=$('m3claim');c.className='claim new';$('m3cell').classList.add('look');$('questions').insertAdjacentHTML('beforeend','<div class="item" id="qM3"><b>这句被改过</b>：MC1010-M3 的 6,000 nits 需要重新确认；其他 8 条声明的确认仍然有效。<div class="row" style="margin-top:6px"><button class="btn" onclick="answer(\'qM3\');document.getElementById(\'m3claim\').className=\'claim ok\';document.getElementById(\'m3cell\').classList.remove(\'look\')">已对照，确认</button></div></div>');setState(2);};
+function hover(){document.querySelectorAll('.claim[data-src]').forEach(n=>n.onmouseenter=()=>{document.querySelectorAll('.hl').forEach(x=>x.classList.remove('hl'));$(n.dataset.src).classList.add('hl');});}
+hover();
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{$(b.dataset.f).textContent='已采用，待重新批准';b.disabled=true;});
+$('allFix').onclick=()=>{['f1','f2','f3'].forEach(f=>$(f).textContent='已采用，待重新批准');document.querySelectorAll('[data-f]').forEach(b=>b.disabled=true);$('fixHint').textContent='3 处已生成新版本：MiP 文章 v4、参数登记表 v2、LinkedIn 帖 v2。下一步：重新批准（只需确认这 1 条声明）→ 发布 → 回读。';};
+document.querySelectorAll('[data-tab]').forEach(t=>t.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.setAttribute('aria-selected',String(x===t)));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='view-'+t.dataset.tab));});
+setState(1);
+</script>
+</body>
+</html>
