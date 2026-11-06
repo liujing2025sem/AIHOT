@@ -87,7 +87,7 @@ export async function studioGenerationStatus() {
 }
 
 export async function studioMaterial(id: string) {
-  const [a] = await sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.revision,a.published_at,a.publication_time,a.body_status,a.body_text,a.discovered_at,
+  const [a] = await sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,coalesce(s.config->'detail'->>'publishedAtUtcOffset',s.config->>'publishedAtUtcOffset','+08:00') AS source_utc_offset,a.revision,a.published_at,a.publication_time,a.body_status,a.body_text,a.discovered_at,
     (SELECT jsonb_build_object('state',l.after->>'state','notice',l.after->>'notice','at',l.created_at)
       FROM audit_log l WHERE l.subject='content:' || a.id AND l.action='studio.material.extract'
       ORDER BY l.created_at DESC,l.id DESC LIMIT 1) AS last_extraction
@@ -101,7 +101,7 @@ function snapshot(a: Record<string, any>) {
 async function checkSources(packet: Packet, db: Db) {
   for (const a of packet.articles) {
     const [current] = await db`SELECT id,revision,title,body_status,body_text,url,published_at FROM articles WHERE id=${a.binding.article_id} FOR SHARE`;
-    if (!current || current.revision !== a.binding.revision || snapshot(current).binding.content_sha256 !== a.binding.content_sha256 || current.url !== a.binding.url) {
+    if (!current || current.revision !== a.binding.revision || snapshot(current).binding.content_sha256 !== a.binding.content_sha256 || current.url !== a.binding.url || snapshot(current).binding.published_at !== a.binding.published_at) {
       throw new Conflict('原文已更新或不存在，请重新建立采编任务；已有稿件不会被覆盖。');
     }
   }
@@ -310,7 +310,10 @@ export async function exportStudioDraft(id: string, format: string) {
   const packet=packetSchema.parse(task.request);
   await checkSources({...packet,articles:packet.articles.filter(a=>a.binding.article_id===row.article_id)},sql);
   if (format === 'review') return { type: 'application/json', extension: 'review.json', body: JSON.stringify({ id, version: row.version, audience: 'INTERNAL_REVIEW_ONLY', reviewed_by: row.reviewed_by, reviewed_at: row.reviewed_at, document: {...d,camos:row.document.camos,editorial_gate:row.gate} }, null, 2) };
-  const publication = publicDraft(d,packet.writing?.site);
+  const publication = publicDraft(d,packet.writing?.site,{
+    publicationTime:row.material.publication_time,
+    utcOffset:row.material.source_utc_offset,
+  });
   const markdown = `# ${publication.title}\n\n${publication.body}\n\nMeta description: ${publication.meta_description}\n`;
   if (format === 'json') return { type: 'application/json', extension: 'json', body: JSON.stringify({ id, version: row.version, publication }, null, 2) };
   if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };

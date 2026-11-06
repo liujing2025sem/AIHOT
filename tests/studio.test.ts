@@ -257,6 +257,10 @@ test('public export is English with source/date/status, internal review remains 
  const json=JSON.parse((await exportStudioDraft(d.id,'json'))!.body);assert.equal(json.publication.language,'en');assert.equal(json.publication.placement,'blog');assert.equal(json.publication.news_status,'unconfirmed');assert.equal(json.publication.canonical,null);assert.ok(!('review_zh' in json.publication));assert.match(json.publication.body,/Original source date: not provided/);
  const html=(await exportStudioDraft(d.id,'html'))!.body;assert.match(html,/lang="en"/);assert.match(html,/Unconfirmed report/);assert.doesNotMatch(html,/据传/);
  assert.match((await exportStudioDraft(d.id,'review'))!.body,/据传/);
+ try {
+  await sql`UPDATE articles SET published_at='2026-10-23T00:00:00Z' WHERE id=${article}`;
+  await assert.rejects(exportStudioDraft(d.id,'json'),/原文已更新/);
+ } finally { await sql`UPDATE articles SET published_at=NULL WHERE id=${article}`; }
 });
 
 

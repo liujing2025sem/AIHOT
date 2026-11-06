@@ -162,7 +162,7 @@ test('approved multi-direction Blog brief reaches file handoff without a mandato
 
 test('unconfirmed status survives public title, summary and body while dates remain original',()=>{
  const d={...response.drafts[0],review_zh:'据传厂商准备更新器件，尚未证实。'};
- const published=publicDraft(d);assert.equal(published.news_status,'unconfirmed');assert.match(published.title,/^Unconfirmed report:/);assert.match(published.meta_description,/^Unconfirmed report/);assert.match(published.body,/Unconfirmed report/);assert.match(published.body,/2026-08-17/);assert.equal(published.canonical,null);assert.equal(published.placement,'blog');assert.ok(!('review_zh' in published));
+ const published=publicDraft(d,undefined,{publicationTime:'2026-08-18',utcOffset:'+08:00'});assert.equal(published.news_status,'unconfirmed');assert.match(published.title,/^Unconfirmed report:/);assert.match(published.meta_description,/^Unconfirmed report/);assert.match(published.body,/Unconfirmed report/);assert.match(published.body,/August 18, 2026/);assert.equal(published.canonical,null);assert.equal(published.placement,'blog');assert.ok(!('review_zh' in published));
  const unknown=publicDraft({...d,source:{...d.source,published_at:null}});assert.match(unknown.body,/date: not provided/);
 });
 
