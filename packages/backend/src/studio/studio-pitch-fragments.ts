@@ -383,6 +383,36 @@ type CalculationResults = {
   feet_to_meters: { meters: number };
   aspect_ratio: { ratio: number };
 };
+
+/** Recover pixel inputs from the actual page when the writer paraphrases its basis.
+ * Quotes stay separate: a width/height phrase and a row under a Pixel Pitch header. */
+export function pixelInputEvidence(inputs: Readonly<Record<string, number>>, material: EvidenceMaterial): string[] {
+  if (!material.body_text || !material.body_html) return [];
+  const pair = /\b(\d+(?:\.\d+)?)\s*(?:ft|feet|foot)\s+(wide|high)\s*(?:×|x|by)\s*(\d+(?:\.\d+)?)\s*(?:ft|feet|foot)\s+(wide|high)\b/gi;
+  const dimensions = [...material.body_text.matchAll(pair)].find(m => {
+    if (m[2].toLowerCase() === m[4].toLowerCase()) return false;
+    const width = Number(m[m[2].toLowerCase() === 'wide' ? 1 : 3]);
+    const height = Number(m[m[2].toLowerCase() === 'high' ? 1 : 3]);
+    return width === inputs.width_ft && height === inputs.height_ft;
+  });
+  if (!dimensions) return [];
+  const $ = load(material.body_html);
+  for (const table of $('table').toArray()) {
+    const rows = $(table).find('tr').toArray().filter(row => $(row).closest('table').get(0) === table);
+    const header = rows[0];
+    if (!header) continue;
+    const column = $(header).children('th,td').toArray().findIndex(cell => /^pixel\s+pitch$/i.test($(cell).text().trim()));
+    if (column < 0) continue;
+    for (const row of rows.slice(1)) {
+      const cells = $(row).children('th,td').toArray();
+      const code = cells[column] && /^P(\d+(?:\.\d+)?)$/i.exec($(cells[column]).text().trim());
+      if (!code || Number(code[1]) !== inputs.pitch_mm) continue;
+      const quote = visibleText($.html(row)).replace(/\s+/g, ' ').trim();
+      if (quote.length <= 300 && material.body_text.includes(quote)) return [dimensions[0], quote];
+    }
+  }
+  return [];
+}
 type Calculated<R> = Pick<Fact, 'statement' | 'quote' | 'attribution'> & {
   result: R;
   calculation: { fn: CalculationName; inputs: Record<string, number>; formula: string; result: R };

@@ -303,12 +303,13 @@ function Coverage({ pitch, v2, run, busy, editable }: { pitch: PitchRow; v2: V2;
   const statuses: CoverageStatus[] = ['missing', 'engineer', 'page_weak', 'direct', 'calc', 'page_good'];
   return <div className="space-y-3">
     <h3 className="text-sm font-semibold">买家子问题覆盖</h3>
+    {!v2.edit_plan.length && !!v2.subquestions.length && <p className={muted}>编辑计划尚未返回。以下仅为自动检索和计算结果；未命中不代表旧页没有答案。</p>}
     {!v2.subquestions.length && <p className={muted}>本次未返回买家子问题。</p>}
     {statuses.map(status => {
       const questions = v2.subquestions.filter(question => question.coverage.status === status);
       if (!questions.length) return null;
       return <section key={status} className="space-y-2">
-        <h4 className="text-sm font-medium">{coverageLabels[status]} · {questions.length} 题</h4>
+        <h4 className="text-sm font-medium">{status === 'missing' && !v2.edit_plan.length ? '待核对旧页与资料' : coverageLabels[status]} · {questions.length} 题</h4>
         {questions.map(question => <article key={question.id} className={inset}>
           <h5 className="text-sm font-medium">{question.zh || question.en}</h5>
           {question.coverage.reason && <p className={muted}>{question.coverage.reason}</p>}

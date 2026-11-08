@@ -358,7 +358,7 @@ test('10k-material refresh reads only configured LED/referenced sources and oper
 });
 
 import {
-  answerEvidence, assembleFragments, calculateFact, evidenceFactQuote, splitPage, validateEditPlan, validateFragment,
+  answerEvidence, assembleFragments, calculateFact, evidenceFactQuote, pixelInputEvidence, splitPage, validateEditPlan, validateFragment,
   type EditOperation, type Fact, type Subquestion,
 } from '@aihot/backend/studio/studio-pitch-fragments';
 
@@ -366,6 +366,21 @@ const pitchNumberQuestion: Subquestion = {
   id: 'q-pixels', zh: '如何估算广告牌像素？', en: 'How many pixels are on the billboard?',
   need: 'reference', answer_shape: 'number', terms: ['billboard', 'pixel pitch', 'P10', 'P10'],
 };
+
+test('pixel inputs survive a paraphrased model basis by citing exact dimensions and a pitch table',()=>{
+  const dimensions='48 ft wide × 14 ft high';
+  const row='P16 914 × 267 px';
+  const material={id:'page',body_text:`A common bulletin format is ${dimensions}. Pixel Pitch Approximate resolution ${row}`,
+    body_html:`<p>A common bulletin format is ${dimensions}.</p><table><tr><td><strong>Pixel Pitch</strong></td><td>Approximate resolution</td></tr><tr><td>P16</td><td>914 × 267 px</td></tr></table>`};
+  const inputs={width_ft:48,height_ft:14,pitch_mm:16};
+  const quotes=pixelInputEvidence(inputs,material);
+  assert.deepEqual(quotes,[dimensions,row]);
+  assert.ok(quotes.every(q=>material.body_text.includes(q)),'every recovered input quote remains verbatim');
+  assert.deepEqual(calculateFact('pixels',inputs).result,{width_px:914,height_px:266},'the code calculates whole pixels; it does not copy rounded old table results');
+  assert.deepEqual(pixelInputEvidence({...inputs,width_ft:14,height_ft:48},material),[],'orientation cannot be reversed');
+  assert.deepEqual(pixelInputEvidence({...inputs,pitch_mm:10},material),[],'an absent pitch cannot be borrowed');
+  assert.deepEqual(pixelInputEvidence(inputs,{...material,body_html:material.body_html.replace('Pixel Pitch','Product model')}),[],'a model code alone is not a pitch input');
+});
 
 test('pitch fragments: evidence needs two distinct terms and an answer in the same verbatim sentence', () => {
   const sentence = 'For the billboard, the P10 pixel pitch is 10 mm.';

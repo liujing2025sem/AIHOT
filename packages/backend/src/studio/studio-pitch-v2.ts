@@ -14,7 +14,7 @@ import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from
 import {companyFactRules} from './studio-company-facts.ts';
 import {buyerQuestionsSchema,editPlanSchema,fragmentPlanSchema,fragmentSchema,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
-import {splitPage,answerEvidence,evidenceFactQuote,calculateFact,validateEditPlan,validateFragment,assembleFragments,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
+import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
 function invalid(s:string):never{throw Object.assign(new Error(s),{statusCode:400});}
 const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/${name}.md`,import.meta.url),'utf8');
@@ -65,12 +65,18 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
   try{
     const linked:NonNullable<Prep['materials']>=[];const link_errors=[];
     for(const url of [...new Set([prep.existing_url,...prep.links].filter(Boolean))]){
+      if(replay){
+        const saved=prep.materials?.find(m=>canonical(m.url)===canonical(url));
+        if(saved)linked.push({...saved,existing_page:canonical(url)===canonical(prep.existing_url)});
+        else link_errors.push({url,reason:'未保存该链接的素材，本次免费重放未重新抓取。'});
+        continue;
+      }
       try{const mid=await importLink(url,actor);const m=await studioMaterial(mid) as NonNullable<Prep['materials']>[number];linked.push({...m,first_party:false,hit_count:0,snippet:m.body_text?.slice(0,300)||'',existing_page:canonical(m.url)===canonical(prep.existing_url)});}
       catch(e){link_errors.push({url,reason:String(e).slice(0,250)});}
     }
     const page=linked.find(m=>m.existing_page);
     const [htmlRow]=page?await sql`SELECT body_html FROM articles WHERE id=${page.id}`:[];
-    const sourceHtml=htmlRow?.body_html??'';
+    const sourceHtml=replay?(prep.source_html??''):htmlRow?.body_html??'';
     if(prep.existing_url&&!sourceHtml)invalid('旧页正文 HTML 未取得，无法逐段保留；请补正文。');
     const paragraphs=splitPage(sourceHtml);
     prep={...prep,paragraphs,source_html:sourceHtml,original_title:page?.title??'',link_errors};
@@ -79,10 +85,11 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     receipts.push({id:first.receiptId,usage:first.usage,model:first.model});
     const questions=first.data.subquestions;
     if(new Set(questions.map(q=>q.id)).size!==questions.length)invalid('子问题编号重复，需检查保存的回答。');
-    const candidates=await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
+    const candidates=replay?(prep.materials??[]):await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
     const materials:NonNullable<Prep['materials']>=[...linked,...candidates.filter(m=>!linked.some(l=>l.id===m.id))];
-    const htmls=await sql`SELECT id,body_html FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
-    const evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:htmls.find(h=>h.id===m.id)?.body_html})));
+    const htmls=await sql`SELECT id,body_html,revision FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
+    const evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:m.existing_page?sourceHtml:
+      htmls.find(h=>h.id===m.id&&h.revision===m.revision)?.body_html})));
     const facts:Fact[]=[];
     const addFact=(value:Omit<Fact,'id'>)=>{const f={...value,id:`f${facts.length+1}`} as Fact;facts.push(f);return f;};
     const demand=await demandFor(questions,prep.existing_url);
@@ -95,12 +102,18 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
       let status:Coverage['status']=ids.length?'direct':q.need==='company'?'engineer':'missing';
       if(q.need==='calc'&&q.calculation){
         const basis=q.calculation.basis;
-        if(quoted(basis,`${prep.question}\n${page?.body_text??''}`)){
+        const inputQuotes=q.calculation.fn==='pixels'&&page
+          ?pixelInputEvidence(q.calculation.inputs,{id:page.id,body_text:page.body_text,body_html:sourceHtml}):[];
+        if(inputQuotes.length||quoted(basis,`${prep.question}\n${page?.body_text??''}`)){
+          for(const quote of inputQuotes)ids.push(addFact({kind:'page',statement:quote,quote,article_id:page!.id,
+            revision:page!.revision,date:page!.publication_time??null,attribution:'Chipshow page',url:page!.url}).id);
           const computed=calculateFact(q.calculation.fn,q.calculation.inputs);
           const f=addFact({...computed.fact,kind:'calc',quote:''});ids.push(f.id);status='calc';
         }
       }
-      return {...q,coverage:{status,page_paragraphs:[],evidence:ids,action:ids.length?'':`需要${q.need==='company'?'工程确认':q.need==='calc'?'可核对的计算输入':'参考资料'}：${q.zh}`},demand:demand[q.id]};
+      return {...q,coverage:{status,page_paragraphs:[],evidence:ids,action:ids.length?'':page&&q.need!=='company'
+        ?'未自动命中答案；待编辑计划核对旧页是否已答，暂不认定为内容缺口。'
+        :`需要${q.need==='company'?'工程确认':q.need==='calc'?'可核对的计算输入':'参考资料'}：${q.zh}`},demand:demand[q.id]};
     });
     // A short exact quote from the existing page anchors titles without sending the whole page.
     if(page&&!facts.some(f=>f.article_id===page.id)){const quote=shortQuote(paragraphs[0]?.text??'',page.body_text??'');if(quote)addFact({kind:'page',statement:quote,quote,article_id:page.id,revision:page.revision,date:page.publication_time??null,attribution:'Chipshow page',url:page.url});}
