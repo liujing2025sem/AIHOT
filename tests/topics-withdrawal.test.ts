@@ -39,7 +39,7 @@ async function report(n: number, hoursAgo: number, subject = "kinglight"): Promi
   });
   await sql`UPDATE articles SET discovered_at = ${at}, timeline_at = ${at}, grouped_at = now() WHERE id = ${articleId}`;
   await sql`INSERT INTO analyses (article_id, input_revision, origin, relevance, category, title_zh, summary_zh, score, selected, subjects, tags)
-            VALUES (${articleId}, 1, 'rule', 'pass', 'ai-products', ${`${subject} 消息 ${n}`}, '摘要', 80, true, ${[subject]}, ${['产品更新']})`;
+            VALUES (${articleId}, 1, 'rule', 'pass', 'control-software', ${`${subject} 消息 ${n}`}, '摘要', 80, true, ${[subject]}, ${['产品更新']})`;
   await publishArticle(articleId, { releasedAt: new Date(at.getTime() + 60_000) });
   return articleId;
 }
@@ -65,7 +65,7 @@ test("a correction refreshes named content and its topic membership before the i
   assert.equal(retitled?.topic.latest?.title, title, "the page headline");
   assert.equal((await listTopicSummaries()).topics.find((t) => t.slug === "nationstar")?.latest?.title, title, "the directory headline");
 
-  await overrideFields(corrected, { fields: { category: "tip" }, version: 1, reason: "实际是教程" }, "test-topics");
+  await overrideFields(corrected, { fields: { category: "displays-projects" }, version: 1, reason: "实际是教程" }, "test-topics");
   const reclassified = await loadTopicPage("nationstar", 1);
   assert.equal(reclassified?.items[0]?.id, corrected, "it remains a selected report");
 

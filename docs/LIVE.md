@@ -35,14 +35,14 @@
 
 ## 状态（2026-11-08，Codex执行）
 
-- S0-1已合并 #15：main `19eb5c7`，候选CI [42449668075](https://github.com/liujing2025sem/AIHOT/actions/runs/42449668075)通过；真实目标机/采集未代验。
-- S0-2已合并 #14：修复歧义简称，CI [42466240850](https://github.com/liujing2025sem/AIHOT/actions/runs/42466240850)通过；MiP编辑门重放BLOCK 0、WARN 45。
-- #11的10张截图隐私检查通过；已集成#14/#15，MiP完整schema/validateResponse/编辑门重放通过，待当前提交CI后合并。
-- 已发布长文0篇、短讯0期；MiP复用原响应，未再调用模型，人工批准与WP草稿尚未完成。
-- #13、#1待关闭；信源和LED五节替换待S0-5。Dot和云端消息预检NOT_SENT，已读Drive归档，LIVE_NOT_READ。
+- S0-1/2/3：#15、#14、#11已合并，main `bb3ab04`；CI分别为[42449668075](https://github.com/liujing2025sem/AIHOT/actions/runs/42449668075)、[42466240850](https://github.com/liujing2025sem/AIHOT/actions/runs/42466240850)、[42466859783](https://github.com/liujing2025sem/AIHOT/actions/runs/42466859783)。
+- MiP真实保存响应已通过完整结构/绑定/编辑门重放：BLOCK 0、WARN 45，归并30问题；没有新模型调用、没有批准或发布。
+- S0-4：#13与#1已关闭，分支保留；Issue #12保持开放并收窄。
+- S0-5候选：删除18个AI源，LED五节；24入口中18启用、6停用；8个RSS读到184条（未去重），目标机采集未执行，待本提交CI。
+- 已发布长文0篇、短讯0期。WordPress账户登录已验证；草稿推送和工程师确认尚未完成。Dot/云端消息NOT_SENT，ARCHIVE_READ / LIVE_NOT_READ。
 
 ## 下一步
 
-1. S0：完成#11当前提交CI后合并，关闭#13和#1，完成信源与LED五节替换。
+1. S0：完成信源与LED五节候选的CI并合并；已有目标机数据不删除。
 2. S1：接通 WP 草稿推送，尺寸指南升级稿和 MiP 长文进草稿箱，第 1 期短讯。
 3. 需要用户或 IT 提供：WP 应用密码、GSC 导出、询盘问题清单、黑名单内容（GPT 可从 CAMOS 记录里整理，由用户确认）。

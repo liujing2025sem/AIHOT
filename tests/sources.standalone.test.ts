@@ -31,8 +31,11 @@ const ledSources = (JSON.parse(readFileSync(new URL("../industry/sources.json", 
 
 test("crawl preflight refuses incomplete or duplicate evidence before writing a report", () => {
   const read = (name: string) => JSON.parse(readFileSync(new URL(`../${name}`, import.meta.url), "utf8"));
+  const sourceSnapshot = read("industry/sources.json");
+  const ledIds = new Set(read("docs/crawl-quality/2026-11-06-preflight.json").scope.led_runtime_ids);
+  sourceSnapshot.sources = sourceSnapshot.sources.filter((s: {id: string}) => ledIds.has(s.id));
   const original = {
-    sources: read("industry/sources.json"), plan: read("industry/led-source-plan.json"),
+    sources: sourceSnapshot, plan: read("industry/led-source-plan.json"),
     preview: read("tests/fixtures/editorial-preview-20261103.json"),
     verification: readFileSync(new URL("../docs/led-source-verification.md", import.meta.url), "utf8"),
   };
@@ -335,28 +338,18 @@ test("a source's language is an Accept-Language value, refused by kinds that rea
   for (const kind of ["x_search", "mp_account", "external"] as const) assert.deepEqual(unsupportedConfig(kind, { acceptLanguage: "en" }), ["acceptLanguage"], kind);
 });
 
-test("LED candidates use supported config and do not start collection or full-text republication", () => {
-  assert.deepEqual(new Set(ledSources.map(s => s.id)), ledSourceIds);
-  for (const s of ledSources) {
-    assert.deepEqual(unsupportedConfig(s.kind, s.config), [], s.id);
-    assert.equal(s.enabled, false, s.id);
-    assert.equal(s.site_fulltext, false, s.id);
-    assert.equal(s.syndicate_fulltext, false, s.id);
-  }
-});
-
-test("G1 LED candidates remain disabled with both full-text outlets closed", () => {
-  const ids = new Set([
-    "web-meanwell-new-products", "web-colorlight-news", "web-oaaa-news", "web-chipone-news",
-    "web-czcl-news", "web-g-energy-news", "web-huidu-news", "web-huidu-hdplayer",
-    "web-colorlight-software", "web-colorlight-ledvision", "web-colorlight-firmware",
-    "web-novastar-news", "rss-ledinside-news",
+test("LED seed enables verified news, version baselines and search discovery while pausing date repair", () => {
+  const { sources } = JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8"));
+  const dated = new Set([
+    "web-kinglight-news", "web-nationstar-product-news", "web-meanwell-new-products",
+    "web-colorlight-news", "web-huidu-news", "rss-ledinside-news",
+    "web-huidu-hdplayer", "web-colorlight-software", "web-colorlight-ledvision", "web-colorlight-firmware", "rss-led-search-components", "rss-led-search-micro-led", "rss-led-search-control", "rss-led-search-projects", "rss-led-search-virtual-production", "rss-led-search-dooh", "rss-led-search-consumer", "rss-led-search-near-eye",
   ]);
-  const configured = JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8")).sources;
-  const candidates = configured.filter((s: SourceRow) => ids.has(s.id));
-  assert.deepEqual(new Set(candidates.map((s: SourceRow) => s.id)), ids);
-  for (const s of candidates) {
-    assert.equal(s.enabled, false, s.id);
+  const enabled = sources.filter((s: SourceRow) => s.enabled);
+  assert.deepEqual(new Set(enabled.map((s: SourceRow) => s.id)), dated);
+  for (const s of sources) {
+    assert.deepEqual(unsupportedConfig(s.kind, s.config), [], s.id);
+    assert.ok(["T1", "T1_5", "T2", "EXCLUDE_MP"].includes(s.tier), s.id);
     assert.equal(s.site_fulltext, false, s.id);
     assert.equal(s.syndicate_fulltext, false, s.id);
   }
