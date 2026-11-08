@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>矢量配图模板 · 视觉意图稿</title>
+<style>
+  :root { --ink: #13191c; --muted: #5c676c; --accent: #0a6f75; --brand: #2ce2e8; --hair: #e2e0da; --paper: #fbfaf7; --warn: #b5651d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f1f0ec; color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  .note { padding: 10px 16px; font-size: 13px; color: var(--muted); background: var(--paper); border-bottom: 1px dashed #d4d0c6; }
+  main { max-width: 1040px; margin: 24px auto 64px; padding: 0 16px; }
+  h2 { font-size: 16px; margin: 40px 0 8px; }
+  h2 small { font-weight: 400; color: var(--muted); margin-left: 8px; }
+  figure.cs-figure { margin: 0; background: #fff; border: 1px solid var(--hair); }
+  figure.cs-figure svg { display: block; width: 100%; height: auto; }
+  figure.cs-figure figcaption { padding: 10px 16px 14px; font: 15px/1.6 Georgia, "Iowan Old Style", serif; color: #2d3a40; border-top: 1px solid var(--hair); }
+  .meta { display: grid; grid-template-columns: 1fr 260px; gap: 12px; margin-top: 10px; }
+  @media (max-width: 760px) { .meta { grid-template-columns: 1fr; } }
+  pre { margin: 0; padding: 10px 12px; background: #eef4f2; font: 12.5px/1.6 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+  .score { background: var(--paper); border: 1px solid var(--hair); padding: 10px 12px; font-size: 13px; }
+  .score b { font-size: 22px; color: var(--accent); }
+  .score div { display: flex; justify-content: space-between; border-top: 1px solid var(--hair); padding: 3px 0; }
+  .rules { background: var(--paper); border: 1px solid var(--hair); padding: 12px 18px; font-size: 14px; }
+  .rules li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="note">视觉意图稿（2026-11-08）：四个参数化模板的画法示范。图中只放数字、单位和型号代号，解释文字都在图注和 ALT 里，方便 CSM 翻译。图 1、图 2 的数字都由公式算出；图 3、图 4 是示意图，模板定稿前请工程师看一次。右侧分数为示例。</div>
+<main>
+  <div class="rules">
+    <b>画法规则（四个模板共用）</b>
+    <ul>
+      <li>画布 1200 × 675，浅纸色底，四周留 64 px；导出 PNG 宽 1200，正文用 &lt;img width="1200" height="675"&gt;。</li>
+      <li>颜色：线和字 #13191c；次要 #5c676c；数据 #0a6f75；高亮 #2ce2e8（只做填充，不做文字）；差值 #b5651d。</li>
+      <li>字：数字 24–28 px 半粗，次要 16–18 px，最小 14 px；只用 Inter / Segoe UI / Arial，目标机上要有这些字体。</li>
+      <li>图里只出现数字、单位（mm、m、px、Hz、W、dots/m²、%）、型号代号（P10、SMD、HDMI）和圈号；不写句子。</li>
+      <li>右下角 CHIPSHOW 小字；不放原厂图片和照片。</li>
+    </ul>
+  </div>
+
+  <h2>① grid-sizer 箱体拼接与分辨率 <small>用于尺寸指南、项目类文章</small></h2>
+  <figure class="cs-figure">
+    <svg viewBox="0 0 1200 675" role="img" aria-labelledby="f1t" xmlns="http://www.w3.org/2000/svg" font-family="Inter, 'Segoe UI', Arial, sans-serif">
+      <title id="f1t">Diagram comparing a 6 x 3.5 m target area filled with 960 mm and 500 mm LED cabinets</title>
+      <rect width="1200" height="675" fill="#fbfaf7"/>
+      <!-- legend -->
+      <g font-size="16" fill="#5c676c">
+        <rect x="64" y="56" width="28" height="18" fill="none" stroke="#13191c" stroke-width="1.5" stroke-dasharray="6 4"/>
+        <text x="102" y="71">6.00 × 3.50 m</text>
+        <rect x="250" y="56" width="28" height="18" fill="#2ce2e8" fill-opacity=".25" stroke="#0a6f75" stroke-width="1.5"/>
+        <text x="288" y="71">LED</text>
+      </g>
+      <!-- panel A -->
+      <text x="348" y="132" font-size="18" fill="#5c676c" text-anchor="middle">6.00 m</text>
+      <text x="110" y="290" font-size="18" fill="#5c676c" text-anchor="end">3.50 m</text>
+      <rect x="120" y="150" width="456" height="266" fill="none" stroke="#13191c" stroke-width="1.5" stroke-dasharray="8 5"/>
+      <g fill="#2ce2e8" fill-opacity=".25" stroke="#0a6f75" stroke-width="1.5">
+        <rect x="129.1" y="173.6" width="437.8" height="218.9"/>
+      </g>
+      <g stroke="#0a6f75" stroke-width="1">
+        <line x1="202.1" y1="173.6" x2="202.1" y2="392.5"/><line x1="275.0" y1="173.6" x2="275.0" y2="392.5"/><line x1="348.0" y1="173.6" x2="348.0" y2="392.5"/><line x1="421.0" y1="173.6" x2="421.0" y2="392.5"/><line x1="493.9" y1="173.6" x2="493.9" y2="392.5"/>
+        <line x1="129.1" y1="246.5" x2="566.9" y2="246.5"/><line x1="129.1" y1="319.5" x2="566.9" y2="319.5"/>
+      </g>
+      <g text-anchor="middle">
+        <text x="348" y="466" font-size="26" font-weight="600" fill="#0a6f75">5.76 × 2.88 m</text>
+        <text x="348" y="496" font-size="17" fill="#13191c">960 × 960 mm · 6 × 3</text>
+        <text x="348" y="524" font-size="17" fill="#5c676c">P10 · 576 × 288 px · 2:1</text>
+        <text x="348" y="556" font-size="17" font-weight="600" fill="#b5651d">Δ −0.24 × −0.62 m</text>
+      </g>
+      <!-- panel B -->
+      <text x="908" y="132" font-size="18" fill="#5c676c" text-anchor="middle">6.00 m</text>
+      <text x="670" y="290" font-size="18" fill="#5c676c" text-anchor="end">3.50 m</text>
+      <rect x="680" y="150" width="456" height="266" fill="#2ce2e8" fill-opacity=".25" stroke="#0a6f75" stroke-width="1.5"/>
+      <g stroke="#0a6f75" stroke-width=".8">
+        <line x1="718" y1="150" x2="718" y2="416"/><line x1="756" y1="150" x2="756" y2="416"/><line x1="794" y1="150" x2="794" y2="416"/><line x1="832" y1="150" x2="832" y2="416"/><line x1="870" y1="150" x2="870" y2="416"/><line x1="908" y1="150" x2="908" y2="416"/><line x1="946" y1="150" x2="946" y2="416"/><line x1="984" y1="150" x2="984" y2="416"/><line x1="1022" y1="150" x2="1022" y2="416"/><line x1="1060" y1="150" x2="1060" y2="416"/><line x1="1098" y1="150" x2="1098" y2="416"/>
+        <line x1="680" y1="188" x2="1136" y2="188"/><line x1="680" y1="226" x2="1136" y2="226"/><line x1="680" y1="264" x2="1136" y2="264"/><line x1="680" y1="302" x2="1136" y2="302"/><line x1="680" y1="340" x2="1136" y2="340"/><line x1="680" y1="378" x2="1136" y2="378"/>
+      </g>
+      <rect x="680" y="150" width="456" height="266" fill="none" stroke="#13191c" stroke-width="1.5" stroke-dasharray="8 5"/>
+      <g text-anchor="middle">
+        <text x="908" y="466" font-size="26" font-weight="600" fill="#0a6f75">6.00 × 3.50 m</text>
+        <text x="908" y="496" font-size="17" fill="#13191c">500 × 500 mm · 12 × 7</text>
+        <text x="908" y="524" font-size="17" fill="#5c676c">P3.91 · 1536 × 896 px · 12:7</text>
+        <text x="908" y="556" font-size="17" font-weight="600" fill="#0a6f75">Δ 0.00 × 0.00 m</text>
+      </g>
+      <text x="1136" y="628" font-size="14" fill="#5c676c" text-anchor="end" letter-spacing="3">CHIPSHOW</text>
+    </svg>
+    <figcaption>A 6 × 3.5 m opening fits 6 × 3 cabinets of 960 mm (5.76 × 2.88 m) or exactly 12 × 7 cabinets of 500 mm. Calculated by Chipshow; check cabinet sizes against the model's drawing.</figcaption>
+  </figure>
+  <div class="meta">
+<pre>{"template":"grid-sizer",
+ "target_m":[6.0,3.5],
+ "options":[{"cabinet_mm":[960,960],"pitch":"P10"},{"cabinet_mm":[500,500],"pitch":"P3.91"}],
+ "alt_en":"Diagram comparing a 6 x 3.5 m target area filled with 960 mm and 500 mm LED cabinets",
+ "caption_en":"A 6 × 3.5 m opening fits 6 × 3 cabinets of 960 mm …"}
+模型只给参数；行列数、尺寸、像素和差值由代码计算。</pre>
+    <div class="score"><b>96</b> / 100 质检分（示例）<div><span>数据一致</span><span>30/30</span></div><div><span>渲染</span><span>25/25</span></div><div><span>ALT 与图注</span><span>23/25</span></div><div><span>文件与唯一性</span><span>18/20</span></div></div>
+  </div>
+
+  <h2>② bar-compare 参数对比横条 <small>用于功耗、亮度、密度、成本对比</small></h2>
+  <figure class="cs-figure">
+    <svg viewBox="0 0 1200 675" role="img" aria-labelledby="f2t" xmlns="http://www.w3.org/2000/svg" font-family="Inter, 'Segoe UI', Arial, sans-serif">
+      <title id="f2t">Bar chart of LED pixel density in dots per square meter for P2.5, P3.91, P6.67 and P10</title>
+      <rect width="1200" height="675" fill="#fbfaf7"/>
+      <text x="1136" y="96" font-size="18" fill="#5c676c" text-anchor="end">dots/m²</text>
+      <g stroke="#e2e0da" stroke-width="1">
+        <line x1="200" y1="120" x2="200" y2="540"/><line x1="390" y1="120" x2="390" y2="540"/><line x1="580" y1="120" x2="580" y2="540"/><line x1="770" y1="120" x2="770" y2="540"/><line x1="960" y1="120" x2="960" y2="540"/>
+      </g>
+      <g font-size="15" fill="#5c676c" text-anchor="middle">
+        <text x="200" y="568">0</text><text x="390" y="568">40,000</text><text x="580" y="568">80,000</text><text x="770" y="568">120,000</text><text x="960" y="568">160,000</text>
+      </g>
+      <g font-size="24" font-weight="600" fill="#13191c" text-anchor="end">
+        <text x="176" y="188">P2.5</text><text x="176" y="288">P3.91</text><text x="176" y="388">P6.67</text><text x="176" y="488">P10</text>
+      </g>
+      <g fill="#0a6f75">
+        <rect x="200" y="152" width="760" height="52"/>
+        <rect x="200" y="252" width="311.3" height="52"/>
+        <rect x="200" y="352" width="106.9" height="52"/>
+        <rect x="200" y="452" width="47.5" height="52"/>
+      </g>
+      <g font-size="24" font-weight="600" fill="#13191c">
+        <text x="976" y="188">160,000</text><text x="527" y="288">65,536</text><text x="323" y="388">22,500</text><text x="264" y="488">10,000</text>
+      </g>
+      <text x="1136" y="628" font-size="14" fill="#5c676c" text-anchor="end" letter-spacing="3">CHIPSHOW</text>
+    </svg>
+    <figcaption>Pixel density falls with the square of the pitch: 1,000,000 ÷ pitch² (mm). P3.91 is 3.90625 mm and P6.67 is 6.667 mm, the pitches used with 500 mm and 960 mm cabinets.</figcaption>
+  </figure>
+  <div class="meta">
+<pre>{"template":"bar-compare","unit":"dots/m²",
+ "items":[{"label":"P2.5","value":160000},{"label":"P3.91","value":65536},{"label":"P6.67","value":22500},{"label":"P10","value":10000}],
+ "alt_en":"Bar chart of LED pixel density in dots per square meter for P2.5, P3.91, P6.67 and P10"}
+每个 value 都必须能在事实表或计算结果里找到。</pre>
+    <div class="score"><b>94</b> / 100 质检分（示例）<div><span>数据一致</span><span>30/30</span></div><div><span>渲染</span><span>25/25</span></div><div><span>ALT 与图注</span><span>21/25</span></div><div><span>文件与唯一性</span><span>18/20</span></div></div>
+  </div>
+
+  <h2>③ layer-stack 封装与结构层级 <small>用于 MiP、COB、SMD 选型，防护结构</small></h2>
+  <figure class="cs-figure">
+    <svg viewBox="0 0 1200 675" role="img" aria-labelledby="f3t" xmlns="http://www.w3.org/2000/svg" font-family="Inter, 'Segoe UI', Arial, sans-serif">
+      <title id="f3t">Cross-section diagram comparing SMD, COB and MiP LED packaging layers on a circuit board</title>
+      <rect width="1200" height="675" fill="#fbfaf7"/>
+      <!-- column labels -->
+      <g font-size="28" font-weight="600" fill="#13191c" text-anchor="middle"><text x="216" y="140">SMD</text><text x="600" y="140">COB</text><text x="984" y="140">MiP</text></g>
+      <!-- PCBs -->
+      <g fill="#3a4a50"><rect x="72" y="380" width="288" height="40"/><rect x="456" y="380" width="288" height="40"/><rect x="840" y="380" width="288" height="40"/></g>
+      <!-- SMD packages -->
+      <g stroke="#13191c" stroke-width="1.5">
+        <rect x="92" y="334" width="52" height="46" fill="#e8ecea"/><rect x="164" y="334" width="52" height="46" fill="#e8ecea"/><rect x="236" y="334" width="52" height="46" fill="#e8ecea"/>
+      </g>
+      <g fill="#2ce2e8" fill-opacity=".35" stroke="#0a6f75" stroke-width="1.2">
+        <rect x="98" y="338" width="40" height="16"/><rect x="170" y="338" width="40" height="16"/><rect x="242" y="338" width="40" height="16"/>
+      </g>
+      <g fill="#0a6f75"><rect x="112" y="356" width="12" height="9"/><rect x="184" y="356" width="12" height="9"/><rect x="256" y="356" width="12" height="9"/></g>
+      <!-- COB -->
+      <rect x="456" y="340" width="288" height="40" fill="#2ce2e8" fill-opacity=".35" stroke="#0a6f75" stroke-width="1.2"/>
+      <g fill="#0a6f75"><rect x="474" y="368" width="12" height="9"/><rect x="514" y="368" width="12" height="9"/><rect x="554" y="368" width="12" height="9"/><rect x="594" y="368" width="12" height="9"/><rect x="634" y="368" width="12" height="9"/><rect x="674" y="368" width="12" height="9"/><rect x="714" y="368" width="12" height="9"/></g>
+      <!-- MiP -->
+      <g stroke="#13191c" stroke-width="1.2">
+        <rect x="852" y="356" width="28" height="24" fill="#e8ecea"/><rect x="900" y="356" width="28" height="24" fill="#e8ecea"/><rect x="948" y="356" width="28" height="24" fill="#e8ecea"/><rect x="996" y="356" width="28" height="24" fill="#e8ecea"/><rect x="1044" y="356" width="28" height="24" fill="#e8ecea"/><rect x="1092" y="356" width="28" height="24" fill="#e8ecea"/>
+      </g>
+      <g fill="#2ce2e8" fill-opacity=".35" stroke="#0a6f75" stroke-width="1"><rect x="855" y="358" width="22" height="8"/><rect x="903" y="358" width="22" height="8"/><rect x="951" y="358" width="22" height="8"/><rect x="999" y="358" width="22" height="8"/><rect x="1047" y="358" width="22" height="8"/><rect x="1095" y="358" width="22" height="8"/></g>
+      <g fill="#0a6f75"><rect x="861" y="368" width="10" height="7"/><rect x="909" y="368" width="10" height="7"/><rect x="957" y="368" width="10" height="7"/><rect x="1005" y="368" width="10" height="7"/><rect x="1053" y="368" width="10" height="7"/><rect x="1101" y="368" width="10" height="7"/></g>
+      <!-- callouts -->
+      <g stroke="#5c676c" stroke-width="1" fill="none">
+        <path d="M118 360 L118 250"/><path d="M190 346 L190 214"/><path d="M216 400 L216 470"/>
+        <path d="M600 372 L600 250"/><path d="M640 356 L640 214"/><path d="M520 400 L520 470"/>
+        <path d="M866 371 L866 250"/><path d="M962 362 L962 214"/><path d="M1060 400 L1060 470"/>
+      </g>
+      <g font-size="22" font-weight="600" fill="#13191c" text-anchor="middle">
+        <text x="118" y="244">②</text><text x="190" y="208">③</text><text x="216" y="496">①</text>
+        <text x="600" y="244">②</text><text x="640" y="208">③</text><text x="520" y="496">①</text>
+        <text x="866" y="244">②</text><text x="962" y="208">③</text><text x="1060" y="496">①</text>
+      </g>
+      <text x="1136" y="628" font-size="14" fill="#5c676c" text-anchor="end" letter-spacing="3">CHIPSHOW</text>
+    </svg>
+    <figcaption>① Circuit board ② LED chip ③ Package or encapsulant. SMD and MiP mount individually packaged LEDs on the board; COB bonds the chips directly to the board under one encapsulant layer. Schematic, not to scale.</figcaption>
+  </figure>
+  <div class="meta">
+<pre>{"template":"layer-stack",
+ "columns":["SMD","COB","MiP"],
+ "alt_en":"Cross-section diagram comparing SMD, COB and MiP LED packaging layers on a circuit board"}
+结构图形固定在模板里，模型只选列；模板定稿前工程师看一次。</pre>
+    <div class="score"><b>90</b> / 100 质检分（示例）<div><span>数据一致</span><span>30/30</span></div><div><span>渲染</span><span>24/25</span></div><div><span>ALT 与图注</span><span>22/25</span></div><div><span>文件与唯一性</span><span>14/20</span></div></div>
+  </div>
+
+  <h2>④ signal-flow 控制链路与冗余 <small>用于控制系统、接收卡带载、双备份</small></h2>
+  <figure class="cs-figure">
+    <svg viewBox="0 0 1200 675" role="img" aria-labelledby="f4t" xmlns="http://www.w3.org/2000/svg" font-family="Inter, 'Segoe UI', Arial, sans-serif">
+      <title id="f4t">Diagram of an LED wall signal chain from HDMI source to controller and receiving cards with backup loop</title>
+      <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0a6f75"/></marker></defs>
+      <rect width="1200" height="675" fill="#fbfaf7"/>
+      <!-- legend -->
+      <g font-size="16" fill="#5c676c"><line x1="64" y1="66" x2="104" y2="66" stroke="#0a6f75" stroke-width="3"/><text x="114" y="71">1</text><line x1="150" y1="66" x2="190" y2="66" stroke="#b5651d" stroke-width="3" stroke-dasharray="8 6"/><text x="200" y="71">2</text></g>
+      <!-- source and controller -->
+      <rect x="64" y="300" width="140" height="80" fill="#fff" stroke="#13191c" stroke-width="1.5"/>
+      <text x="134" y="348" font-size="22" font-weight="600" text-anchor="middle" fill="#13191c">HDMI</text>
+      <line x1="204" y1="340" x2="270" y2="340" stroke="#0a6f75" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="276" y="270" width="150" height="140" fill="#fff" stroke="#13191c" stroke-width="1.5"/>
+      <text x="351" y="346" font-size="22" font-weight="600" text-anchor="middle" fill="#13191c">TX</text>
+      <g font-size="15" fill="#5c676c"><text x="438" y="280">1</text><text x="438" y="422">2</text></g>
+      <!-- cabinets 4 x 2 -->
+      <g fill="#2ce2e8" fill-opacity=".22" stroke="#0a6f75" stroke-width="1.5">
+        <rect x="520" y="200" width="120" height="110"/><rect x="664" y="200" width="120" height="110"/><rect x="808" y="200" width="120" height="110"/><rect x="952" y="200" width="120" height="110"/>
+        <rect x="520" y="370" width="120" height="110"/><rect x="664" y="370" width="120" height="110"/><rect x="808" y="370" width="120" height="110"/><rect x="952" y="370" width="120" height="110"/>
+      </g>
+      <g font-size="16" font-weight="600" fill="#0a6f75">
+        <text x="532" y="224">RX</text><text x="676" y="224">RX</text><text x="820" y="224">RX</text><text x="964" y="224">RX</text>
+        <text x="532" y="394">RX</text><text x="676" y="394">RX</text><text x="820" y="394">RX</text><text x="964" y="394">RX</text>
+      </g>
+      <!-- main serpentine chain -->
+      <g fill="none" stroke="#0a6f75" stroke-width="3">
+        <path d="M426 290 L470 290 L470 255 L520 255" marker-end="url(#arrow)"/>
+        <path d="M640 255 L664 255" marker-end="url(#arrow)"/><path d="M784 255 L808 255" marker-end="url(#arrow)"/><path d="M928 255 L952 255" marker-end="url(#arrow)"/>
+        <path d="M1072 255 L1104 255 L1104 425 L1072 425" marker-end="url(#arrow)"/>
+        <path d="M952 425 L928 425" marker-end="url(#arrow)"/><path d="M808 425 L784 425" marker-end="url(#arrow)"/><path d="M664 425 L640 425" marker-end="url(#arrow)"/>
+      </g>
+      <!-- backup loop -->
+      <path d="M520 455 L470 455 L470 400 L426 400" fill="none" stroke="#b5651d" stroke-width="3" stroke-dasharray="8 6"/>
+      <text x="1136" y="628" font-size="14" fill="#5c676c" text-anchor="end" letter-spacing="3">CHIPSHOW</text>
+    </svg>
+    <figcaption>Port 1 feeds the receiving cards in a serpentine chain; Port 2 closes the loop as a backup path, so a single cable fault does not black out the wall. Schematic.</figcaption>
+  </figure>
+  <div class="meta">
+<pre>{"template":"signal-flow",
+ "source":"HDMI","ports":2,"grid":[4,2],"backup":true,
+ "alt_en":"Diagram of an LED wall signal chain from HDMI source to controller and receiving cards with backup loop"}
+节点和连线由代码按行列布局，模型不写坐标。</pre>
+    <div class="score"><b>88</b> / 100 质检分（示例）<div><span>数据一致</span><span>30/30</span></div><div><span>渲染</span><span>23/25</span></div><div><span>ALT 与图注</span><span>21/25</span></div><div><span>文件与唯一性</span><span>14/20</span></div></div>
+  </div>
+</main>
+</body>
+</html>
