@@ -82,6 +82,21 @@ Node 24.22.1/npm 和 PostgreSQL 16.15 二进制、实际安装依赖、最终网
 
 给主 Agent 的渠道存储接续约定：业务渠道配置写在现有数据库、`AIHOT_DATA_DIR` 或 `AIHOT_CREDENTIALS_DIR`；禁止写死原电脑绝对路径。若渠道解密依赖额外服务端密钥，把该密钥保存在私有环境配置中并随显式渠道迁移处理，不复用管理员会话密钥加密渠道。非默认凭据文件名需在部署工具中补对应文件映射后再宣称可迁移。
 
+## WordPress 草稿推送（S1-1）
+
+1. 维护人在现有私有 `integrations.env`（或 API 私有环境）设置 `WP_BASE_URL`、`WP_USER`、`WP_APP_PASSWORD`。站点地址填最终 HTTPS 安装地址，例如 `https://example.com/`，不附 `wp-json`，不能跳转。优先使用只需编辑自己草稿的账户。Windows 部署把开关 `WP_DRAFT_PUSH_ENABLED=true` 放进私有 `runtime/studio.env`；其他部署在 API 环境设置。默认关闭，配置完成后重启 API。
+2. 2026-11-08 用户覆写：短讯和短文章使用现有 Industry News（`industry-news`，ID 72，父分类 News）。长文和升级稿使用现有 Choose Guides（`choose-guides`，ID 29），把 `WP_GUIDE_CATEGORY_SLUG=choose-guides` 写进私有配置。推送按 slug 查找，不写死 ID。AIHOT 不建分类，也不改投 Company News。选消费级分节前，确认现有标签 `consumer-display` 可用，缺少时由有权限的人创建。
+3. 主端已看图并上传 [四张无字底图](../site/brand/brief-backgrounds/)。主端在私有配置填写下表的目标站媒体编号；其他站点用自己的编号。未填写时，稿件仍可推送，并会提示本次未设置特色图。
+4. 在已审核的稿件页选类型和分节，点击 **推送WordPress草稿**。先用一篇已批准英文长文核对草稿箱、英文正文和出处、指南分类及特色图，再点一次，核对仍是同一个文章编号。SEO 描述从回执复制，手动贴到 SEO 插件。截图留作 S1-1 真实验收。升级稿也单独建草稿；正式替换现有网页由运营在 WordPress 决定。新草稿使用查找编号作临时 slug，正式发布前由运营确认最终 slug；AIHOT 更新同一草稿时不改 slug。
+5. 如果推送结果未知，先在 WordPress 草稿箱用回执里的查找编号或英文标题核对。再次点击只找同一个草稿，不会新建第二篇；如果 WordPress 找不到原记录，由维护人核对服务日志和草稿箱，可用已有的英文导出手工接续。原稿已发布、进回收站或找不到时，系统拒绝改写。WordPress 核心 REST 不支持按当前状态做原子更新，运营请等推送结束再在 WordPress 发布或移入回收站。遇到 403、429 或跳转，由维护人检查授权与最终地址。
+
+| 分节 | 底图文件 | 私有配置 | 目标站媒体 ID |
+| --- | --- | --- | --- |
+| 器件、控制软件 | `components-control.png` | `WP_FEATURED_MEDIA_COMPONENTS_CONTROL` | 9593 |
+| 整屏与项目 | `displays-projects.png` | `WP_FEATURED_MEDIA_DISPLAYS_PROJECTS` | 9594 |
+| 市场与户外广告 | `market-dooh.png` | `WP_FEATURED_MEDIA_MARKET_DOOH` | 9595 |
+| 消费与近眼显示 | `consumer-near-eye.png` | `WP_FEATURED_MEDIA_CONSUMER` | 9596 |
+
 ## 打包和主 Agent 最终接续
 
 业务源码修改完成后，使用本脚本生成最终包；脚本在输出目录复制源码、依赖、runtime，再在包内构建网页，避免改动正在运行主站的 build。选择一个尚不存在的输出目录：

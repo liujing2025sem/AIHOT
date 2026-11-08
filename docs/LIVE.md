@@ -19,7 +19,7 @@
 | D-07 | 短讯攒够 5 条可用素材出一期，不设日历、跳刊和补刊规则 |
 | D-08 | Codex 合并：CI 通过，并有本项的一个真实样例 |
 | D-09 | 风险清单 v2：同行负面、自家负面、贬损齐普的内容一律不写 |
-| D-10 | WP 分类：短讯和短文章进新分类 `LED Display Brief`（slug `led-display-brief`）；长文和升级页进现有的指南类分类 |
+| D-10 | 2026-11-08 用户覆写计划：“不新建LED Display Brief，短讯/短文章直接用现有Industry News。” 短内容进 News 下的 Industry News（`industry-news`，ID 72）；长文和升级页进 Choose Guides（`choose-guides`，ID 29）。不新建或改动分类。 |
 | D-11 | 工程师把关：每篇长文最多 3 道中文单选题（1 分钟确认卡）；署名 Reviewed by Chipshow Engineering Team；没勾完只卡这一篇 |
 | D-12 | 误报的 BLOCK 可以放行，但必须选出处主体，或标为“不是数字声明”；放行记日志，误报词每周修进词典。黑名单和风险清单的命中不能放行 |
 | D-13 | 先升级现有第一流量页（尺寸指南），再做 MiP；短讯负责给常青页导流 |
@@ -35,14 +35,12 @@
 
 ## 状态（2026-11-08，Codex执行）
 
-- S0-1/2/3：#15、#14、#11已合并，main `bb3ab04`；CI分别为[42449668075](https://github.com/liujing2025sem/AIHOT/actions/runs/42449668075)、[42466240850](https://github.com/liujing2025sem/AIHOT/actions/runs/42466240850)、[42466859783](https://github.com/liujing2025sem/AIHOT/actions/runs/42466859783)。
-- MiP真实保存响应已通过完整结构/绑定/编辑门重放：BLOCK 0、WARN 45，归并30问题；没有新模型调用、没有批准或发布。
-- S0-4：#13与#1已关闭，分支保留；Issue #12保持开放并收窄。
-- S0-5候选：删除18个AI源，LED五节；24入口中18启用、6停用；8个RSS读到184条（未去重），目标机采集未执行，待本提交CI。
-- 已发布长文0篇、短讯0期。WordPress账户登录已验证；草稿推送和工程师确认尚未完成。Dot/云端消息NOT_SENT，ARCHIVE_READ / LIVE_NOT_READ。
+- S0 已完成（主端回报）：PR #16 最终 CI [42468478287](https://github.com/liujing2025sem/AIHOT/actions/runs/42468478287) 全绿，合并提交 `504ce20b548bd4648f92fcc0a83b9366fb53d21e`。当前 14 条新闻入口、4 条版本入口启用，共 18 条。
+- MiP 真实保存响应已通过完整结构、绑定和编辑检查重放：BLOCK 0、WARN 45，归并 30 个问题；没有新模型调用。
+- S1-1 实现中。主端已验证 WordPress 应用密码，已查看并上传 4 张特色图；尚未真实推送文章，无人工批准。
+- 已发布长文 0 篇、短讯 0 期。Dot/云端消息 NOT_SENT，ARCHIVE_READ / LIVE_NOT_READ。
 
 ## 下一步
 
-1. S0：完成信源与LED五节候选的CI并合并；已有目标机数据不删除。
-2. S1：接通 WP 草稿推送，尺寸指南升级稿和 MiP 长文进草稿箱，第 1 期短讯。
-3. 需要用户或 IT 提供：WP 应用密码、GSC 导出、询盘问题清单、黑名单内容（GPT 可从 CAMOS 记录里整理，由用户确认）。
+1. S1-1：完成本地实现和检查，由主端用已批准英文样稿验收 WordPress 草稿箱；尺寸指南升级稿和 MiP 长文按审核进度接续。
+2. 需要用户或 IT 提供：GSC 导出、询盘问题清单、黑名单内容（GPT 可从 CAMOS 记录里整理，由用户确认）。

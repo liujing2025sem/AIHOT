@@ -67,7 +67,7 @@
     "D-07": "短讯按量出刊：攒够 5 条出一期，不设日历、跳刊和补刊规则",
     "D-08": "Codex 合并：CI 通过且有本项的真实样例证据",
     "D-09": "风险清单 v2 不变",
-    "D-10": "WP 分类：短讯和短文章进 LED Display Brief（slug led-display-brief）；长文和升级页进现有指南类分类",
+    "D-10": "2026-11-08 用户覆写：短讯和短文章进现有 Industry News（industry-news，ID 72，父分类 News）；长文和升级页进现有 Choose Guides（choose-guides，ID 29）。不建或修改分类",
     "D-11": "工程师把关：每篇长文 ≤3 道中文单选题（1 分钟确认卡）；署名 Reviewed by Chipshow Engineering Team；没勾完只卡这一篇",
     "D-12": "误报 BLOCK 可放行，但须选出处主体或标“不是数字声明”；记日志；误报词每周修进词典；黑名单和风险清单命中不能放行",
     "D-13": "先升级现有第一流量页（尺寸指南），再做 MiP；短讯给常青页导流",
