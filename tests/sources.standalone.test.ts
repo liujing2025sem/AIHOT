@@ -349,6 +349,7 @@ test("LED seed enables verified news, version baselines and search discovery whi
   assert.deepEqual(new Set(enabled.map((s: SourceRow) => s.id)), dated);
   for (const s of sources) {
     assert.deepEqual(unsupportedConfig(s.kind, s.config), [], s.id);
+    assert.ok(["T1", "T1_5", "T2", "EXCLUDE_MP"].includes(s.tier), s.id);
     assert.equal(s.site_fulltext, false, s.id);
     assert.equal(s.syndicate_fulltext, false, s.id);
   }
