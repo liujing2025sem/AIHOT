@@ -1,0 +1,204 @@
+{
+  "schema": "aihot-agent-handoff/1.0",
+  "packet_id": "AIHOT-EXEC-S0-S2-20261108-v2",
+  "prepared_at": "2026-11-08T06:40:00Z",
+  "from": "Claude（审校，不写代码）",
+  "to": "Codex（执行、合并）",
+  "advisor": "Gemini（参谋，见计划第 8 节）",
+  "project": "AIHOT / Chipshow",
+  "purpose": "两周内把尺寸指南升级稿、MiP 长文、第一期短讯和 2–4 篇短文章推进 WordPress 草稿箱，并跑通一次点击率回路",
+  "read_first": [
+    "docs/LIVE.md",
+    "docs/aihot-exec-plan-20261108-v2.md",
+    "docs/prototype/daily-brief.html"
+  ],
+  "supersedes": [
+    "docs/aihot-exec-plan-20261108.md（执行计划 v1）",
+    "docs/aihot-prd-v5-20261106.md 中与本包冲突的部分",
+    "docs/aihot-gpt-goal-v5-20261106.md",
+    "docs/aihot-spec-v4.1-20261106.md 的 B2–B5",
+    "Chat 参谋任务包 AIHOT_v5_dot_修订与复核任务包_20261106.md 中新增的状态和流程"
+  ],
+  "refs": {
+    "repository": "liujing2025sem/AIHOT",
+    "main": {
+      "sha": "12e3d92e18553dd7660c89a07860e950953057d8",
+      "ci_run": 42449646363,
+      "ci": "success"
+    },
+    "pr15": {
+      "url": "https://github.com/liujing2025sem/AIHOT/pull/15",
+      "sha": "0f4ac67c71c459342f0434abb96608a055476240",
+      "ci_run": 42449668075,
+      "ci": "success",
+      "action": "merge"
+    },
+    "pr11": {
+      "url": "https://github.com/liujing2025sem/AIHOT/pull/11",
+      "sha": "9a35e74fc168e7ec53eac6a86135d10681aeb8b0",
+      "ci_run": 42450780171,
+      "ci": "success",
+      "action": "check screenshots for emails, passwords and internal addresses, then merge"
+    },
+    "pr14": {
+      "url": "https://github.com/liujing2025sem/AIHOT/pull/14",
+      "sha": "61c0a228563229437e39669e0adfaee66e106671",
+      "ci_run": 42449666060,
+      "ci": "failure",
+      "failing_test": "tests/text.standalone.test.ts:95 ordinary word 资料的聚积 matched as a brand",
+      "action": "fix aliases, rerun CI, merge"
+    },
+    "pr13": {
+      "url": "https://github.com/liujing2025sem/AIHOT/pull/13",
+      "action": "close; keep branch; keep Issue #12 narrowed"
+    },
+    "pr1": {
+      "url": "https://github.com/liujing2025sem/AIHOT/pull/1",
+      "action": "close as stale"
+    }
+  },
+  "decisions": {
+    "D-01": "只推 WP 草稿（REST + 应用密码），用户点发布；短讯是 Blog 栏目",
+    "D-02": "AIHOT 只做英文页面；翻译由 CSM 负责（用户在 CSM 项目提 issue），短讯、短文章、长文都会进 CSM；AIHOT 不做翻译开发，文字不进图片和 CSS",
+    "D-03": "短讯和短文章流量优先，标题冲击力优先，每个钩子都要有事实锚点",
+    "D-04": "长文质量优先：一篇解决一个询盘问题，长期维护；销售定制版以后再做",
+    "D-05": "泛流量全要，含消费级显示（可写成短文章）；消费级单独分节，加 WP 标签 consumer-display",
+    "D-06": "原创素材：询盘问题、工程师审稿答疑、项目案例和现场照片；不写“我们实测”",
+    "D-07": "短讯按量出刊：攒够 5 条出一期，不设日历、跳刊和补刊规则",
+    "D-08": "Codex 合并：CI 通过且有本项的真实样例证据",
+    "D-09": "风险清单 v2 不变",
+    "D-10": "WP 分类：短讯和短文章进 LED Display Brief（slug led-display-brief）；长文和升级页进现有指南类分类",
+    "D-11": "工程师把关：每篇长文 ≤3 道中文单选题（1 分钟确认卡）；署名 Reviewed by Chipshow Engineering Team；没勾完只卡这一篇",
+    "D-12": "误报 BLOCK 可放行，但须选出处主体或标“不是数字声明”；记日志；误报词每周修进词典；黑名单和风险清单命中不能放行",
+    "D-13": "先升级现有第一流量页（尺寸指南），再做 MiP；短讯给常青页导流",
+    "D-14": "新增防御上限：每阶段 ≤ 推进工作的 1/5，须附真实失败例子"
+  },
+  "guards": [
+    "G1 公开的就是批准的：WP 草稿等于批准的英文版本，改过就重新批准",
+    "G2 数字有出处，公司事实有许可：私有黑名单 ≤30 条（目标机，不进仓库），禁止项 BLOCK 不可放行，待确认项走确认卡",
+    "G3 新鲜度双窗口：事件/项目/市场 ≤14 天；上游新品/规格/版本 ≤30 天且首次发现未发过；无原文日期进资料池（基线后新版本号除外）；同一事件只出一条",
+    "G4 风险清单 v2；“老屏换新”故事不点名原屏厂",
+    "G5 不绕过 403/429/验证码/登录；不提交密钥和私有数据；AIHOT 不对公网；WP 只建草稿"
+  ],
+  "tasks": [
+    {
+      "id": "S0-1",
+      "title": "合并 PR #15",
+      "done_when": "合并的 commit 和 CI 链接"
+    },
+    {
+      "id": "S0-2",
+      "title": "修 PR #14 的歧义简称（聚积、国星、诺瓦、创联）并合并；用新 main 重放 MiP",
+      "done_when": "CI 通过；MiP 重放 BLOCK=0，并报告 WARN 数"
+    },
+    {
+      "id": "S0-3",
+      "title": "检查 PR #11 截图隐私后合并；与 #15 冲突时，在后合并的那个上解决并重跑 CI",
+      "done_when": "CI 链接；截图检查一句话"
+    },
+    {
+      "id": "S0-4",
+      "title": "关闭 PR #13、#1",
+      "done_when": "PR 状态"
+    },
+    {
+      "id": "S0-5",
+      "title": "删 18 个 AI 源；按预检启用 LED 源；加 6–10 个新闻搜索 RSS；分类换成五节（Components & ICs / Control & Software / Displays & Projects / Market & DOOH / Consumer & Near-eye）；同步测试",
+      "done_when": "CI 通过；配置差异摘要"
+    },
+    {
+      "id": "S0-6",
+      "title": "每次合并后更新 docs/LIVE.md 的状态",
+      "done_when": "提交"
+    },
+    {
+      "id": "S1-1",
+      "title": "WP REST 草稿推送（WP_DRAFT_PUSH_ENABLED 默认关；永不发布；重复推送更新同一篇；分类按 D-10；特色图从 4 张无字底图中按分节选）",
+      "done_when": "WP 草稿箱截图"
+    },
+    {
+      "id": "S1-2",
+      "title": "尺寸指南升级稿：以现有页面为素材重写成买家问题答案页（首屏答案、计算表、询价六项、FAQ、内链），推成 [UPDATE] 草稿并附改动清单；用户替换进原 URL",
+      "done_when": "WP 预览链接；改动清单"
+    },
+    {
+      "id": "S1-3",
+      "title": "MiP 长文：重放（不调模型）、必须确认 ≤8 条、定性对比表、工程师确认卡 ≤3 题、批准、推草稿",
+      "done_when": "WP 预览链接；确认卡结果；审稿分钟数"
+    },
+    {
+      "id": "S1-4",
+      "title": "真实采集一轮（先关模型），每源 5 个数",
+      "done_when": "只含元数据的采集表"
+    },
+    {
+      "id": "S1-5",
+      "title": "短讯 v1：G3 双窗口候选池 → 英文条目和中文审校 → 保留/去掉/改 → 满 5 条生成本期 → WP 草稿；版式照意图稿 v2.1",
+      "done_when": "第 1 期 WP 预览，390 和 1440 两张截图"
+    },
+    {
+      "id": "S1-6",
+      "title": "钩子提示词（3 候选+锚点）；工程师确认卡页面（手机，≤3 题，存档）；误报放行（D-12）；私有黑名单（路径用环境变量，仓库只放示例）",
+      "done_when": "各一个真实样例"
+    },
+    {
+      "id": "S2-1",
+      "title": "短文章每周 2–4 篇，优先从蹭热度日历选题",
+      "done_when": "WP 预览链接"
+    },
+    {
+      "id": "S2-2",
+      "title": "页面登记表：前 10 个常青页做种子；短讯按关键词建议内链",
+      "done_when": "登记表；一期短讯的内链"
+    },
+    {
+      "id": "S2-3",
+      "title": "第 2 篇升级稿（DOOH 测量页或 VMS 指南）+ 1 篇新长文（30 问或询盘原题）",
+      "done_when": "WP 预览链接"
+    },
+    {
+      "id": "S2-4",
+      "title": "点击率回路 v1（GSC 导出，按分类分开算）",
+      "done_when": "第一份清单"
+    },
+    {
+      "id": "S2-5",
+      "title": "GEO 基础检查 + 30 问第一次观察（基线）",
+      "done_when": "检查报告；基线表"
+    },
+    {
+      "id": "S2-6",
+      "title": "社媒派生：LinkedIn 前两行放钩子",
+      "done_when": "文案文件"
+    }
+  ],
+  "stop_conditions": [
+    "任何公开动作（WP 发布永远由用户点）",
+    "需要用户或 IT 提供的东西：WP 应用密码、GSC 导出、询盘问题清单、黑名单内容（GPT 可从 CAMOS 整理，用户确认）；工程师未勾完确认卡不算停止条件，只卡那一篇",
+    "删除目标机上的已有数据",
+    "CI 失败且当天修不好（不跳过测试）"
+  ],
+  "receipt_required": {
+    "shipped": "WP 草稿或预览链接、PR 链接、CI 链接",
+    "numbers": "短讯期数和条数、长文和升级稿篇数、采集的源数和条数、必须确认的提醒数、审稿分钟数、BLOCK 放行次数",
+    "blocked": "卡在什么、在等谁",
+    "next": "一句话",
+    "decisions_requested": "编号列表，没有就写“无”"
+  },
+  "review": {
+    "by": "Claude",
+    "per_receipt": [
+      "创意：抽 5 个钩子（事实锚点、冲击力、无贬损）；抽 1 篇做 5 秒首屏测试；长文信息增益 ≥2 项",
+      "底线：G1–G5 各抽查 1 个样例；看黑名单命中记录；抽 5 条 BLOCK 放行记录",
+      "代码：读 1 个已合并 PR 的差异，确认 CI 是绿的"
+    ],
+    "verdict": "通过，或改这几处（逐条写出）；加新规则须附真实失败例子，且不超过 1/5 上限"
+  },
+  "drive_folder": "https://drive.google.com/drive/folders/1-QTuSmTrznxcG5RKqEwEl1_9TTtQ_VVS",
+  "assets_from_gemini": {
+    "hooks": "24 个示例，4 个已标出问题（见计划第 4.2 节），其余 20 个使用前逐条附原文链接核对",
+    "buyer_questions": "30 个（采购 15、工程 15），作每月 AI 引用观察集并入长文选题池",
+    "evergreen_top10": "见计划第 4.3 节",
+    "calendar": "2026-11 至 2027-01 共 8 个事件，日期先核官网"
+  }
+}

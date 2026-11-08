@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LED Display Brief · WordPress 区块意图稿 v2</title>
+<title>LED Display Brief · WordPress 区块意图稿 v2.1</title>
 <meta name="description" content="版式意图稿 v2：短讯作为 WordPress 文章发布。正文是一段固定结构的 HTML 区块，样式是一段限定在 .cs-brief 里的 CSS。">
 <style>
   /* ===== 原型外壳（只为在浏览器里预览，正式不需要） ===== */
@@ -35,19 +35,20 @@
   .cs-brief .cs-note { margin-top: 24px; font: 13px/1.6 -apple-system, "Segoe UI", sans-serif; color: var(--muted); }
   @media (max-width: 480px) { .cs-brief { font-size: 16px; } }
 
-  /* ===== 封面模板（服务器渲染成 PNG；尺寸以官网主题特色图为准，另出 1200×630 社交图） ===== */
-  .cs-cover { position: relative; aspect-ratio: 1200 / 630; background: #13191c; color: #fbfaf7; overflow: hidden;
-    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; container-type: inline-size; }
-  .cs-cover .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 2.2%; background: #2ce2e8; }
-  .cs-cover .kick { position: absolute; left: 7%; top: 9%; font-size: 3.1cqw; letter-spacing: .12em; text-transform: uppercase; color: #2ce2e8; font-weight: 700; }
-  .cs-cover .hook { position: absolute; left: 7%; right: 7%; top: 22%; font: 800 7.4cqw/1.06 Georgia, serif; }
-  .cs-cover .foot { position: absolute; left: 7%; right: 7%; bottom: 8%; display: flex; justify-content: space-between; font-size: 2.7cqw; color: #9aa6ab; }
-  .cs-cover .foot b { color: #fbfaf7; letter-spacing: .04em; }
+  /* ===== 特色图：4 张无字品牌底图，按分类选（一次性上传到 WP 媒体库；标题文字由主题渲染，翻译插件能翻） ===== */
+  .cs-bgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .cs-bg { aspect-ratio: 1200 / 630; background-color: #13191c; position: relative; overflow: hidden; }
+  .cs-bg::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2.2%; background: #2ce2e8; }
+  .cs-bg.c1 { background-image: radial-gradient(circle, rgba(44,226,232,.55) 1.3px, transparent 1.8px); background-size: 14px 14px; }
+  .cs-bg.c2 { background-image: radial-gradient(circle, rgba(44,226,232,.7) 2.4px, transparent 3px); background-size: 26px 26px; }
+  .cs-bg.c3 { background-image: radial-gradient(circle, rgba(251,250,247,.35) 1.2px, transparent 1.7px), linear-gradient(115deg, rgba(44,226,232,.22), transparent 60%); background-size: 12px 12px, auto; }
+  .cs-bg.c4 { background-image: radial-gradient(circle, rgba(44,226,232,.45) 3.5px, transparent 4.2px); background-size: 40px 40px; background-position: 10px 10px; }
+  .cs-bgs figcaption { font-size: 12px; color: #5c676c; margin-top: 4px; }
 </style>
 </head>
 <body>
 <div class="proto" role="note">
-  <b>版式意图稿 v2（2026-11-08）</b>。短讯作为 WordPress 文章发布：标题和顶部区域由主题负责，正文是下面的固定区块。条目标题取自仓库里的真实信源样本，钩子与“Why it matters”是示范写法，没有按 7 天窗口筛选；内链指向的常青页是示例路径，需按页面登记表替换。正式区块跟随官网主题配色，不单独做深色模式（主题是浅色时，区块若自行切深色会出现白底浅字）。
+  <b>版式意图稿 v2.1（2026-11-08）</b>。短讯作为 WordPress 文章发布：标题和顶部区域由主题负责，正文是下面的固定区块。条目标题取自仓库里的真实信源样本，钩子与“Why it matters”是示范写法，没有按 14/30 天窗口筛选；内链指向的常青页是示例路径，需按页面登记表替换。正式区块跟随官网主题配色，不单独做深色模式（主题是浅色时，区块若自行切深色会出现白底浅字）。
 </div>
 
 <div class="stage">
@@ -78,7 +79,7 @@
       </section>
 
       <section class="cs-item" id="cs-1">
-        <p class="cs-tag">Components &amp; Packaging</p>
+        <p class="cs-tag">Components &amp; ICs</p>
         <h2>MiP leaves the lab: Kinglight takes it to China's national LED seminar</h2>
         <p>Kinglight says it presented its MiP (Mini LED in Package) technology at the 21st National LED Seminar.</p>
         <p class="cs-why"><strong>Why it matters:</strong> if you compare fine-pitch quotes, MiP is now a third packaging option next to COB and SMD—and its package size is easy to confuse with pixel pitch.</p>
@@ -87,7 +88,7 @@
       </section>
 
       <section class="cs-item" id="cs-2">
-        <p class="cs-tag">Components &amp; Power</p>
+        <p class="cs-tag">Components &amp; ICs</p>
         <h2>MEAN WELL shrinks LED display power: new 200–400 W UDP series</h2>
         <p>MEAN WELL has introduced the UDP-200/300/400 series, which it describes as next-generation compact power supplies for LED displays.</p>
         <p class="cs-why"><strong>Why it matters:</strong> the power supply drives a cabinet's weight, heat and service access, so a smaller unit changes how thin and serviceable a cabinet can be.</p>
@@ -104,7 +105,7 @@
       </section>
 
       <section class="cs-item" id="cs-4">
-        <p class="cs-tag">Projects &amp; Live Events</p>
+        <p class="cs-tag">Displays &amp; Projects</p>
         <h2>Inside the concert screens of summer 2026: Colorlight's case file</h2>
         <p>Colorlight has published a case story on its summer 2026 concert projects.</p>
         <p class="cs-why"><strong>Why it matters:</strong> touring stages are where screens and control systems get stress-tested—fast setup, live switching, no second take.</p>
@@ -113,7 +114,7 @@
       </section>
 
       <section class="cs-item" id="cs-5">
-        <p class="cs-tag">Components &amp; Packaging</p>
+        <p class="cs-tag">Components &amp; ICs</p>
         <h2>A lens on every LED: NATIONSTAR's 2727 package targets outdoor screens</h2>
         <p>NATIONSTAR is promoting its 2727 lens LED as a solution for outdoor displays.</p>
         <p class="cs-why"><strong>Why it matters:</strong> a lens shapes where the light goes, which matters most when viewers stand in one known direction.</p>
@@ -131,12 +132,12 @@
     </div>
   </div>
 
-  <h3>② 封面模板（每期一张：钩子文字 + 期号 + 日期，不用原厂图片）</h3>
-  <div class="cs-cover" role="img" aria-label="封面示例">
-    <div class="bar"></div>
-    <div class="kick">LED Display Brief · No. 12</div>
-    <div class="hook">MiP takes the stage.<br>Power gets compact.</div>
-    <div class="foot"><span>7 stories · 2 Nov 2026</span><b>CHIPSHOW</b></div>
+  <h3>② 特色图（4 张无字品牌底图，按头条或文章所属分节自动选，器件与控制软件共用一张；不把文字做进图片，翻译插件才能翻）</h3>
+  <div class="cs-bgs">
+    <figure style="margin:0"><div class="cs-bg c1" role="img" aria-label="Components &amp; ICs 底图"></div><figcaption>Components &amp; ICs · Control &amp; Software</figcaption></figure>
+    <figure style="margin:0"><div class="cs-bg c2" role="img" aria-label="Displays &amp; Projects 底图"></div><figcaption>Displays &amp; Projects</figcaption></figure>
+    <figure style="margin:0"><div class="cs-bg c3" role="img" aria-label="Market &amp; DOOH 底图"></div><figcaption>Market &amp; DOOH</figcaption></figure>
+    <figure style="margin:0"><div class="cs-bg c4" role="img" aria-label="Consumer &amp; Near-eye 底图"></div><figcaption>Consumer &amp; Near-eye</figcaption></figure>
   </div>
 </div>
 
