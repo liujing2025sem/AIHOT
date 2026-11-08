@@ -9,6 +9,7 @@ import { createStudioTask,bindStudioTaskMaterials,exportStudioTask,generateStudi
 import { importDemandCsv } from '@aihot/backend/admin/studio-demand';
 import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
 import { importSearchSignals } from '@aihot/backend/admin/studio-search-signals';
+import { normalizePitch, pitchMaterialHits, redactPitch, searchPitchMaterials } from '@aihot/backend/admin/studio-pitch-evidence';
 import preview from './fixtures/editorial-preview-20261103.json' with {type:'json'};
 const suffix=tag(),actor=`test:recommendations:${suffix}`,source='web-macroblock-news';
 after(closeDb);
@@ -22,6 +23,75 @@ async function material(id:string,body='The manufacturer describes LED power con
   await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,body_text) VALUES(${id},${sourceId},${id},${`https://example.com/${id}`},'LED power supply update',now(),now(),now(),'ok',${body})`;
   return id;
 }
+
+test('pitch evidence finds historical body-only matches and ranks distinct hits, first-party status, then date', async () => {
+  const body = 'Background sentence. For 户外LED显示, use the P2.5 cabinet and check power. Power is listed twice.';
+  await material('pitch-history', body);
+  await material('pitch-first-recent', 'The reference mentions 户外 and power.', true);
+  await material('pitch-first-old', 'The reference mentions 户外 and power.', true);
+  await material('pitch-third-recent', 'The reference mentions 户外 and power.');
+  await material('pitch-title-only', '', true);
+  await material('pitch-false', 'An empowering display uses P2.50 and highpower circuitry.');
+  await sql`UPDATE articles SET title='Cabinet reference'`;
+  await sql`UPDATE articles SET published_at='2019-02-01T00:00:00Z',publication_time='2019-02-01',revision=4
+    WHERE id='pitch-history'`;
+  await sql`UPDATE articles SET published_at='2020-01-01' WHERE id='pitch-first-old'`;
+  await sql`UPDATE articles SET title='P2.5 reference',published_at=NULL,body_status='pending',body_text=NULL
+    WHERE id='pitch-title-only'`;
+
+  const keywords = ['户外 P2.5', 'power', 'POWER', '  '];
+  const rows = await searchPitchMaterials(keywords);
+  assert.deepEqual(rows.map(({ id, hit_count }) => [id, hit_count]), [
+    ['pitch-history', 3], ['pitch-first-recent', 2], ['pitch-first-old', 2],
+    ['pitch-third-recent', 2], ['pitch-title-only', 1],
+  ]);
+  assert.equal(rows[0].revision, 4);
+  assert.equal(rows[0].publication_time, '2019-02-01');
+  assert.ok(rows[0].published_at!.toISOString().startsWith('2019-02-01'));
+  assert.equal(rows[0].body_text, body);
+  assert.equal(rows[0].snippet, 'For 户外LED显示, use the P2.5 cabinet and check power.');
+  assert.equal(rows.at(-1)?.snippet, 'P2.5 reference');
+  assert.deepEqual((await searchPitchMaterials(keywords, 2, sql, { offset: 1 })).map(r => r.id), [
+    'pitch-first-recent', 'pitch-first-old',
+  ]);
+});
+
+test('pitch evidence treats LIKE wildcards as literal text and supports reuse in material filters', async () => {
+  await material('pitch-literal', 'The A_B code is calibrated to 100%.');
+  await material('pitch-lookalike', 'The ACB code is calibrated to 1000.');
+  const keywords = ['A_B', '100%'];
+  const rows = await searchPitchMaterials(keywords);
+  assert.deepEqual(rows.map(r => [r.id, r.hit_count]), [['pitch-literal', 2]]);
+  const [count] = await sql`SELECT count(*)::int AS n FROM articles a WHERE ${pitchMaterialHits(keywords)} > 0`;
+  assert.equal(count.n, 1);
+  assert.deepEqual(await searchPitchMaterials([' ']), []);
+});
+
+test('pitch evidence masks customer contact details and signoffs while keeping LED technical text', () => {
+  const technical = 'NATIONSTAR 2727 / 3535 / 5050, Colorlight LEDVISION V9.7, NovaStar A8s-N, MiP、P2.5、12 V、100-240 V。';
+  const raw = [
+    'Dear Jane Smith,', '王女士您好，张工您好。', '联系人：李晓梅',
+    'alice+quote@customer.example 或 sales@client.test',
+    'WhatsApp: +44 20 7946 0958；电话：+1 (415) 555-0123；13800138000。',
+    'https://customer.example/project?contact=alice，client.test/path 和 www.other-client.com。',
+    '客户公司：光明贸易有限公司。', `Company: Meadow Optics Inc. ${technical}`,
+    'Best regards,', 'Alice Johnson', 'Northfield Displays Ltd.',
+  ].join('\n');
+  const result = redactPitch(raw);
+  assert.deepEqual(Object.fromEntries(result.redactions.map(({ kind, count }) => [kind, count])), {
+    url: 3, email: 2, phone: 3, person: 5, company: 3,
+  });
+  assert.match(result.text, /Dear \[PERSON\],\n\[PERSON\]女士您好，\[PERSON\]工您好。\n联系人：\[PERSON\]/);
+  assert.match(result.text, /\[EMAIL\] 或 \[EMAIL\]/);
+  assert.match(result.text, /WhatsApp: \[PHONE\]；电话：\[PHONE\]；\[PHONE\]。/);
+  assert.match(result.text, /\[URL\]，\[URL\] 和 \[URL\]。/);
+  assert.match(result.text, /客户公司：\[COMPANY\]。\n/);
+  assert.ok(result.text.includes(`Company: [COMPANY] ${technical}`));
+  assert.ok(result.text.endsWith('Best regards,\n[PERSON]\n[COMPANY]'));
+  assert.deepEqual(redactPitch(result.text), { text: result.text, redactions: [] });
+  assert.equal(normalizePitch('  ＬＥＤ　 P2.5\n怎么选？ '), 'led p2.5 怎么选?');
+});
+
 async function importVersionHistory(){
   const entries=preview.previews.filter(p=>['web-huidu-hdplayer','web-colorlight-software','web-colorlight-ledvision','web-colorlight-firmware'].includes(p.id)).flatMap(p=>p.output.items.map((entry,i)=>({...entry,source_id:p.id,id:`history-${suffix}-${p.id}-${i}`})));
   assert.equal(entries.length,22);
@@ -181,14 +251,18 @@ test('R1-0 refresh suppresses same-version historical body completion but allows
 
 test('news ages out on overview and adoption without needing another refresh, and stays readable',async()=>{
   await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
+  // The planner uses the app clock and excludes future dates; keep fixtures inside the intended window.
+  const now=Date.now(),recentAt=new Date(now-60_000).toISOString(),expiredAt=new Date(now-8*86400_000).toISOString();
   for(let n=0;n<5;n++)await material(`aging-${suffix}-${n}`);
-  await refreshRecommendations(actor);
+  await sql`UPDATE articles SET published_at=${recentAt}`;
+  assert.equal((await refreshRecommendations(actor)).created,5);
   const old=(await recommendationOverview()).rows[0];
-  await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{evidence,0,date}',to_jsonb((now()-interval '8 days')::text))`;
-  await sql`UPDATE articles SET published_at=now()-interval '8 days'`;
+  await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{evidence,0,date}',to_jsonb(${expiredAt}::text))`;
+  await sql`UPDATE articles SET published_at=${expiredAt}`;
   const aged=await recommendationOverview();assert.equal(aged.activeCount,0);assert.equal(aged.pendingCount,0);assert.equal(aged.rows.length,5);assert.ok(aged.rows.every(c=>c.expired&&!c.capacity_full));
   await assert.rejects(decideRecommendation(old.id,{action:'adopt'},actor),/超过7天/);
   const fresh=await material(`current-${suffix}`);
+  await sql`UPDATE articles SET published_at=${recentAt} WHERE id=${fresh}`;
   await refreshRecommendations(actor);
   const current=await recommendationOverview();assert.equal(current.activeCount,1);assert.equal(current.pendingCount,1);assert.equal(current.rows.length,6);
   assert.equal(current.rows.find(c=>c.article_id===fresh)!.expired,false);

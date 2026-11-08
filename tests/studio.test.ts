@@ -14,6 +14,9 @@ import { createStudioTask, exportStudioTask, receiveStudioTask, generateStudioTa
 import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/admin/studio-review';
 import { updateChannel } from '@aihot/backend/providers/channel';
 import { upsertMaterial } from '@aihot/backend/content/materials';
+import { previewPitch, createPitch, getPitch, preparePitch, confirmPitch, confirmedPitch } from '@aihot/backend/admin/studio-pitch';
+import { stopBoss } from '@aihot/backend/jobs/queue';
+import { pitchDraftFindings } from '@aihot/backend/admin/studio-company-facts';
 const suffix=tag(),source=`studio-${suffix}`,article=`studio-item-${suffix}`,actor='test:studio';
 const original={password:config.adminPassword,dev:config.devAdmin,privateNetwork:config.allowPrivateNetworkFetch};
 const repairSource=`studio-repair-${suffix}`;
@@ -33,7 +36,7 @@ before(async()=>{config.adminPassword='studio-test-admin-long-password';config.d
  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,body_status,body_text) VALUES (${article},${source},${article},${`https://example.com/${article}`},'LED driver launch',now(),now(),'ok','At full 64-scan, the stated refresh rate is 15360 Hz. Samples are expected in Q4.')`;
  await sql`INSERT INTO sources(id,name,kind,enabled,config) VALUES (${repairSource},'Manufacturer repair','web_list',false,${sql.json({url:materialBase,detail:{publishedAtSelector:'.news-date',publishedAtAuthoritative:true}})})`;
 });
-after(async()=>{await app.close();await new Promise<void>(resolve=>materialPage.close(()=>resolve()));config.adminPassword=original.password;config.devAdmin=original.dev;config.allowPrivateNetworkFetch=original.privateNetwork;await closeDb()});
+after(async()=>{await app.close();await new Promise<void>(resolve=>materialPage.close(()=>resolve()));config.adminPassword=original.password;config.devAdmin=original.dev;config.allowPrivateNetworkFetch=original.privateNetwork;await stopBoss();await closeDb()});
 async function input(){const task=await createStudioTask({article_ids:[article]},actor);const pack=(await exportStudioTask(task.id))!;const a=pack.request.articles[0];return {task,pack,response:{task_id:task.id,run_id:`run-${suffix}`,producer:{agent_id:'test-agent',model:null,input_files:['request.json']},decisions:[{article_id:article,decision:'KEEP',reason_zh:'直接涉及LED驱动器'}],drafts:[{source:a.binding,title_zh:'LED驱动器样品计划',review_zh:'厂商表示将于第四季度送样，刷新率须保留扫描条件。',title_en:'LED driver sample plan',body_en:`Samples are expected in Q4. Source: ${a.binding.url}`,evidence:[{claim:'送样尚未完成',quote:'Samples are expected in Q4.'}],questions_zh:['核实当前送样阶段'],keyword_hypothesis:'LED display driver',meta_description_en:'Driver sample timing and scan conditions.'}]}}}
 test('admin session and CSRF protect workspace and all mutations',async()=>{
  assert.equal((await app.inject('/api/admin/studio')).statusCode,401);
@@ -495,4 +498,56 @@ test('bound source snapshot remains the review target when live material changes
  const [saved]=await sql`SELECT body_text,revision FROM articles WHERE id=${article}`;
  try {await sql`UPDATE articles SET body_text='Changed latest source material',revision=revision+1 WHERE id=${article}`;const current=(await studioDraft(row.id))!;assert.equal(current.source_snapshot.body_text,old);assert.equal(current.material.body_text,'Changed latest source material');assert.notEqual(current.material.revision,current.document.source.revision);}
  finally {await sql`UPDATE articles SET body_text=${saved.body_text},revision=${saved.revision} WHERE id=${article}`;}
+});
+
+
+test('pitch preparation uses redacted questions and exact source quotes, resumes duplicates, and permits only evidenced conservative drafting',async t=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'studio-pitch-'));
+ const oldDir=config.credentialsDir, oldEnabled=config.modelCallsEnabled;
+ config.credentialsDir=dir;config.modelCallsEnabled=true;
+ const ids=[`pitch-one-${suffix}`,`pitch-two-${suffix}`,`pitch-old-${suffix}`];
+ const body='The installation drawing defines the cabinet dimensions. Service access depends on the selected cabinet.';
+ for(const id of ids)await sql`INSERT INTO articles(id,source_id,identity_key,url,title,published_at,discovered_at,timeline_at,body_status,body_text) VALUES(${id},${source},${id},${`https://example.com/${id}`},'Cabinet installation drawing','2020-01-01',now(),now(),'ok',${body})`;
+ const submitted:string[]=[];
+ const provider=await stub((_hit,req)=>{
+  const request=JSON.parse(req.body),data=JSON.parse(request.messages.at(-1).content);submitted.push(req.body);
+  const empty=data.question.includes('ZZZZ');
+  const materialId=data.materials?.[0]?.id??ids[0];
+  const answer=data.response_format?{
+   output_type:'guide',outline:Array.from({length:4},(_,i)=>({id:`s${i}`,heading:`安装条件 ${i}`,evidence:[{article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'}],gap:'',action:''})),
+   titles:['Cabinet Dimensions and Installation','Plan LED Cabinet Access','Cabinet Drawings for Buyers'].map(title=>({title,anchor:'图纸决定尺寸',article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'})),hooks:[],
+   engineer_questions:[{id:'q1',question:'维护空间怎么写？',section_ids:['s0'],options:[{id:'A',label:'按图纸确定',instruction:'按选定型号安装图确定，不写数值',conservative:true},{id:'B',label:'工程师提供实测条件',instruction:'保留确认条件',conservative:false},{id:'C',label:'其他，请写明',instruction:'依据工程回复',conservative:false}],withheld_numbers:['600 mm']}]
+  }:{question_en:'How should cabinet installation be planned?',keywords:empty?['ZZZZ','ZZZX','ZZZY','ZZZK','ZZZQ']:['cabinet','installation','drawing','dimensions','access'],entities:[]};
+  return {model:'fake-flash',choices:[{message:{content:JSON.stringify(answer)}}],usage:{prompt_tokens:100,completion_tokens:50,total_tokens:150}};
+ });
+ try{
+  await updateChannel('custom',{baseUrl:provider.url+'/v1',model:'fake-flash',key:'synthetic-pitch-key',activate:true,reason:'pitch fixture'},actor);
+  const raw='Cabinet installation question. Contact email: buyer@example.org';
+  const cleaned=previewPitch({question:raw});assert.ok(cleaned.redactions.some(r=>r.kind==='email'));
+  await assert.rejects(createPitch({question:raw,privacy_confirmed:true},actor),/个人信息/);
+  const card=await createPitch({question:cleaned.text,privacy_confirmed:true},actor);
+  assert.equal(card.reused,false);assert.equal(provider.hits(),0,'the HTTP create path must only enqueue');
+  const duplicate=await createPitch({question:cleaned.text,privacy_confirmed:true},actor);assert.equal(duplicate.id,card.id);assert.equal(duplicate.reused,true);
+  await preparePitch(card.id,1,actor);
+  const ready=(await getPitch(card.id))!;assert.equal(ready.status,'ready');assert.equal(provider.hits(),2);
+  assert.ok(ready.prep!.materials!.some(m=>ids.includes(m.id)),'old technical references remain eligible');
+  assert.ok(ready.prep!.materials!.every(m=>m.body_text?.includes(m.snippet)||m.title.includes(m.snippet)));
+  assert.ok(submitted.every(x=>!x.includes('buyer@example.org')));
+  const selected=ready.prep!.materials!.filter(m=>ids.includes(m.id)).map(m=>m.id);
+  const input={version:1,article_ids:selected,selected_title:ready.prep!.titles![0].title,output_type:'guide',outline:ready.prep!.outline!.map(s=>({id:s.id,heading:s.heading,include:true})),engineer:{mode:'conservative',name:'',reply:'',answers:[]}};
+  assert.throws(()=>confirmedPitch(ready.prep!,{...input,article_ids:[selected[0]]}),/证据不足/);
+  assert.throws(()=>confirmedPitch(ready.prep!,{...input,engineer:{mode:'engineer',name:'',reply:'',answers:[{question_id:'q1',choice:'B',note:'600 mm'}]}}),/工程师/);
+  const confirmed=(await confirmPitch(card.id,input,actor))!;
+  const pack=(await exportStudioTask(confirmed.task_id))!;
+  assert.equal(pack.request.pitch?.engineer.mode,'conservative');assert.equal(pack.request.pitch?.engineer.name,'');assert.deepEqual(pack.request.pitch?.withheld_numbers,['600 mm']);
+  assert.equal(pack.request.articles.length,selected.length);assert.equal(pack.request.draft_article_ids.length,1);
+  assert.equal((await confirmPitch(card.id,input,actor))?.task_id,confirmed.task_id);
+  const draft={source:pack.request.articles[0].binding,title_zh:'按图纸确定',review_zh:'按型号图纸核对。',title_en:'Cabinet installation',body_en:'Use the selected cabinet drawing.',evidence:[],questions_zh:[],keyword_hypothesis:'cabinet',meta_description_en:'Cabinet drawings.'};
+  assert.equal(pitchDraftFindings(pack.request,draft).length,0);
+  assert.ok(pitchDraftFindings(pack.request,{...draft,body_en:'Allow 600 mm. Reviewed by Chipshow Engineering Team.'}).length>=2);
+  const missing=await createPitch({question:'ZZZZ unmatched imaginary fixture',privacy_confirmed:true},actor);
+  await preparePitch(missing.id,1,actor);assert.equal((await getPitch(missing.id))?.status,'insufficient');
+  assert.equal(provider.hits(),3,'insufficient evidence must not spend the second preparation call');
+  await assert.rejects(confirmPitch(missing.id,input,actor),/尚未就绪/);
+ }finally{config.credentialsDir=oldDir;config.modelCallsEnabled=oldEnabled;await provider.close();await rm(dir,{recursive:true,force:true});}
 });

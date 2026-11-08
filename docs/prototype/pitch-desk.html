@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>命题采编 · 意图稿</title>
+<style>
+  :root { --bg: #f4f3ef; --surface: #fbfaf7; --ink: #13191c; --muted: #5c676c; --accent: #0a6f75; --brand: #2ce2e8; --hair: #e2e0da; --panel: #eef4f2; --warn: #8a5a0b; --warn-bg: #fbf1de; --ok: #2f6b3a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  .note { padding: 8px 16px; font-size: 13px; color: var(--muted); border-bottom: 1px dashed #d4d0c6; background: var(--surface); }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--hair); border-top: 3px solid var(--brand); }
+  header b { font-size: 16px; }
+  .rail { display: flex; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+  .rail span { padding: 2px 10px; border: 1px solid var(--hair); color: var(--muted); }
+  .rail .done { color: var(--ok); border-color: #b9d3bd; }
+  .rail .now { color: #fff; background: var(--accent); border-color: var(--accent); }
+  main { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; max-width: 1240px; margin: 20px auto 64px; padding: 0 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section, aside > div { background: var(--surface); border: 1px solid var(--hair); padding: 16px 18px; margin-bottom: 16px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  h2 small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .kv { font-size: 14px; margin: 0 0 8px; }
+  .kv span { color: var(--muted); display: block; font-size: 12px; }
+  .pill { display: inline-block; font-size: 12px; padding: 0 8px; border: 1px solid var(--hair); margin: 2px 4px 2px 0; }
+  .kv .pill { display: inline-block; font-size: 12px; color: var(--ink); }
+  .ok { color: var(--ok); } .gap { color: var(--warn); }
+  .mat { display: grid; grid-template-columns: 22px 1fr; gap: 6px; padding: 10px 0; border-top: 1px solid var(--hair); }
+  .mat:first-of-type { border-top: 0; }
+  .mat p { margin: 0; }
+  .mat .src { font-size: 12px; color: var(--muted); }
+  .mat q { display: block; margin: 4px 0; padding-left: 10px; border-left: 2px solid var(--brand); color: #2d3a40; font-size: 14px; quotes: none; }
+  .missing { background: var(--warn-bg); padding: 8px 10px; font-size: 14px; color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-bottom: 1px solid var(--hair); }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .titles label { display: block; padding: 6px 0; font-size: 14px; }
+  .titles small { display: block; color: var(--muted); margin-left: 24px; font-size: 12px; }
+  pre { white-space: pre-wrap; background: var(--panel); padding: 12px; font: 13px/1.7 ui-monospace, Menlo, Consolas, monospace; margin: 8px 0; }
+  .q { padding: 6px 0; font-size: 14px; }
+  .q label { margin-right: 14px; white-space: nowrap; }
+  button { font: inherit; padding: 6px 14px; border: 1px solid var(--hair); background: var(--surface); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid var(--hair); background: #fff; width: 10em; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .status { font-size: 13px; color: var(--muted); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="note">意图稿（2026-11-08）：页面上的 URL、询盘原话和已有页面片段都是示例，不是真实记录。MEAN WELL 和聚积两条的标题取自仓库里的真实信源样本。</div>
+<header>
+  <b>命题采编</b>
+  <div class="rail" aria-label="进度"><span class="done">① 写题 ✓</span><span class="done">② 备料 ✓ 58 秒</span><span class="now">③ 确认</span><span>④ 成稿</span></div>
+</header>
+
+<main>
+  <aside>
+    <div>
+      <h2>题目</h2>
+      <p class="kv"><span>问题或命题（已脱敏）</span>户外 LED 招牌尺寸怎么定，询价前要准备什么？</p>
+      <p class="kv"><span>搜索意图（英文）</span>How big should an outdoor LED sign be, and what should I send for a quote?</p>
+      <p class="kv"><span>产出类型</span>升级已有页</p>
+      <p class="kv"><span>已有页面</span><a href="#">/blog/example-led-sign-size-guide/</a>（示例）</p>
+      <p class="kv"><span>脱敏</span>询盘原话里 1 个邮箱已替换为 [邮箱]，运营已确认</p>
+      <p class="kv"><span>关键词</span><span class="pill">outdoor LED sign size</span><span class="pill">pixel pitch</span><span class="pill">viewing distance</span><span class="pill">cabinet</span><span class="pill">quote</span><span class="pill">尺寸</span><span class="pill">间距</span><span class="pill">视距</span></p>
+    </div>
+    <div>
+      <h2>防撞题</h2>
+      <p class="kv ok">✓ 已有页面正文已绑定（第 1 版，11-08 抓取）</p>
+      <p class="kv">问题地图里有 1 个相近题：“How to choose pixel pitch”（未发布）。建议作为内链目标，不另写。</p>
+      <p class="kv">没有进行中的同题任务。</p>
+    </div>
+    <div>
+      <h2>公司事实黑名单</h2>
+      <p class="kv">禁止项命中 0 处。待确认 1 处：齐普箱体规格，已转为确认题 2。</p>
+    </div>
+  </aside>
+
+  <div>
+    <section>
+      <h2>素材 <small>库内检索不受短讯的 14/30 天窗口限制；勾选的才会进入成稿</small></h2>
+      <div class="mat"><input type="checkbox" checked aria-label="选用已有页面"><div><p><b>已有页面</b> · Chipshow LED sign size guide（示例）</p><q>（示例片段）Measure the space first, then choose the pixel pitch by viewing distance.</q><p class="src">原文未标日期 · 11-08 抓取 · 已有页面正文</p></div></div>
+      <div class="mat"><input type="checkbox" checked aria-label="选用询盘原话"><div><p><b>询盘原话</b>（示例，已脱敏）</p><q>What size screen do I need for a 20 m viewing distance? Please quote to [邮箱].</q><p class="src">2026-10 · 运营提供 · 用于首屏和 FAQ</p></div></div>
+      <div class="mat"><input type="checkbox" checked aria-label="选用 MEAN WELL"><div><p><b>MEAN WELL</b> · UDP-200/300/400 Series: 200W~400W Next-Generation Compact Power Supplies for LED Displays</p><q>命中：power supplies for LED displays</q><p class="src">2026-09-29 · 厂商说法 · 用于“功耗与配电”一节</p></div></div>
+      <div class="mat"><input type="checkbox" aria-label="选用聚积"><div><p><b>Macroblock</b> · From Specifications to Experience | 2026 International LED Display Symposium</p><q>命中：specifications</q><p class="src">2026-09-15 · 相关度低，默认不选</p></div></div>
+      <p class="missing">缺：观看距离的标准依据（如 AVIXA DISCAS）库里没有。<button type="button">补链接</button> 或沿用已有页面的说法。</p>
+    </section>
+
+    <section>
+      <h2>大纲与出处</h2>
+      <table>
+        <thead><tr><th style="width:38%">小节</th><th>出处</th><th style="width:14%">状态</th></tr></thead>
+        <tbody>
+          <tr><td>1 首屏答案：观看距离 → 间距 → 分辨率 → 箱体数</td><td>已有页面、询盘原话</td><td class="ok">✓</td></tr>
+          <tr><td>2 按观看距离选间距（计算表）</td><td>缺视距标准：补链接，或沿用已有页面的说法</td><td class="gap">缺证据</td></tr>
+          <tr><td>3 箱体取整与画面比例</td><td>涉及齐普箱体规格 → 确认题 2</td><td class="gap">待确认</td></tr>
+          <tr><td>4 功耗与配电（最大与平均）</td><td>MEAN WELL（厂商说法）；比例 → 确认题 1</td><td class="gap">待确认</td></tr>
+          <tr><td>5 维护通道（前维护与后维护）</td><td>确认题 3</td><td class="gap">待确认</td></tr>
+          <tr><td>6 询价六项清单</td><td>已有页面、询盘原话</td><td class="ok">✓</td></tr>
+          <tr><td>7 FAQ（用询盘原话）</td><td>询盘原话</td><td class="ok">✓</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="titles">
+      <h2>标题 <small>页面标题按搜索意图写；钩子只用在社媒</small></h2>
+      <p class="kv"><span>页面标题（选一个）</span></p>
+      <label><input type="radio" name="seo" value="1"> Outdoor LED Sign Size: Pitch, Resolution &amp; RFQ Checklist <small>55 字符 · 锚点：已有页面、询价六项清单</small></label>
+      <label><input type="radio" name="seo" value="2"> How Big Should Your Outdoor LED Sign Be? A Sizing Guide <small>55 字符 · 锚点：询盘原话</small></label>
+      <label><input type="radio" name="seo" value="3"> LED Screen Size Guide: From Viewing Distance to Cabinet Count <small>59 字符 · 锚点：大纲 1–3</small></label>
+      <p class="kv" style="margin-top:10px"><span>LinkedIn 钩子（选一个）</span></p>
+      <label><input type="radio" name="hook"> Send these 6 numbers and get LED quotes you can actually compare <small>锚点：询价六项清单</small></label>
+      <label><input type="radio" name="hook"> 20 m away? Here's how big your LED sign needs to be <small>锚点：询盘原话</small></label>
+      <label><input type="radio" name="hook"> Screen size is set by cabinets, not by the wall <small>锚点：大纲 3（需确认题 2 的答案）</small></label>
+    </section>
+
+    <section>
+      <h2>工程确认卡 <small>复制到企业微信发给工程师；工程师回“1A 2B 3A”</small></h2>
+<pre id="card">【AIHOT 工程确认 · 1 分钟】
+题目：户外 LED 招牌尺寸与询价（升级尺寸指南）
+
+1. 文中提到“平均功耗与最大功耗”时，怎么写？
+   A 不给比例，只提醒询价时问清两种功耗和测试条件（保守）
+   B 给一个常见比例范围，注明以具体型号为准
+   C 其他，请写明
+2. 屏幕尺寸和整箱体对不上时，默认建议怎么写？
+   A 按整箱体微调屏幕尺寸，保持点对点显示（保守）
+   B 两种做法都写：按整箱微调，或用非标箱体补边，并说明代价
+   C 其他，请写明
+3. 维护通道怎么写？
+   A 只写“前维护省空间，后维护要预留通道，以安装图为准”，不写距离（保守）
+   B 给出常见参考距离，注明以安装图为准
+   C 其他，请写明
+
+回复格式：1A 2B 3A</pre>
+      <div class="actions"><button type="button" id="copy">复制确认卡</button><span class="status" id="copied"></span></div>
+      <div style="margin-top:12px">
+        <div class="q">1 <label><input type="radio" name="q1" value="A">A</label><label><input type="radio" name="q1" value="B">B</label><label><input type="radio" name="q1" value="C">C</label></div>
+        <div class="q">2 <label><input type="radio" name="q2" value="A">A</label><label><input type="radio" name="q2" value="B">B</label><label><input type="radio" name="q2" value="C">C</label></div>
+        <div class="q">3 <label><input type="radio" name="q3" value="A">A</label><label><input type="radio" name="q3" value="B">B</label><label><input type="radio" name="q3" value="C">C</label></div>
+        <div class="actions"><label>答题工程师 <input type="text" id="who" placeholder="姓名"></label><button type="button" id="safe">用保守写法先出稿</button></div>
+        <p class="status">运营只能录入工程师的答案。工程师没回复时，可以选保守写法：三题都按 A 处理，正文不出现对应的数字。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>成稿</h2>
+      <p class="kv">已选素材 <b id="n">3</b> 条（至少 2 条）。生成后进入原有审稿：必须确认 ≤8 条 → 批准 → 推成 <code>[UPDATE]</code> 草稿，附改动清单。</p>
+      <div class="actions"><button type="button" class="primary" id="go" disabled>生成英文稿</button><span class="status" id="why">先选页面标题，并录入工程师答案或选保守写法</span></div>
+    </section>
+  </div>
+</main>
+
+<script>
+  // 原型交互：只演示按钮何时可用。
+  const $ = (s) => document.querySelector(s);
+  const mats = [...document.querySelectorAll('.mat input')];
+  let safe = false;
+  function update() {
+    const n = mats.filter((m) => m.checked).length;
+    $('#n').textContent = n;
+    const title = !!document.querySelector('input[name=seo]:checked');
+    const answered = ['q1', 'q2', 'q3'].every((q) => document.querySelector(`input[name=${q}]:checked`)) && $('#who').value.trim();
+    const ok = n >= 2 && title && (answered || safe);
+    $('#go').disabled = !ok;
+    $('#why').textContent = ok ? (safe && !answered ? '将按保守写法生成：确认题涉及的数字不会出现' : '可以生成') : n < 2 ? '至少选 2 条素材' : !title ? '先选页面标题' : '录入工程师答案，或选保守写法';
+  }
+  document.addEventListener('change', update);
+  $('#who').addEventListener('input', update);
+  $('#safe').addEventListener('click', () => { safe = true; for (const r of document.querySelectorAll('.q input')) { r.checked = r.value === 'A'; r.disabled = true; } $('#safe').textContent = '已选保守写法'; $('#safe').disabled = true; update(); });
+  $('#copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#card').textContent); $('#copied').textContent = '已复制'; } catch { $('#copied').textContent = '请手动选中上面的文字复制'; } });
+  update();
+</script>
+</body>
+</html>
+

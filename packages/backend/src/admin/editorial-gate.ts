@@ -1,6 +1,7 @@
 import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
 import { ENTITIES } from '@aihot/industry/taxonomy';
 import sourceConfig from '../../../../industry/sources.json' with { type: 'json' };
+import { pitchDraftFindings } from './studio-company-facts.ts';
 
 export type Finding = {
   ruleId: string; severity: 'BLOCK' | 'WARN'; field: string;
@@ -282,7 +283,7 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
       });
     }
   }
-  return report(findings);
+  return report([...findings,...pitchDraftFindings(packet,draft)]);
 }
 
 /** Aggregate fields use drafts[i].field; source findings retain source.body_text as contracted. */

@@ -10,9 +10,17 @@ import { studioSearchSignals, importSearchSignals, searchTemplates } from '@aiho
 import { listStudioSocial, deriveStudioSocial, saveStudioSocial, reviewStudioSocial, exportStudioSocial } from '@aihot/backend/admin/studio-social';
 import { adminHandler } from './admin-auth.ts';
 import { body, param, orNotFound } from './admin.ts';
+import { previewPitch,createPitch,listPitches,getPitch,revisePitch,confirmPitch,queuePitchDraft } from '@aihot/backend/admin/studio-pitch';
 
 /** Planning is internal; a page view never generates cards or calls a model. */
 export function registerAdminStudioPlanning(app: FastifyInstance) {
+  app.post('/api/admin/studio/pitch/redact',adminHandler(async(req)=>previewPitch(body(req))));
+  app.get('/api/admin/studio/pitches',adminHandler(async()=>listPitches()));
+  app.post('/api/admin/studio/pitches',adminHandler(async(req,_reply,admin)=>createPitch(body(req),actorOf(admin))));
+  app.get('/api/admin/studio/pitches/:id',adminHandler(async(req,reply)=>orNotFound(req,reply,await getPitch(param(req,'id')))));
+  app.patch('/api/admin/studio/pitches/:id',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await revisePitch(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/confirm',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await confirmPitch(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/generate',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await queuePitchDraft(param(req,'id'),actorOf(admin)))));
   app.get('/api/admin/studio/social',adminHandler(async req=>({rows:await listStudioSocial((req.query as Record<string,string>).draft_id)})));
   app.post('/api/admin/studio/social/derive',adminHandler(async(req,_reply,admin)=>deriveStudioSocial(body(req),actorOf(admin))));
   app.patch('/api/admin/studio/social/:id',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await saveStudioSocial(param(req,'id'),body(req),actorOf(admin)))));

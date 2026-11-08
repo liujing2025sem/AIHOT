@@ -18,6 +18,7 @@ import { editorialGate, evaluateDraft, type GateReport } from './editorial-gate.
 import { camosMethods } from './camos-methods.ts';
 import { documentIdentity } from './studio-review.ts';
 import { aggregateWritingProfile } from './studio-demand.ts';
+import { pitchMaterialHits } from './studio-pitch-evidence.ts';
 import { editorialDirection, editorialTopic, assertPublicEnglish } from '../../../../site/editorial.ts';
 import { publicDraft } from './studio-publication.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialIssues, type EditorialConfirmation } from './editorial-issues.ts';
@@ -34,7 +35,8 @@ interface DraftRow { id: string; task_id: string; article_id: string; document: 
 export async function studioOverview(f: { q?: string; source?: string; quality?: string; page?: string } = {}) {
   f = { ...f, quality: f.quality ?? 'ready' };
   const page = Math.max(1, Number(f.page) || 1);
-  const where = sql`(${f.q ?? ''} = '' OR a.title ILIKE ${`%${f.q ?? ''}%`})
+  const q = f.q?.trim();
+  const where = sql`${q ? sql`${pitchMaterialHits([q])} > 0` : sql`TRUE`}
     AND (${f.source ?? ''} = '' OR a.source_id = ${f.source ?? ''})
     AND (${f.quality ?? ''} = '' OR (${f.quality ?? ''} = 'ready' AND a.body_status = 'ok' AND a.body_text IS NOT NULL)
       OR (${f.quality ?? ''} = 'missing-body' AND (a.body_status <> 'ok' OR a.body_text IS NULL))
@@ -129,7 +131,7 @@ async function priorConfirmations(id: string, issues: EditorialIssues, db: Db = 
 }
 
 async function prepareStudioTask(taskId:string,input:unknown,db:Db=sql) {
-  const body = z.object({ article_ids: z.array(z.string()).max(12), writing: packetSchema.shape.writing,planning_context:packetSchema.shape.editorial_plan }).parse(input);
+  const body = z.object({ article_ids: z.array(z.string()).max(12), writing: packetSchema.shape.writing,planning_context:packetSchema.shape.editorial_plan,pitch:packetSchema.shape.pitch }).parse(input);
   const ids = [...new Set(body.article_ids)];
   if(!ids.length&&!body.planning_context)invalid('请至少选择一条完整素材。');
   if(body.planning_context){const [card]=await db`SELECT id FROM studio_recommendations WHERE id=${body.planning_context.card_id}`;if(!card)invalid('选题卡不存在，请重新选择。');}
@@ -141,7 +143,7 @@ async function prepareStudioTask(taskId:string,input:unknown,db:Db=sql) {
   return packetSchema.parse({ methods, schema: 'aihot-editorial-pilot/1', task_id:taskId, created_at: new Date().toISOString(),
     ...(body.planning_context?{editorial_plan:body.planning_context}:{}),
     ...(profile.lastImportedAt&&body.writing?.site!=='unishineled.com'?{reader_profile:{...profile,descriptions:profile.descriptions.slice(0,20)}}:{}),
-    scope: 'LOCAL_AGENT_HANDOFF_NOT_AUTOMATED_AIHOT_PIPELINE', ...(!body.writing||body.writing.site==='chipshow.com'?{editorial_policy: editorialDirection}:{}), articles: rows.map(snapshot), draft_article_ids: ids, ...(body.writing ? { writing: body.writing } : {}) });
+    scope: 'LOCAL_AGENT_HANDOFF_NOT_AUTOMATED_AIHOT_PIPELINE', ...(!body.writing||body.writing.site==='chipshow.com'?{editorial_policy: editorialDirection}:{}), articles: rows.map(snapshot), draft_article_ids: body.pitch?[body.pitch.primary_article_id]:ids, ...(body.pitch?{pitch:body.pitch}:{}), ...(body.writing ? { writing: body.writing } : {}) });
 }
 export async function createStudioTask(input: unknown, actor: string,db?:Db) {
   const packet=await prepareStudioTask(`studio-${randomUUID()}`,input,db);
@@ -216,7 +218,7 @@ export async function generateStudioTask(id: string, actor: string) {
   if (task.state === 'received' || task.state === 'blocked') return { id, state: task.state, reused: true, gate: task.response?.editorial_gate };
   const packet = packetSchema.parse(task.request);
   if(!packet.articles.length)invalid('该选题尚未绑定完整原文，请先补证据；画像不是事实来源。');
-  if (packet.articles.length > 4) invalid('单次 API 成稿最多4条素材；较大的任务请使用 Agent 文件接棒。');
+  if (packet.articles.length > (packet.pitch?9:4)) invalid('单次成稿素材超过上限，请减少选择。');
   await checkPlannedEvidence(packet);
   const generation = await studioGenerationStatus();
   if (!generation.ready) invalid(generation.reason);

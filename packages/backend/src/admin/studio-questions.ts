@@ -16,6 +16,7 @@ const realUrl = z.string().max(2000).refine(value => {
 }, '请输入实际页面的HTTP(S) URL，未知留空');
 export const questionSchema = z.object({
   question: z.string().trim().min(4).max(500),
+  origin:z.enum(['operator','pitch']).optional(),
   question_en: z.string().trim().max(500).default(''),
   roles: z.array(z.enum(customerRoles)).min(1).max(5),
   scenario: z.string().trim().min(1).max(100),
