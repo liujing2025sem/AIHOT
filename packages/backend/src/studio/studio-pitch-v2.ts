@@ -14,13 +14,13 @@ import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from
 import {companyFactRules} from './studio-company-facts.ts';
 import {buyerQuestionsSchema,editPlanSchema,fragmentPlanSchema,fragmentSchema,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
-import {splitPage,answerEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
+import {splitPage,answerEvidence,evidenceFactQuote,calculateFact,validateEditPlan,validateFragment,assembleFragments,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
 function invalid(s:string):never{throw Object.assign(new Error(s),{statusCode:400});}
 const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/${name}.md`,import.meta.url),'utf8');
 type Question=z.infer<typeof buyerQuestionsSchema>['subquestions'][number];
 type Coverage={status:'page_good'|'page_weak'|'direct'|'calc'|'engineer'|'missing';page_paragraphs:string[];evidence:string[];reason?:string;action?:string};
-type Fragment={op_index:number;status:'pending'|'running'|'done'|'unknown'|'failed';html_en?:string;zh_review?:string;used_facts?:string[];receipt_id?:number|null;error?:string;elapsed_ms?:number};
+type Fragment={op_index:number;status:'pending'|'running'|'done'|'unknown'|'failed';html_en?:string;zh_review?:string;used_facts?:string[];figure?:z.infer<typeof fragmentSchema>['figure'];receipt_id?:number|null;error?:string;elapsed_ms?:number};
 type V2=Prep & {workflow_version:2;subquestions?:Array<Question&{coverage:Coverage;demand:{queries:Record<string,unknown>[];inquiries:number}}>;paragraphs?:Paragraph[];source_html?:string;original_title?:string;facts?:Fact[];edit_plan?:EditOperation[];weak_material_ids?:string[];conclusion?:string;fragments?:Fragment[];assembled?:Record<string,unknown>};
 const cardFor=async(id:string)=>{const [row]=await sql`SELECT * FROM studio_recommendations WHERE id=${id}`;return row;};
 const savePrep=async(id:string,prep:V2)=>sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json(prep as never)}),updated_at=now() WHERE id=${id} AND (document->'prep'->>'version')::int=${prep.version}`;
@@ -44,6 +44,12 @@ function shortQuote(text:string,body:string){
   if(exact.length<=300&&body.includes(exact))return exact;
   for(const sentence of exact.split(/(?<=[.!?。！？])\s+|\n+/)){const s=sentence.trim().slice(0,300);if(s&&body.includes(s))return s;}
   return '';
+}
+function answerQuote(hit:{quote:string},body:string){
+  const whole=evidenceFactQuote(hit);if(!whole)return '';
+  if(body.includes(whole))return whole;
+  const flat=whole.replace(/\s+/g,' ').trim();
+  return body.includes(flat)?flat:'';
 }
 async function demandFor(questions:Question[],url:string){
   const signals=await sql`SELECT record FROM studio_search_signals`;
@@ -75,14 +81,15 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     if(new Set(questions.map(q=>q.id)).size!==questions.length)invalid('子问题编号重复，需检查保存的回答。');
     const candidates=await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
     const materials:NonNullable<Prep['materials']>=[...linked,...candidates.filter(m=>!linked.some(l=>l.id===m.id))];
-    const evidence=answerEvidence(questions,materials);
+    const htmls=await sql`SELECT id,body_html FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
+    const evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:htmls.find(h=>h.id===m.id)?.body_html})));
     const facts:Fact[]=[];
     const addFact=(value:Omit<Fact,'id'>)=>{const f={...value,id:`f${facts.length+1}`} as Fact;facts.push(f);return f;};
     const demand=await demandFor(questions,prep.existing_url);
     const subquestions:NonNullable<V2['subquestions']>=questions.map(q=>{
       const matched=evidence.by_question[q.id]??[];
       const ids=matched.flatMap(e=>{
-        const m=materials.find(m=>m.id===e.article_id)!;const quote=shortQuote(e.quote,m?.body_text??'');if(!quote)return [];
+        const m=materials.find(m=>m.id===e.article_id)!;const quote=answerQuote(e,m?.body_text??'');if(!quote)return [];
         return [addFact({kind:m.existing_page?'page':'source',statement:quote,quote,article_id:m.id,revision:m.revision,date:m.publication_time??null,attribution:m.existing_page?'Chipshow page':m.source_name,url:m.url}).id];
       });
       let status:Coverage['status']=ids.length?'direct':q.need==='company'?'engineer':'missing';
@@ -168,9 +175,10 @@ export async function supplementPitchEvidence(id:string,input:unknown,actor:stri
   if(prep.version!==b.version||!['ready','insufficient'].includes(prep.status))throw new Conflict('仅待确认或证据不足的备料可补证据，请刷新。');
   const q=prep.subquestions?.find(q=>q.id===b.subquestion_id);if(!q)invalid('子问题不存在。');
   const mid=await importLink(b.url,actor,true),m=await studioMaterial(mid) as NonNullable<Prep['materials']>[number];
-  const hits=answerEvidence([q],[m]).by_question[q.id]??[];
+  const [html]=await sql`SELECT body_html FROM articles WHERE id=${mid}`;
+  const hits=answerEvidence([q],[{...m,body_html:html?.body_html}]).by_question[q.id]??[];
   if(!prep.materials!.some(a=>a.id===mid))prep.materials!.push({...m,snippet:hits[0]?.quote??m.title,hit_count:hits.length,first_party:false});
-  const added=hits.flatMap(h=>{const quote=shortQuote(h.quote,m.body_text??'');if(!quote)return [];const f:Fact={id:`f${prep.facts!.length+1}`,kind:'source',statement:quote,quote,article_id:m.id,revision:m.revision,date:m.publication_time??null,attribution:m.source_name,url:m.url};prep.facts!.push(f);return [f.id];});
+  const added=hits.flatMap(h=>{const quote=answerQuote(h,m.body_text??'');if(!quote)return [];const f:Fact={id:`f${prep.facts!.length+1}`,kind:'source',statement:quote,quote,article_id:m.id,revision:m.revision,date:m.publication_time??null,attribution:m.source_name,url:m.url};prep.facts!.push(f);return [f.id];});
   q.coverage={...q.coverage,status:added.length?'direct':q.coverage.status,evidence:[...q.coverage.evidence,...added]};
   prep.weak_material_ids=hits.length?(prep.weak_material_ids??[]).filter(x=>x!==mid):[...new Set([...(prep.weak_material_ids??[]),mid])];
   await savePrep(id,prep);await audit(actor,'studio.pitch.supplement',`studio-recommendation:${id}`,'仅补该子问题检索，没有模型调用',null,{subquestion:q.id,article_id:mid,answers:added.length});
@@ -227,7 +235,7 @@ export async function generatePitchFragments(id:string,actor:string,options:{fra
   const pending=options.fragmentIndex===undefined?items:[options.fragmentIndex];
   for(let i=0;i<pending.length;i+=2)await Promise.all(pending.slice(i,i+2).map(run));
   if(fragments.some(f=>f.status!=='done'))return {status:fragments.some(f=>f.status==='unknown')?'unknown':'partial',fragments};
-  const done=fragments.map(f=>({op_index:f.op_index,html_en:f.html_en!,zh_review:f.zh_review!,used_facts:f.used_facts!}));
+  const done=fragments.map(f=>({op_index:f.op_index,html_en:f.html_en!,zh_review:f.zh_review!,used_facts:f.used_facts!,...(f.figure?{figure:f.figure}:{})}));
   const assembled=assembleFragments(plan.paragraphs,plan.edit_plan,done);
   // Bind the checked fragment results to this task before the normal response gate and database write.
   plan.fragments=done;
@@ -236,7 +244,7 @@ export async function generatePitchFragments(id:string,actor:string,options:{fra
   const cited=plan.facts.filter(f=>done.some(d=>d.used_facts.includes(f.id))&&f.article_id&&f.quote);
   if(!cited.length){const quote=shortQuote(primary.body_text??'',primary.body_text??'');if(quote)cited.push({id:'page-context',kind:'page',statement:'Existing page retained.',quote,attribution:'Chipshow page',article_id:primary.binding.article_id});}
   const body=assembled.html_en;
-  const response={task_id:task!.id,run_id:`fragments-${task!.id}`,producer:{agent_id:'studio-fragment-worker',model:'default',input_files:['confirmed fragment plan','bounded fact table','studio-pitch-fragment.md']},decisions:packet.articles.map(a=>({article_id:a.binding.article_id,decision:'KEEP',reason_zh:a.binding.article_id===primary.binding.article_id?'按已确认的编辑计划保留旧页并补足买家问题':'为改动片段提供已核对的逐字证据'})),drafts:[{news_status:'reported',source:primary.binding,title_zh:`[UPDATE] ${packet.pitch!.question}`,title_en:`[UPDATE] ${packet.pitch!.selected_title}`,body_en:body,review_zh:done.map(d=>d.zh_review).join('\n\n'),evidence:cited.map(f=>({claim:f.statement,quote:f.quote})),questions_zh:prep.engineer_questions?.map(q=>q.question)??[],keyword_hypothesis:prep.question_en??prep.question,meta_description_en:packet.pitch!.selected_title,camos_rule_ids:plan.method_rule_ids}]};
+  const response={task_id:task!.id,run_id:`fragments-${task!.id}`,producer:{agent_id:'studio-fragment-worker',model:'default',input_files:['confirmed fragment plan','bounded fact table','studio-pitch-fragment.md']},decisions:packet.articles.map(a=>({article_id:a.binding.article_id,decision:'KEEP',reason_zh:a.binding.article_id===primary.binding.article_id?'按已确认的编辑计划保留旧页并补足买家问题':'为改动片段提供已核对的逐字证据'})),drafts:[{news_status:'reported',source:primary.binding,title_zh:`[UPDATE] ${packet.pitch!.question}`,title_en:`[UPDATE] ${packet.pitch!.selected_title}`,body_en:body,review_zh:done.map(d=>d.zh_review).join('\n\n'),evidence:cited.map(f=>({claim:f.statement,quote:f.quote})),questions_zh:prep.engineer_questions?.map(q=>q.question)??[],keyword_hypothesis:prep.question_en??prep.question,meta_description_en:packet.pitch!.selected_title,camos_rule_ids:plan.method_rule_ids,figures:done.flatMap(f=>f.figure?[{...f.figure,fact_ids:f.figure.fact_ids??f.used_facts}]:[]).slice(0,3)}]};
   const received=await receiveStudioTask(task!.id,response,actor);
   const [draft]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task!.id} ORDER BY created_at DESC LIMIT 1`;
   prep.assembled={html_en:assembled.html_en,diff:assembled.diff,zh_review:response.drafts[0].review_zh,draft_id:draft?.id??null,gate:received?.gate??{blocked:false},elapsed_ms:Math.round(performance.now()-start)};

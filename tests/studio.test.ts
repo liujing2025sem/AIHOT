@@ -123,7 +123,7 @@ test('WordPress push only writes approved English to one draft, with safe recove
    if(url.origin!=='https://wp.invalid')throw new Error('Unexpected request in WordPress test');
    if(redirect)return Response.redirect('https://other.invalid/wp-json/',302);
    const response=await localFetch(wp.url+url.pathname+url.search,init);
-   if(mode==='disconnect'&&init?.method==='POST'){
+   if(mode==='disconnect'&&init?.method==='POST'&&init?.body){
      await response.text(); // Remote committed but the acknowledgement never reached Studio.
      throw new Error('synthetic-wp-secret');
    }

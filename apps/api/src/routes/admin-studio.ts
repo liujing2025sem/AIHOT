@@ -6,8 +6,10 @@ import { studioOverview, studioMaterial, createStudioTask, bindStudioTaskMateria
 import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/studio/studio-review';
 import { pushStudioWordPressDraft, studioWordPressDetail } from '@aihot/backend/admin/studio-wordpress';
 import { registerAdminStudioPlanning } from './admin-studio-planning.ts';
+import { registerAdminStudioPublishing } from './admin-studio-publishing.ts';
 export function registerAdminStudio(app: FastifyInstance) {
   registerAdminStudioPlanning(app);
+  registerAdminStudioPublishing(app);
   app.get('/api/admin/studio/review-metrics',adminHandler(async()=>studioReviewMetrics()));
   app.post('/api/admin/studio/review-policy',adminHandler(async(req,_reply,admin)=>setStudioReviewPolicy(body(req),actorOf(admin))));
   app.post('/api/admin/studio/drafts/:id/intervention',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await recordStudioReview(param(req,'id'),body(req),actorOf(admin)))));

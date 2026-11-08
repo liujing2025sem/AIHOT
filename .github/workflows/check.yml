@@ -114,6 +114,7 @@ jobs:
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:3000/api/health 2>/dev/null && break; sleep 2; done
           docker compose ps
           docker compose run --rm --no-deps --entrypoint node setup scripts/smoke.ts --base http://web:3000
+          docker compose run --rm --no-deps --entrypoint node setup --input-type=module -e "import { buildFigure } from './packages/backend/src/studio/studio-figures.ts'; const f=await buildFigure({template:'layer-stack',params:{columns:['MiP']},alt_en:'',caption_en:''},[]); if(!f.usable||!f.png.length)throw Error(f.notes.join(';')); console.log('Production image render:',f.score.total,'points,',f.png.length,'bytes');"
           docker compose exec -T db psql -U aihot -d aihot -Atc "select count(*) from sources" | grep -qx "$(node -p "require('./industry/sources.json').sources.length")"
       - name: Logs
         if: failure()

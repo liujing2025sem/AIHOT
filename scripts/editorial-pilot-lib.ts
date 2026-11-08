@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import { editorialDirectionText, assertPublicEnglish } from '../site/editorial.ts';
-import { pitchSchema } from './editorial-pitch-lib.ts';
+import { pitchSchema, figureSpecSchema } from './editorial-pitch-lib.ts';
 
 export const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 export const safeId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/);
@@ -53,6 +53,7 @@ export const responseSchema = z.object({
   drafts: z.array(z.object({
     news_status: z.enum(['reported','unconfirmed','confirmed','denied','corrected']).optional(),
     camos_rule_ids: z.array(z.string().min(1)).optional(),
+    figures: z.array(figureSpecSchema).max(3).optional().catch(undefined),
     source: binding, title_zh: z.string().min(1), review_zh: z.string().min(1), title_en: z.string().min(1), body_en: z.string().min(1),
     evidence: z.array(z.object({ claim: z.string().min(1), quote: z.string().min(1).max(350) }).strict()).min(1),
     questions_zh: z.array(z.string()), keyword_hypothesis: z.string().min(1), meta_description_en: z.string().min(1),

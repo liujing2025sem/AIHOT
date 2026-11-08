@@ -5,6 +5,7 @@ import type { Route } from './+types/studio-draft';
 import { adminGet } from '../../lib/admin.server';
 import { useAdminAction } from '../../features/admin/action';
 import { AdminPage, Card, Button, Badge, Time } from '../../features/admin/ui';
+import { DirectPublish } from '../../features/admin/publishing';
 type Document={news_status?:'reported'|'unconfirmed'|'confirmed'|'denied'|'corrected';camos?:{status:string;ruleIds:string[];suppliedRuleIds?:string[]};title_zh:string;title_en:string;review_zh:string;body_en:string;keyword_hypothesis:string;meta_description_en:string;questions_zh:string[];evidence:{claim:string;quote:string}[];source:{url:string;revision:number;published_at:string|null}};
 type Finding={ruleId:string;severity:'BLOCK'|'WARN';field:string;start:number;end:number;quote:string;reason:string};
 type Issue={id:string;fingerprint:string;ruleId:string;severity:'BLOCK'|'WARN';title:string;group:'required'|'recommended';confirmable:boolean;count:number;occurrences:Finding[]};
@@ -23,8 +24,9 @@ function WordPressDraft({ row, dirty, busy, run }: { row: Detail; dirty: boolean
     : row.status!=='approved'?'审核通过后可以推送英文稿。'
     : row.material?.revision!==row.document.source.revision?'原文已变化，请重新建立采编任务并审核。'
     : row.gate.blocked?'当前稿件有否决项，请修改并重新审核。':null);
-  return <Card title="WordPress 草稿">
-    <p className="mb-3 text-sm leading-6 text-ink-3">仅把已审核的英文稿送到 WordPress 草稿箱。升级稿也单独建草稿，供你核对。</p>
+  return <Card title="上线与 WordPress 草稿">
+    <DirectPublish draft={{ id: row.id, version: row.version, title: row.document.title_en }} disabled={dirty || busy} />
+    <p className="mb-3 text-sm leading-6 text-ink-3">人审后上线：把已审核的英文稿送到 WordPress 草稿箱，由你发布。升级稿也单独建草稿，供你核对。</p>
     {hold&&<p className="mb-3 text-sm text-ink-3">{hold}</p>}
     {ready&&<div className="mb-3 space-y-3 text-sm">
       <label className="block">稿件类型<select value={kind} onChange={e=>setKind(e.target.value)} disabled={busy||!!hold} className="mt-1 w-full rounded-control border border-line bg-surface p-2"><option value="">请选择类型</option><option value="brief">短讯或短文章 → Industry News</option><option value="guide">长文或升级稿 → Choose Guides</option></select></label>

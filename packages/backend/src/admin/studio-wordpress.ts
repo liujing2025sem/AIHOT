@@ -29,8 +29,8 @@ type Receipt = { site: string; version: number; kind: Push['kind']; section: Pus
 function invalid(message: string): never {
   throw Object.assign(new Error(message), { statusCode: 400 });
 }
-function settings() {
-  if (!config.wpDraftPushEnabled) return { ready: false as const, message: 'WordPress 草稿推送尚未开启。' };
+export function wordpressSettings(requireDraftValve = true) {
+  if (requireDraftValve && !config.wpDraftPushEnabled) return { ready: false as const, message: 'WordPress 草稿推送尚未开启。' };
   try {
     const base = new URL(credential('integrations', 'WP_BASE_URL') ?? '');
     const user = credential('integrations', 'WP_USER')?.trim();
@@ -44,15 +44,18 @@ function settings() {
   }
   return { ready: false as const, message: '请让维护人检查 WordPress 的 HTTPS 站点、用户名和应用密码配置。' };
 }
-type Settings = Extract<ReturnType<typeof settings>, { ready: true }>;
-const slugOf = (id: string) => 'aihot-studio-' + createHash('sha256').update(id).digest('hex').slice(0, 24);
+type Settings = Extract<ReturnType<typeof wordpressSettings>, { ready: true }>;
+export const studioWordPressSlug = (id: string) => 'aihot-studio-' + createHash('sha256').update(id).digest('hex').slice(0, 24);
+const slugOf = studioWordPressSlug;
+const settings = wordpressSettings;
 const subjectOf = (id: string) => `studio-draft:${id}`;
 
-async function latest(id: string, db: Tx | typeof sql = sql) {
+export async function studioWordPressReceipt(id: string, db: Tx | typeof sql = sql) {
   const [entry] = await db<{ after: Receipt }[]>`SELECT after FROM audit_log
     WHERE subject=${subjectOf(id)} AND action=${auditAction} ORDER BY id DESC LIMIT 1`;
   return entry?.after;
 }
+const latest = studioWordPressReceipt;
 function receiptView(receipt: Receipt, target: Settings, draftId: string) {
   const postId = 'postId' in receipt ? receipt.postId : undefined;
   const editUrl = postId && receipt.site === target.base.href
@@ -75,7 +78,7 @@ const postFields = 'id,slug,status,categories,tags,featured_media';
 const postSchema = z.object({ id: idSchema, slug: z.string(), status: z.string(),
   categories: z.array(idSchema), tags: z.array(idSchema), featured_media: z.number().int().nonnegative() });
 const termsSchema = z.array(z.object({ id: idSchema, slug: z.string() }));
-class WordPressError extends Error {
+export class WordPressError extends Error {
   readonly status?: number;
   constructor(status?: number) {
     super(status ? `WordPress 返回 HTTP ${status}，请让维护人检查站点、权限或访问限制。`
@@ -83,17 +86,21 @@ class WordPressError extends Error {
     this.status = status;
   }
 }
-function client(target: Settings) {
+export function wordpressClient(target: Settings, options?: { perRequestTimeout: true }) {
   const authorization = 'Basic ' + Buffer.from(`${target.user}:${target.password}`).toString('base64');
   const signal = AbortSignal.timeout(15_000);
-  return async (path: string, query: Record<string, string>, payload?: object): Promise<unknown> => {
+  return async (path: string, query: Record<string, string>, payload?: object, method?: 'OPTIONS'): Promise<unknown> => {
     const url = new URL(`wp-json/wp/v2/${path}`, target.base);
     url.search = new URLSearchParams(query).toString();
+    // Chipshow's CDN cached authenticated GETs and ignored query parameters (real post 9597).
+    // WordPress's documented POST method override keeps reads uncached with the same permissions.
+    const freshRead = !payload && !method;
     try {
       const res = await fetch(url, {
-        method: payload ? 'POST' : 'GET', redirect: 'manual', cache: 'no-store', signal,
-        headers: { Authorization: authorization, Accept: 'application/json', ...(payload ? { 'Content-Type': 'application/json' } : {}) },
-        body: payload ? JSON.stringify(payload) : undefined,
+        method: method ?? 'POST', redirect: 'manual', cache: 'no-store',
+        signal: options ? AbortSignal.timeout(15_000) : signal,
+        headers: { Authorization: authorization, Accept: 'application/json', ...(freshRead ? { 'X-HTTP-Method-Override': 'GET', 'Cache-Control': 'no-cache, no-store' } : {}), ...(payload && !(payload instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
+        body: payload instanceof FormData ? payload : payload ? JSON.stringify(payload) : undefined,
       });
       if (!res.ok) {
         await res.body?.cancel().catch(() => {});
@@ -106,6 +113,7 @@ function client(target: Settings) {
     }
   };
 }
+const client = wordpressClient;
 type Request = ReturnType<typeof client>;
 const mediaKey: Record<Push['section'], string> = {
   'components-ics': 'WP_FEATURED_MEDIA_COMPONENTS_CONTROL',
@@ -114,7 +122,7 @@ const mediaKey: Record<Push['section'], string> = {
   industry: 'WP_FEATURED_MEDIA_MARKET_DOOH',
   'consumer-near-eye': 'WP_FEATURED_MEDIA_CONSUMER',
 };
-async function resolvePlacement(request: Request, input: Push) {
+export async function resolveWordPressPlacement(request: Request, input: Pick<Push, 'kind' | 'section'>, useSharedMedia = true) {
   const guide = credential('integrations', 'WP_GUIDE_CATEGORY_SLUG')?.trim();
   const slug = input.kind === 'brief' ? shortCategory : guide;
   if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug === 'company-news' || (input.kind === 'guide' && slug === shortCategory)) {
@@ -127,7 +135,7 @@ async function resolvePlacement(request: Request, input: Push) {
     if (matches.length !== 1 || !matches[0]) invalid(`WordPress 未找到唯一的${name}（${slug}），请让维护人确认。`);
     return matches[0].id;
   }
-  const mediaSetting = credential('integrations', mediaKey[input.section]);
+  const mediaSetting = useSharedMedia ? credential('integrations', mediaKey[input.section]) : undefined;
   const media = mediaSetting ? idSchema.safeParse(Number(mediaSetting)) : null;
   if (media && !media.success) invalid('本分节的 WordPress 特色图编号无效，请让维护人核对媒体库。');
   return {
@@ -136,6 +144,7 @@ async function resolvePlacement(request: Request, input: Push) {
     media: media?.data,
   };
 }
+const resolvePlacement = resolveWordPressPlacement;
 type Placement = Awaited<ReturnType<typeof resolvePlacement>>;
 
 async function readPost(request: Request, postId: number) {

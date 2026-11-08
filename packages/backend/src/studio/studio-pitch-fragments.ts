@@ -1,4 +1,5 @@
 import { load } from 'cheerio';
+import type { AnyNode } from 'domhandler';
 import sanitizeHtml from 'sanitize-html';
 
 export type Paragraph = { id: string; html: string; text: string };
@@ -24,8 +25,20 @@ export type Subquestion = {
   terms: string[];
   calculation?: { fn: CalculationName; inputs: Record<string, number>; basis: string };
 };
-export type EvidenceMaterial = { id: string; body_text?: string | null };
-export type EvidenceSentence = { article_id: string; quote: string; context: { before: string | null; after: string | null }; score: number };
+export type EvidenceMaterial = { id: string; body_text?: string | null; body_html?: string | null };
+type HtmlRange = { start: number; end: number };
+type TableHeader = HtmlRange & { column: number; quote: string };
+type EvidenceLocation = HtmlRange & (
+  | { kind: 'list_item' }
+  | { kind: 'table_row'; headers: TableHeader[] }
+);
+export type EvidenceSentence = {
+  article_id: string;
+  quote: string;
+  context: { before: string | null; after: string | null };
+  score: number;
+  location?: EvidenceLocation;
+};
 export type EditOperation = {
   op: 'keep' | 'revise' | 'insert_after';
   paragraph: string;
@@ -52,10 +65,11 @@ const BLOCKS = 'address,article,aside,blockquote,dd,div,dl,dt,figcaption,figure,
 const blockTags = new Set(BLOCKS.split(','));
 const wrappers = new Set(['article', 'aside', 'div', 'main', 'section']);
 const ordinal = /^(?:#{1,6}[ \t]+)?[ \t]*(?:(?:section|step|chapter|part)\s+\d+\s*[:.、)）-]\s*|第\s*\d+\s*[章节步部分]\s*[:：.、]?\s*|\d+[.)、）][ \t]+|[（(]\d+[)）][ \t]*)/iu;
+const visibleWhitespace = (text: string) => text.replace(/[^\S\r\n]+/gu, ' ').trim();
 
 function visibleText(html: string, ignoreOrdinals = false): string {
   const $ = load(html, {}, false);
-  $('script,style,template').remove();
+  $('script,style,template,[hidden]').remove();
   if (ignoreOrdinals) {
     $('h1,h2,h3,h4,h5,h6,li').each((_, el) => {
       const text = $(el).text();
@@ -65,8 +79,7 @@ function visibleText(html: string, ignoreOrdinals = false): string {
   $('br').replaceWith('\n');
   $(BLOCKS).before('\n').after('\n');
   const text = $.root().text();
-  return (ignoreOrdinals ? text.split(/\r?\n/u).map(line => line.replace(ordinal, '')).join('\n') : text)
-    .replace(/[^\S\r\n]+/gu, ' ').trim();
+  return visibleWhitespace(ignoreOrdinals ? text.split(/\r?\n/u).map(line => line.replace(ordinal, '')).join('\n') : text);
 }
 
 function topNodes(html: string) {
@@ -204,25 +217,143 @@ function termPattern(term: string): RegExp {
   return new RegExp(left + escapeRegex(term) + plural + right, 'gu');
 }
 
-function answerShape(shape: Subquestion['answer_shape'], sentence: string): boolean {
-  const text = sentence.normalize('NFKC');
+type EvidenceUnit = { quote: string } & (
+  | { kind: 'sentence' }
+  | { kind: 'list_item'; range: HtmlRange; checklist: boolean }
+  | { kind: 'table_row'; range: HtmlRange; cells: string[]; headers: TableHeader[] }
+);
+
+const action = /^(?:(?:before|after|when|for)\b[^,]{1,100},\s*)?(?:check|measure|confirm|verify|select|contact|calculate|install|identify|divide|multiply|review|inspect|assess|evaluate|record|document|determine|compare|ensure|collect|test)\b/iu;
+const stepCue = /\b(?:step\s+\d+|then|followed by)\b|\b(?:first|next),|先.{1,80}再|首先|然后|接着|步骤\s*\d+/iu;
+
+function htmlEvidenceUnits(html: string): EvidenceUnit[] {
+  const $ = load(html, { sourceCodeLocationInfo: true }, false);
+  $('script,style,template,[hidden]').remove();
+  $('br').replaceWith('\n');
+  $(BLOCKS).before('\n').after('\n');
+  const units: EvidenceUnit[] = [];
+  const textOf = (node: AnyNode) => visibleWhitespace($(node).text());
+  const rangeOf = (node: AnyNode): HtmlRange | undefined => {
+    const loc = node.sourceCodeLocation;
+    return loc ? { start: loc.startOffset, end: loc.endOffset } : undefined;
+  };
+
+  function tableUnits(table: AnyNode) {
+    const rows = $(table).find('tr').toArray().filter(row => $(row).closest('table').get(0) === table);
+    const cellsOf = (row: AnyNode) => $(row).children('th,td').toArray();
+    const firstCells = rows[0] ? cellsOf(rows[0]) : [];
+    const headRows = rows.filter(row => $(row).parent().is('thead'));
+    // Imported WordPress tables can mark column labels with bold td rather than th.
+    const boldCell = (cell: AnyNode) => {
+      const text = textOf(cell);
+      return !!text && visibleWhitespace($(cell).children('strong,b').text()) === text;
+    };
+    const legacyHead = rows.length > 1 && firstCells.length >= 2 && (
+      firstCells.every(cell => $(cell).is('th'))
+      || firstCells.some(boldCell) && rows.slice(1).every(row => !cellsOf(row).some(boldCell))
+    );
+    const head = headRows.length === 1 ? headRows[0] : !headRows.length && legacyHead ? rows[0] : undefined;
+    const headCells = head ? cellsOf(head) : [];
+    const simpleColumns = !$(table).find('[rowspan],[colspan]').length
+      && headCells.every(cell => !$(cell).attr('scope') || $(cell).attr('scope') === 'col');
+    for (const row of rows) {
+      if (row === head || $(row).parent().is('thead,tfoot') || $(row).find('table').length) continue;
+      const range = rangeOf(row);
+      const rowCells = cellsOf(row);
+      const cells = rowCells.map(textOf);
+      if (!range || cells.filter(Boolean).length < 2 || rowCells.every(cell => $(cell).is('th'))) continue;
+      const headers = simpleColumns && headCells.length === cells.length ? headCells.flatMap((cell, column) => {
+        const headerRange = rangeOf(cell), quote = textOf(cell);
+        const explicit = $(rowCells[column]).attr('headers');
+        return cells[column] && quote && headerRange && (explicit === undefined || explicit === $(cell).attr('id'))
+          ? [{ ...headerRange, column: column + 1, quote }] : [];
+      }) : [];
+      units.push({ kind: 'table_row', quote: textOf(row), range, cells, headers });
+    }
+  }
+
+  let prose = '';
+  function flush() {
+    for (const quote of sentences(visibleWhitespace(prose))) units.push({ kind: 'sentence', quote });
+    prose = '';
+  }
+  function visit(node: AnyNode, includeProse = true) {
+    if (node.type === 'text' && includeProse) prose += node.data;
+    if ('name' in node && node.name === 'table') {
+      flush();
+      tableUnits(node);
+    } else if ('name' in node && node.name === 'li' && 'children' in node) {
+      flush();
+      // Nested lists have their own items; never turn them into terms in the parent item.
+      if ($(node).find('li,table').length) {
+        for (const child of node.children) visit(child, false);
+        return;
+      }
+      const range = rangeOf(node), quote = textOf(node);
+      const lead = $(node).parent('ul,ol').prev().text().trim();
+      const checklist = /[:：]$/u.test(lead)
+        && (action.test(lead) || stepCue.test(lead) || /(?:checklist|检查清单|核对清单)\s*[:：]$/iu.test(lead));
+      if (range && quote) units.push({ kind: 'list_item', quote, range, checklist });
+    } else if ('children' in node) {
+      for (const child of node.children) visit(child, includeProse);
+    }
+  }
+  for (const node of $.root().contents().toArray()) visit(node);
+  flush();
+  return units;
+}
+
+function answerShape(shape: Subquestion['answer_shape'], unit: EvidenceUnit): boolean {
+  const text = unit.quote.normalize('NFKC');
   switch (shape) {
     case 'number':
       return quantities(text).some(q => q.unit && !/^p/iu.test(q.raw) && Number.isFinite(q.value));
     case 'table':
-      return text.split(/\t+|\|/u).filter(cell => cell.trim()).length >= 3;
+      return unit.kind === 'table_row' || unit.kind === 'sentence' && text.split(/\t+|\|/u).filter(cell => cell.trim()).length >= 3;
     case 'definition':
       return /\b(?:means?|refers? to|is defined as)\b|\b(?:is|are) (?:an?|the) (?=[a-z])|是指|指的是|定义为/iu.test(text);
-    case 'steps':
-      return /\b(?:step\s+\d+|then|followed by)\b|\b(?:first|next),|^(?:check|measure|confirm|verify|select|contact|calculate|install|identify|divide|multiply)\b|先.{1,80}再|首先|然后|接着|步骤\s*\d+/iu.test(text);
+    case 'steps': {
+      if (unit.kind === 'table_row') return false;
+      const directive = action.exec(text.replace(ordinal, ''));
+      if (unit.kind === 'list_item') return unit.checklist || !!directive || stepCue.test(text);
+      // A flattened list after an introductory colon does not establish one answer sentence.
+      return stepCue.test(text) || !!directive && !/^\s*[:：]/u.test(directive.input.slice(directive[0].length));
+    }
   }
+}
+
+function evidenceScore(unit: EvidenceUnit, patterns: RegExp[], shape: Subquestion['answer_shape']): number {
+  const body = unit.kind === 'table_row' ? unit.cells : [unit.quote];
+  const parts = (unit.kind === 'table_row' && shape === 'table'
+    ? [...body, ...unit.headers.map(header => header.quote)] : body).map(normalizeTerm);
+  const spans: { part: number; start: number; end: number }[] = [];
+  for (const pattern of patterns) {
+    for (const [part, text] of parts.entries()) {
+      const occurrence = [...text.matchAll(pattern)].find(match =>
+        spans.every(span => span.part !== part || span.end <= match.index || span.start >= match.index + match[0].length));
+      if (!occurrence) continue;
+      spans.push({ part, start: occurrence.index, end: occurrence.index + occurrence[0].length });
+      break;
+    }
+  }
+  // A header describes the row but cannot answer the question without a matching data cell.
+  return spans.some(span => span.part < body.length) ? spans.length : 0;
+}
+
+/** A fact can cite a whole verified unit only. Keep longer units in retrieval, without truncating their answer. */
+export function evidenceFactQuote(hit: Pick<EvidenceSentence, 'quote'>): string | null {
+  return hit.quote.length > 0 && hit.quote.length <= 300 ? hit.quote : null;
 }
 
 export function answerEvidence(subquestions: readonly Subquestion[], materials: readonly EvidenceMaterial[]): {
   by_question: Record<string, EvidenceSentence[]>;
   weak_material_ids: string[];
 } {
-  const docs = materials.map(material => ({ id: material.id, sentences: sentences(material.body_text ?? '') }));
+  const docs = materials.map(material => ({
+    id: material.id,
+    units: material.body_html?.trim() ? htmlEvidenceUnits(material.body_html)
+      : sentences(material.body_text ?? '').map((quote): EvidenceUnit => ({ kind: 'sentence', quote })),
+  }));
   const terms = subquestions.map(question => new Set(question.terms.map(normalizeTerm).filter(Boolean)));
   const owners = new Map<string, number>();
   for (const own of terms) for (const term of own) owners.set(term, (owners.get(term) ?? 0) + 1);
@@ -231,19 +362,15 @@ export function answerEvidence(subquestions: readonly Subquestion[], materials: 
     const patterns = [...terms[qIndex]].filter(term => owners.get(term) === 1).sort((a, b) => b.length - a.length).map(termPattern);
     const hits: EvidenceSentence[] = [];
     if (patterns.length >= 2) for (const doc of docs) {
-      doc.sentences.forEach((sentence, index) => {
-        const normalized = normalizeTerm(sentence);
-        const spans: { start: number; end: number }[] = [];
-        for (const pattern of patterns) {
-          const occurrence = [...normalized.matchAll(pattern)].find(match =>
-            spans.every(span => span.end <= match.index || span.start >= match.index + match[0].length));
-          if (occurrence) spans.push({ start: occurrence.index, end: occurrence.index + occurrence[0].length });
-        }
-        if (spans.length < 2 || !answerShape(question.answer_shape, sentence)) return;
+      doc.units.forEach((unit, index) => {
+        const score = evidenceScore(unit, patterns, question.answer_shape);
+        if (score < 2 || !answerShape(question.answer_shape, unit)) return;
         strong.add(doc.id);
-        hits.push({ article_id: doc.id, quote: sentence, score: spans.length,
-          context: { before: doc.sentences[index - 1] ?? null, after: doc.sentences[index + 1] ?? null },
-        });
+        const hit: EvidenceSentence = { article_id: doc.id, quote: unit.quote, score,
+          context: { before: doc.units[index - 1]?.quote ?? null, after: doc.units[index + 1]?.quote ?? null } };
+        if (unit.kind === 'list_item') hit.location = { kind: unit.kind, ...unit.range };
+        if (unit.kind === 'table_row') hit.location = { kind: unit.kind, ...unit.range, headers: unit.headers };
+        hits.push(hit);
       });
     }
     return [question.id, hits.sort((a, b) => b.score - a.score).slice(0, 2)];

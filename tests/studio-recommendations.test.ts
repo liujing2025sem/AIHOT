@@ -358,7 +358,7 @@ test('10k-material refresh reads only configured LED/referenced sources and oper
 });
 
 import {
-  answerEvidence, assembleFragments, calculateFact, splitPage, validateEditPlan, validateFragment,
+  answerEvidence, assembleFragments, calculateFact, evidenceFactQuote, splitPage, validateEditPlan, validateFragment,
   type EditOperation, type Fact, type Subquestion,
 } from '@aihot/backend/studio/studio-pitch-fragments';
 
@@ -390,6 +390,83 @@ test('pitch fragments: evidence needs two distinct terms and an answer in the sa
   ]);
   assert.equal(result.by_question['q-permits'][0]?.article_id, 'procedure');
   assert.deepEqual(result.weak_material_ids, ['split', 'repeated', 'lookalike', 'shared', 'no-unit']);
+});
+
+const pitchStepsQuestion: Subquestion = {
+  id: 'q-steps', zh: '选址时要检查什么？', en: 'What should a site review cover?',
+  need: 'page', answer_shape: 'steps', terms: ['viewing distance', 'traffic speed'],
+};
+
+test('pitch fragments: evidence binds a table row to its column header and quotes only the row', () => {
+  const question: Subquestion = {
+    id: 'q-table', zh: '箱体尺寸是多少？', en: 'What cabinet sizes are listed?',
+    need: 'page', answer_shape: 'table', terms: ['cabinet size', '300 mm'],
+  };
+  const head = '<thead><tr><th>Cabinet size</th><th>Use case</th></tr></thead>';
+  const body_html = '<p>Background.</p><table>' + head
+    + '<tr><td><b>300</b>&nbsp;mm</td><td>Indoor &amp; outdoor</td></tr></table><p>Next paragraph.</p>';
+  const result = answerEvidence([question], [
+    { id: 'answer', body_html },
+    { id: 'unbound', body_html: '<table>' + head + '<tr><td></td><td>300 mm</td><td>Indoor</td></tr></table>' },
+    { id: 'header-only', body_html: '<table><thead><tr><th>Cabinet size</th><th>300 mm</th></tr></thead>'
+      + '<tr><td>Indoor</td><td>Outdoor</td></tr></table>' },
+    { id: 'split-rows', body_html: '<table><tr><td>Cabinet size</td><td>Indoor</td></tr>'
+      + '<tr><td>300 mm</td><td>Outdoor</td></tr></table>' },
+    { id: 'wrong-shape', body_html: '<p>Cabinet size is 300 mm.</p>' },
+  ]);
+  assert.deepEqual(result.weak_material_ids, ['unbound', 'header-only', 'split-rows', 'wrong-shape']);
+  const [hit] = result.by_question[question.id];
+  assert.equal(result.by_question[question.id].length, 1);
+  assert.equal(hit.article_id, 'answer');
+  assert.equal(hit.score, 2);
+  assert.deepEqual(hit.context, { before: 'Background.', after: 'Next paragraph.' });
+  const location = hit.location;
+  assert.ok(location?.kind === 'table_row');
+  const column = location.headers.find(header => header.column === 1);
+  assert.ok(column);
+  assert.equal(column.quote, 'Cabinet size');
+  assert.equal(body_html.slice(column.start, column.end), '<th>Cabinet size</th>');
+  const row = body_html.slice(location.start, location.end);
+  assert.equal(hit.quote, '300 mm\n\nIndoor & outdoor');
+  assert.equal(evidenceFactQuote(hit), splitPage('<table>' + row + '</table>')[0].text);
+});
+
+test('pitch fragments: evidence requires distinct visible terms within one checklist item', () => {
+  const body_html = '<p>Before installation, review:</p><ul><li>Viewing distance &amp; traffic speed</li>'
+    + '<li>Other constraints</li></ul>';
+  const weak = [
+    { id: 'split', body_html: '<p>Review:</p><ul><li>Viewing distance</li><li>Traffic speed</li></ul>',
+      body_text: 'Review viewing distance and traffic speed.' },
+    { id: 'nested', body_html: '<p>Review:</p><ul><li>Viewing distance<ul><li>Traffic speed</li></ul></li></ul>' },
+    { id: 'script', body_html: '<ul><li>Review viewing distance <script>traffic speed</script>.</li></ul>' },
+    { id: 'hidden', body_html: '<ul><li>Review viewing distance <span hidden>traffic speed</span>.</li></ul>' },
+    { id: 'passive', body_html: '<ul><li>Viewing distance and traffic speed received mentions.</li></ul>' },
+    { id: 'lead-only', body_html: '<p>Review viewing distance:</p><ul><li>Traffic speed</li></ul>' },
+  ];
+  const material = { id: 'answer', body_html };
+  const result = answerEvidence([pitchStepsQuestion], [material, ...weak]);
+  assert.deepEqual(result.weak_material_ids, weak.map(item => item.id));
+  assert.equal(result.by_question[pitchStepsQuestion.id].length, 1);
+  const [hit] = result.by_question[pitchStepsQuestion.id];
+  const location = hit.location;
+  assert.ok(location?.kind === 'list_item');
+  assert.equal(hit.quote, 'Viewing distance & traffic speed');
+  assert.equal(splitPage(body_html.slice(location.start, location.end))[0].text, hit.quote);
+
+  const overlap = { ...pitchStepsQuestion, terms: ['traffic speed', 'speed'] };
+  assert.deepEqual(answerEvidence([overlap], [material]).by_question[overlap.id], []);
+  const shared = { ...pitchStepsQuestion, id: 'shared', terms: ['traffic speed', 'road width'] };
+  assert.deepEqual(answerEvidence([pitchStepsQuestion, shared], [material]).by_question[pitchStepsQuestion.id], []);
+});
+
+test('pitch fragments: evidence keeps the complete answer when a fact quote would exceed 300 characters', () => {
+  const sentence = 'Review ' + 'supporting constraints '.repeat(16)
+    + 'and record viewing distance and traffic speed at 300.25 km/h.';
+  const result = answerEvidence([pitchStepsQuestion], [{ id: 'long', body_html: '<p>' + sentence + '</p>' }]);
+  const [hit] = result.by_question[pitchStepsQuestion.id];
+  assert.ok(sentence.length > 300 && sentence.indexOf('300.25 km/h') > 300);
+  assert.equal(hit.quote, sentence);
+  assert.equal(evidenceFactQuote(hit), null);
 });
 
 test('pitch fragments: splitting and assembly preserve kept HTML bytes, tables and nested containers', () => {
