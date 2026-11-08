@@ -79,7 +79,7 @@ export const SITE = {
     founder: null as Founder | null,
   },
   /** 抓取信源时报上的名字和版本（User-Agent 里用），不要冒用别的站。 */
-  crawlerName: "MyHOTBot/1.0",
+  crawlerName: "ChipshowStudioBot/1.0 (+https://www.chipshow.com/contact/)",
 } as const;
 
 /** 使用规则和隐私说明两页（正文在 pages/ 里）。 */
