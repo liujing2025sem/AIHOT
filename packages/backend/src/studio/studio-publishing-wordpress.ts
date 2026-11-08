@@ -4,7 +4,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { z } from 'zod';
 import type { Packet } from '../../../../scripts/editorial-pilot-lib.ts';
-import { WordPressError, wordpressClient } from '../admin/studio-wordpress.ts';
+import { WordPressError, wordpressClient } from './studio-wordpress.ts';
 import { config } from '../config.ts';
 import { buildFigure, type FigureSpec } from './studio-figures.ts';
 import { sameWordPressHtml, type EditorialDraft, type PublicationIssue } from './studio-publishing-content.ts';

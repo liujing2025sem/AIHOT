@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { packetSchema, responseSchema, safeId, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
-import { resolveWordPressPlacement, studioWordPressReceipt, studioWordPressSlug, wordpressClient, wordpressSettings, WordPressError } from '../admin/studio-wordpress.ts';
+import { resolveWordPressPlacement, studioWordPressReceipt, studioWordPressSlug, wordpressClient, wordpressSettings, WordPressError } from './studio-wordpress.ts';
 import { audit, Conflict } from '../audit.ts';
 import { sql, type Db, type Tx } from '../db.ts';
 import { enqueue, QUEUES, type JobData } from '../jobs/queue.ts';

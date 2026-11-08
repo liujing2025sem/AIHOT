@@ -4,7 +4,7 @@ import { adminHandler } from './admin-auth.ts';
 import { param, body, q, orNotFound } from './admin.ts';
 import { studioOverview, studioMaterial, createStudioTask, bindStudioTaskMaterials, exportStudioTask, receiveStudioTask, generateStudioTask, studioDraft, saveStudioDraft, reviewStudioDraft, exportStudioDraft, collectStudioSource, extractStudioMaterial } from '@aihot/backend/studio/studio';
 import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/studio/studio-review';
-import { pushStudioWordPressDraft, studioWordPressDetail } from '@aihot/backend/admin/studio-wordpress';
+import { pushStudioWordPressDraft, studioWordPressDetail } from '@aihot/backend/studio/studio-wordpress';
 import { registerAdminStudioPlanning } from './admin-studio-planning.ts';
 import { registerAdminStudioPublishing } from './admin-studio-publishing.ts';
 export function registerAdminStudio(app: FastifyInstance) {
