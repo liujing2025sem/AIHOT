@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Packet, Response } from '../scripts/editorial-pilot-lib.ts';
 import { editorialGate, evaluateDraft, type GateContext, type GateReport } from '../packages/backend/src/admin/editorial-gate.ts';
+import { IDENTITY_LEXICON } from '@aihot/industry/taxonomy';
+import { publicDraft } from '../packages/backend/src/admin/studio-publication.ts';
 
 const binding = { article_id: 'source-1', revision: 1, content_sha256: 'a'.repeat(64), url: 'https://maker.example/news', published_at: '2026-10-31T00:00:00Z' };
 const packet: Packet = {
@@ -24,6 +26,74 @@ const old = (days: number) => {
 };
 const trusted = (kind: 'customer' | 'image' | 'certification' | 'commercial', value: string, status: 'verified' | 'denied' = 'verified'): GateContext => ({
   verifiedEvidence: [{ articleId: 'source-1', kind, value, status, reference: 'operator-record:42' }],
+});
+
+test('public exports keep the source calendar day and date-only precision without mutating the binding', () => {
+  const d = { ...structuredClone(draft), source: { ...binding, published_at: '2026-10-22T16:00:00.000Z' } };
+  const published = publicDraft(d, undefined, { publicationTime: '2026-10-23', utcOffset: '+08:00' });
+  assert.match(published.body, /October 23, 2026 \(date only; time not provided\)/);
+  assert.equal(published.source.published_at, d.source.published_at);
+  assert.equal(published.source.publication_date, '2026-10-23');
+  assert.equal(published.source.publication_precision, 'day');
+  assert.equal(published.source.publication_time, null);
+  assert.doesNotMatch(published.body, /2026-10-22T16:00/);
+  assert.equal(d.source.published_at, '2026-10-22T16:00:00.000Z');
+});
+
+test('public exports use the source offset for timed dates and do not invent precision for legacy dates', () => {
+  const d = { ...structuredClone(draft), source: { ...binding, published_at: '2026-10-23T02:30:00.000Z' } };
+  const timed = publicDraft(d, undefined, { publicationTime: d.source.published_at, utcOffset: '-04:00' });
+  assert.match(timed.body, /October 22, 2026 \(22:30:00 UTC-04:00\)/);
+  assert.equal(timed.source.publication_precision, 'time');
+  const legacy = publicDraft(d, undefined, { publicationTime: null, utcOffset: '-04:00' });
+  assert.match(legacy.body, /original precision unknown/);
+  assert.equal(legacy.source.publication_time, null);
+  assert.equal(publicDraft(d).source.published_at, d.source.published_at);
+  assert.equal(publicDraft(d).source.publication_date, null);
+  assert.match(publicDraft({ ...d, source: { ...d.source, published_at: null } }).body, /date: not provided/);
+});
+
+test('public exports reject stale or invalid source date metadata', () => {
+  const d = { ...structuredClone(draft), source: { ...binding, published_at: '2026-10-22T16:00:00.000Z' } };
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: '2026-10-24', utcOffset: '+08:00' }), /changed/);
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: '2026-10-22T17:00:00Z', utcOffset: '+08:00' }), /changed/);
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: '2026-02-30', utcOffset: '+08:00' }), /Invalid/);
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: null, utcOffset: 'CST' }), /Invalid/);
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: null, utcOffset: '+14:30' }), /Invalid/);
+  assert.throws(() => publicDraft({ ...d, source: { ...d.source, published_at: '2026-10-23 00:00' } }, undefined, { publicationTime: null, utcOffset: '+08:00' }), /Invalid/);
+});
+
+test('public date formatting preserves uncertainty labels and public English checks', () => {
+  const d = { ...structuredClone(draft), news_status: 'unconfirmed' as const };
+  const published = publicDraft(d, undefined, { publicationTime: null, utcOffset: '+08:00' });
+  assert.match(published.title, /^Unconfirmed report:/);
+  assert.match(published.body, /Unconfirmed report/);
+  assert.throws(() => publicDraft({ ...d, body_en: '内部中文。' }), /公开英文稿/);
+});
+
+test('public exports reject impossible dates and timezone-free metadata before Date.parse can normalize them', () => {
+  const exportDate = (at: string, publicationTime: string | null) => publicDraft(
+    { ...structuredClone(draft), source: { ...binding, published_at: at } }, undefined,
+    { publicationTime, utcOffset: '+00:00' },
+  );
+  for (const value of ['2026-02-30T12:00:00Z', '2026-04-31T12:00:00Z', '2026-10-23T24:00:00Z', '2026-10-23T12:00:00+14:30']) {
+    assert.throws(() => exportDate(value, null), /Invalid/, value);
+  }
+  for (const value of ['2026-02-30T12:00:00Z', '2026-03-02 12:00', '2026-03-02T12:00:00']) {
+    assert.throws(() => exportDate('2026-03-02T12:00:00Z', value), /Invalid/, value);
+  }
+  const valid = exportDate('2024-02-29T23:30:00Z', '2024-03-01T01:30:00+02:00');
+  assert.equal(valid.source.publication_date, '2024-02-29');
+  assert.equal(valid.source.publication_precision, 'time');
+});
+
+test('public exports reject conflicting calendar metadata even when the binding contains only a day', () => {
+  const d = { ...structuredClone(draft), source: { ...binding, published_at: '2026-10-23' } };
+  assert.throws(() => publicDraft(d, undefined, { publicationTime: '2026-10-24', utcOffset: '+08:00' }), /changed/);
+  const valid = publicDraft(d, undefined, { publicationTime: '2026-10-23', utcOffset: '-04:00' });
+  assert.equal(valid.source.publication_date, '2026-10-23');
+  assert.equal(valid.source.published_at, '2026-10-23');
+  assert.equal(valid.source.publication_precision, 'day');
 });
 
 test('clean manufacturer draft has no automatic block; context is optional', () => {
@@ -54,6 +124,103 @@ test('D1 does not treat years or heading/list ordinals as technical numbers', ()
   assert.ok(has(check(withBody('亮度为5000 nits。')), 'D1', 'BLOCK'));
   assert.equal(has(check(withBody('Global market share reached 30% in 2025.')), 'D1'), false);
   assert.ok(has(check(withBody('An unidentified proportion is 30%.')), 'D1', 'WARN'));
+});
+
+test('D1 recognizes approved Chinese aliases through the configured source owner', () => {
+  for (const [sourceId, brands] of [
+    ['web-kinglight-news', ['晶台', '晶台光电', 'Kinglight']],
+    ['web-nationstar-product-news', ['国星', '国星光电', 'Nationstar']],
+    ['web-macroblock-news', ['聚积科技', '聚積科技', 'Macroblock']],
+    ['web-novastar-news', ['诺瓦', '诺瓦星云', 'NovaStar']],
+    ['web-meanwell-new-products', ['明纬', '明緯', 'MEAN WELL', 'MEANWELL']],
+  ] as const) {
+    const p = structuredClone(packet);
+    p.articles[0].source_id = sourceId; p.articles[0].source_name = '资料来源';
+    for (const brand of brands) {
+      const d = { ...structuredClone(draft), review_zh: `${brand}称其 MiP 封装尺寸为 0.65 mm。` };
+      assert.equal(has(check(d, p), 'D1', 'BLOCK'), false, `${sourceId}: ${brand}`);
+    }
+    assert.ok(has(check({ ...draft, review_zh: '其 MiP 封装尺寸为 0.65 mm。' }, p), 'D1', 'BLOCK'), sourceId);
+  }
+});
+
+test('D1 attributes previously ownerless LED sources without relying on their display names', () => {
+  for (const [sourceId, brand] of [
+    ['web-colorlight-news', '卡莱特'],
+    ['web-colorlight-software', '卡莱特'],
+    ['web-colorlight-ledvision', '卡莱特'],
+    ['web-colorlight-firmware', '卡莱特'],
+    ['web-chipone-news', '集创北方'],
+    ['web-czcl-news', '创联'],
+    ['web-g-energy-news', '巨能伟业'],
+    ['web-huidu-news', '灰度科技'],
+    ['web-huidu-hdplayer', '灰度科技'],
+    ['web-oaaa-news', 'OAAA'],
+    ['rss-ledinside-news', 'LEDinside'],
+  ]) {
+    const p = structuredClone(packet);
+    p.articles[0].source_id = sourceId; p.articles[0].source_name = '资料来源';
+    const d = { ...structuredClone(draft), review_zh: `${brand}称该显示屏在测试条件下刷新率为 3840Hz。` };
+    assert.equal(has(check(d, p), 'D1', 'BLOCK'), false, sourceId);
+    assert.ok(has(check({ ...d, review_zh: '该显示屏刷新率为 3840Hz。' }, p), 'D1', 'BLOCK'), sourceId);
+    assert.ok(has(check({ ...d, review_zh: '晶台称该显示屏刷新率为 3840Hz。' }, p), 'D1', 'BLOCK'), sourceId);
+  }
+  const p = structuredClone(packet);
+  p.articles[0].source_id = 'web-colorlight-news'; p.articles[0].source_name = '资料来源';
+  for (const text of ['Colorlight says the refresh rate is 3840Hz.', 'According to Colorlight, the refresh rate is 3840Hz.']) {
+    assert.equal(has(check(withBody(text), p), 'D1', 'BLOCK'), false, text);
+  }
+});
+
+test('D1 keeps unknown sources, ambiguous short names and bare technical values reviewable', () => {
+  for (const [sourceId, text] of [
+    ['unknown-source', '卡莱特称刷新率为 3840Hz。'],
+    ['web-macroblock-news', '聚积称刷新率为 3840Hz。'],
+    ['web-nationstar-product-news', '中国星网称刷新率为 3840Hz。'],
+    ['web-novastar-news', '诺瓦克称刷新率为 3840Hz。'],
+    ['web-czcl-news', '科创联合中心称刷新率为 3840Hz。'],
+    ['web-chipone-news', '集创称刷新率为 3840Hz。'],
+    ['web-g-energy-news', '巨能称输出功率为 300 W。'],
+    ['web-huidu-news', '灰度称刷新率为 3840Hz。'],
+    ['web-huidu-hdplayer', '灰度等级为 16 bit，刷新率为 3840Hz。'],
+    ['rss-ledinside-news', 'TrendForce称刷新率为 3840Hz。'],
+    ['rss-ledinside-news', '集邦称刷新率为 3840Hz。'],
+  ]) {
+    const p = structuredClone(packet);
+    p.articles[0].source_id = sourceId; p.articles[0].source_name = '资料来源';
+    assert.ok(has(check({ ...draft, review_zh: text }, p), 'D1', 'BLOCK'), `${sourceId}: ${text}`);
+  }
+  const p = structuredClone(packet);
+  p.articles[0].source_id = 'web-huidu-news'; p.articles[0].source_name = '资料来源';
+  assert.equal(has(check({ ...draft, review_zh: '据灰度称，刷新率为 3840Hz。' }, p), 'D1', 'BLOCK'), false);
+});
+
+test('identity recognition distinguishes LED brands from technical terms and unapproved names', () => {
+  const recognizes = (id: string, text: string) => IDENTITY_LEXICON.some(e => e.id === id && e.patterns.some(pattern => pattern.test(text)));
+  for (const [id, names] of [
+    ['kinglight', ['晶台', '晶台光电', 'Kinglight']],
+    ['nationstar', ['国星', '国星光电', 'Nationstar']],
+    ['macroblock', ['聚积科技', '聚積科技', 'Macroblock']],
+    ['novastar', ['诺瓦', '诺瓦星云', 'NovaStar']],
+    ['colorlight', ['卡莱特', 'Colorlight']],
+    ['chipone', ['集创北方', 'Chipone']],
+    ['czcl', ['创联', 'CZCL']],
+    ['g-energy', ['巨能伟业', 'G-energy']],
+    ['huidu', ['灰度科技', 'Huidu']],
+    ['oaaa', ['OAAA']],
+    ['ledinside', ['LEDinside']],
+  ] as const) for (const name of names) assert.ok(recognizes(id, `${name}发布资料`), `${id}: ${name}`);
+  for (const [id, text] of [
+    ['chipone', '集创称刷新率为 3840Hz'],
+    ['g-energy', '巨能称输出功率为 300 W'],
+    ['huidu', '灰度等级为 16 bit，低灰度显示效果需实测'],
+    ['ledinside', 'TrendForce 与集邦发布报告'],
+    ['colorlight', 'Colorlightness'],
+    ['macroblock', '资料的聚积以及資料的聚積'],
+    ['nationstar', '中国星网发布卫星资料'],
+    ['novastar', '诺瓦克与卡萨诺瓦'],
+    ['czcl', '科创联合中心、文创联名产品和双创联盟'],
+  ]) assert.equal(recognizes(id, text), false, text);
 });
 
 test('D1 resolves controlled manufacturer aliases despite source display suffixes and announcement tense', () => {
@@ -337,3 +504,4 @@ test('historical editorial reminders and manufacturer tables do not become autom
  // A missing local attribution with clear attribution elsewhere is reviewed, not falsely denied.
  assert.equal(evaluateDraft(packet,ambiguous).findings.some(f=>f.ruleId==='D1'&&f.severity==='BLOCK'),false);
 });
+

@@ -501,6 +501,7 @@
     },
     {
       "id": "web-colorlight-news",
+      "owner_entity_id": "colorlight",
       "name": "Colorlight / 卡莱特新闻",
       "kind": "web_list",
       "tier": "T1",
@@ -532,6 +533,7 @@
     },
     {
       "id": "web-oaaa-news",
+      "owner_entity_id": "oaaa",
       "name": "OAAA / 户外广告协会新闻",
       "kind": "web_list",
       "tier": "T1",
@@ -559,6 +561,7 @@
     },
     {
       "id": "web-chipone-news",
+      "owner_entity_id": "chipone",
       "name": "Chipone / 集创北方新闻",
       "kind": "web_list",
       "tier": "T1",
@@ -586,6 +589,7 @@
     },
     {
       "id": "web-czcl-news",
+      "owner_entity_id": "czcl",
       "name": "CZCL / 创联公司新闻",
       "kind": "web_list",
       "tier": "T1",
@@ -615,6 +619,7 @@
     },
     {
       "id": "web-g-energy-news",
+      "owner_entity_id": "g-energy",
       "name": "G-energy / 巨能伟业资讯",
       "kind": "web_list",
       "tier": "T1",
@@ -649,6 +654,7 @@
     },
     {
       "id": "web-huidu-news",
+      "owner_entity_id": "huidu",
       "name": "Huidu / 灰度新闻",
       "kind": "web_list",
       "tier": "T1",
@@ -674,6 +680,7 @@
     },
     {
       "id": "web-huidu-hdplayer",
+      "owner_entity_id": "huidu",
       "name": "Huidu / HDPlayer软件版本",
       "kind": "web_list",
       "tier": "T1",
@@ -698,6 +705,7 @@
     },
     {
       "id": "web-colorlight-software",
+      "owner_entity_id": "colorlight",
       "name": "Colorlight / 控制软件版本",
       "kind": "web_list",
       "tier": "T1",
@@ -746,6 +754,7 @@
     },
     {
       "id": "rss-ledinside-news",
+      "owner_entity_id": "ledinside",
       "name": "LEDinside / TrendForce新闻",
       "kind": "rss",
       "tier": "T2",
@@ -762,6 +771,7 @@
     },
     {
       "id": "web-colorlight-ledvision",
+      "owner_entity_id": "colorlight",
       "name": "Colorlight / LEDVISION版本（停产软件）",
       "kind": "web_list",
       "tier": "T1",
@@ -786,6 +796,7 @@
     },
     {
       "id": "web-colorlight-firmware",
+      "owner_entity_id": "colorlight",
       "name": "Colorlight / 控制器固件",
       "kind": "web_list",
       "tier": "T1",
@@ -810,3 +821,4 @@
     }
   ]
 }
+

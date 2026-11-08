@@ -1,0 +1,1707 @@
+{
+  "schema": "chipshow-crawl-quality-preflight/1",
+  "report_date": "2026-11-06",
+  "snapshot_at": "2026-11-03T05:37:12.901Z",
+  "reference_commit": "d0488ee8e59033d0440b061dac268984e02ae40d",
+  "status": "PREFLIGHT_ONLY_L0_NOT_COMPLETE",
+  "collection_runs": 0,
+  "model_calls": 0,
+  "source_config_changes": 0,
+  "scope": {
+    "all_configured": 34,
+    "led_runtime_ids": [
+      "web-macroblock-news",
+      "web-kinglight-news",
+      "web-nationstar-product-news",
+      "web-meanwell-new-products",
+      "web-novastar-news",
+      "web-colorlight-news",
+      "web-chipone-news",
+      "web-oaaa-news",
+      "web-czcl-news",
+      "web-g-energy-news",
+      "web-huidu-news",
+      "web-huidu-hdplayer",
+      "web-colorlight-software",
+      "rss-ledinside-news",
+      "web-colorlight-ledvision",
+      "web-colorlight-firmware"
+    ],
+    "mapped_candidate_count": 13,
+    "candidate_count": 31,
+    "unmapped_candidates": [
+      "led-isa-news",
+      "led-signs-of-the-times",
+      "led-energy-star-displays",
+      "led-eu-display-ecodesign",
+      "led-macroblock-monthly-revenue",
+      "led-cninfo-investor-records",
+      "led-daktronics-investor-news",
+      "led-eia-electricity",
+      "led-roe-carbon-markii",
+      "led-absen-kv3-manual",
+      "led-huidu-firmware",
+      "led-linsn-news",
+      "led-linsn-software",
+      "led-novastar-software",
+      "led-sixteen-nine-news",
+      "led-eurostat-nrg-pc-205",
+      "led-linsn-firmware",
+      "led-rave-news"
+    ],
+    "distinct_led_entries": 34,
+    "excluded_ai_example_ids": [
+      "rss-openai-news",
+      "rss-google-deepmind",
+      "rss-google-research",
+      "rss-hugging-face",
+      "rss-microsoft-research",
+      "rss-nvidia-blog",
+      "rss-aws-ml",
+      "rss-github-ai",
+      "rss-mistral",
+      "rss-bair",
+      "rss-the-verge-ai",
+      "rss-techcrunch-ai",
+      "rss-ars-technica-ai",
+      "rss-mit-tech-review-ai",
+      "rss-the-decoder",
+      "rss-simon-willison",
+      "rss-import-ai",
+      "rss-latent-space"
+    ],
+    "runtime_state": "UNKNOWN_REQUIRES_TARGET_RECEIPT",
+    "keyword_rss": "No configured LED keyword aggregator feed found; LEDinside RSS is included"
+  },
+  "metrics": {
+    "historical_preview_total": 283,
+    "mixed": {
+      "items": 133,
+      "dated": 71,
+      "undated": 62,
+      "date_field_nonempty_pct": 53.38,
+      "duplicate_exact_urls": 0
+    },
+    "news": {
+      "items": 111,
+      "dated": 71,
+      "undated": 40,
+      "date_field_nonempty_pct": 63.96,
+      "duplicate_exact_urls": 0
+    },
+    "version_baselines": {
+      "items": 22,
+      "dated": 0,
+      "undated": 22,
+      "date_field_nonempty_pct": 0,
+      "duplicate_exact_urls": 0
+    },
+    "post_detail_fixed_sample": null,
+    "new_30_day_batch": null
+  },
+  "rows": [
+    {
+      "id": "web-macroblock-news",
+      "source_id": "web-macroblock-news",
+      "candidate_id": null,
+      "name": "Macroblock News",
+      "entry_url": "https://www.mblock.com.tw/en/news",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_SUCCESS",
+      "historical_preview_total": 170,
+      "historical_sample": {
+        "items": 20,
+        "dated": 8,
+        "undated": 12,
+        "date_field_nonempty_pct": 40,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-09-20T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "Experience Intelligent Driving with Macroblock at ALE 2024",
+          "url": "https://www.mblock.com.tw/en/news/detail/ST95KGCK3B",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "Macroblock Ranked Among Taiwan’s Large Enterprises Top5000",
+          "url": "https://www.mblock.com.tw/en/news/detail/PEXXY58LV9",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "ISE 2024 │ Macroblock’s Driver ICs Take LED Displays to New Heights",
+          "url": "https://www.mblock.com.tw/en/news/detail/CKHRLFHBVG",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "web-kinglight-news",
+      "source_id": "web-kinglight-news",
+      "candidate_id": null,
+      "name": "Kinglight News",
+      "entry_url": "https://en.kinglight.com/category/blog/news",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_SUCCESS",
+      "historical_preview_total": 10,
+      "historical_sample": {
+        "items": 10,
+        "dated": 8,
+        "undated": 2,
+        "date_field_nonempty_pct": 80,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-10-22T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "Congratulations! Suzhou Kinglight Honored as A National Green Factory",
+          "url": "https://en.kinglight.com/blog/suzhou-kinglight-national-green-factory.html",
+          "original_timestamp": "2026-03-24T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "Congratulations! Kinglight Won 4 Influential Awards at ISLE 2026",
+          "url": "https://en.kinglight.com/blog/kinglight-won-isle-2026-awards.html",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "Kinglight Showcases Innovative LED Packaging Solutions at ISLE 2026",
+          "url": "https://en.kinglight.com/blog/kinglight-at-isle-2026.html",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "web-nationstar-product-news",
+      "source_id": "web-nationstar-product-news",
+      "candidate_id": null,
+      "name": "Nationstar Product News",
+      "entry_url": "https://www.nationstar.com/nationstar/channel/product_news",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_SUCCESS",
+      "historical_preview_total": 20,
+      "historical_sample": {
+        "items": 20,
+        "dated": 20,
+        "undated": 0,
+        "date_field_nonempty_pct": 100,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-06-23T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "Innovation Breakthrough | Fenghua Semiconductor, a Subsidiary of NATIONSTAR, Successfully Develops Fan-out D-mode GaN Half-bridge Modules",
+          "url": "https://www.nationstar.com/nationstar/content/2041344942321745921",
+          "original_timestamp": "2024-11-07T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "Intelligent Future | AI Empowers Scenario Applications, Ushering in a New Era of Digital Transformation for NATIONS",
+          "url": "https://www.nationstar.com/nationstar/content/2041345032553807874",
+          "original_timestamp": "2025-03-05T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "NATIONSTAR Launches 4th-Generation Intelligent Health Sensing Solution",
+          "url": "https://www.nationstar.com/nationstar/content/2041344909178355713",
+          "original_timestamp": "2024-10-09T16:00:00.000Z",
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "保留已核列表入口，等待正文与30天范围验证"
+    },
+    {
+      "id": "web-meanwell-new-products",
+      "source_id": "web-meanwell-new-products",
+      "candidate_id": "led-meanwell-new-products",
+      "name": "MEAN WELL / 明纬新品",
+      "entry_url": "https://www.meanwell.com/news.aspx?c=1",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 1,
+      "historical_sample": {
+        "items": 1,
+        "dated": 1,
+        "undated": 0,
+        "date_field_nonempty_pct": 100,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-09-28T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "UDP-200/300/400 Series: 200W~400W Next-Generation Compact Power Supplies for LED Displays",
+          "url": "https://www.meanwell.com/newsInfo.aspx?c=1&i=1554",
+          "original_timestamp": "2026-09-28T16:00:00.000Z",
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.meanwell.com/news.aspx?c=1",
+          "observation": "日期、标题、分页的新品列表；普通HTTP读到82410字符"
+        },
+        {
+          "url": "https://www.meanwell.com/newsInfo.aspx?c=1&i=1554",
+          "observation": "UDP显示电源详情Date为2026/09/29"
+        },
+        {
+          "url": "https://www.meanwell.com/news.aspx?c=1",
+          "observation": "2026-11-03T04:41:17.105Z G1: preview 1条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "保留已核列表入口，等待正文与30天范围验证"
+    },
+    {
+      "id": "web-colorlight-news",
+      "source_id": "web-colorlight-news",
+      "candidate_id": "led-colorlight-news",
+      "name": "Colorlight / 卡莱特新闻",
+      "entry_url": "https://en.colorlightinside.com/news/all/",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 12,
+      "historical_sample": {
+        "items": 12,
+        "dated": 12,
+        "undated": 0,
+        "date_field_nonempty_pct": 100,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-10-20T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "Google GMS EDLA Certification and Android 16 Power Colorlight's Smart Meeting Solutions",
+          "url": "https://en.colorlightinside.com/news/Exhibition/15253.html",
+          "original_timestamp": "2026-07-27T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "We just trained 300+ engineers in Surabaya. Will you be at our next stop?",
+          "url": "https://en.colorlightinside.com/news/Exhibition/14854.html",
+          "original_timestamp": "2026-07-07T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "InfoComm Asia 2026 | Colorlight Showcases Full-Stack AI Display Solutions for APAC",
+          "url": "https://en.colorlightinside.com/news/Exhibition/15250.html",
+          "original_timestamp": "2026-07-19T16:00:00.000Z",
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://en.colorlightinside.com/news/all/",
+          "observation": "日期与新闻链接可读；普通HTTP读到57720字符；轮播.News_swiper .swiper-slide下有a、h5、.data"
+        },
+        {
+          "url": "https://en.colorlightinside.com/news/Exhibition/15564.html",
+          "observation": "正文日期2026.10.21"
+        },
+        {
+          "url": "https://en.colorlightinside.com/news/all/",
+          "observation": "2026-11-03T04:31:13.709Z G1: preview 12条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "保留已核列表入口，等待正文与30天范围验证"
+    },
+    {
+      "id": "web-oaaa-news",
+      "source_id": "web-oaaa-news",
+      "candidate_id": "led-oaaa-news",
+      "name": "OAAA / 户外广告协会新闻",
+      "entry_url": "https://oaaa.org/news-and-events/",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 14,
+      "historical_sample": {
+        "items": 14,
+        "dated": 2,
+        "undated": 12,
+        "date_field_nonempty_pct": 14.29,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-10-16T12:35:46.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "OAAA Announces Winners of the 84th Annual OBIE Awards",
+          "url": "https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/",
+          "original_timestamp": "2026-10-16T12:35:46.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "OAAA Announces 2025 Local Case Study Award Winners, Celebrating Innovative Campaigns in OOH Advertising",
+          "url": "https://oaaa.org/news/oaaa-announces-2025-local-case-study-award-winners-celebrating-innovative-campaigns-in-ooh-advertising/",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "OUTFRONT CEO Nick Brien Named Chairman of OAAA Board of Directors",
+          "url": "https://oaaa.org/news/outfront-ceo-nick-brien-named-chairman-of-oaaa-board-of-directors/",
+          "original_timestamp": "2026-10-15T13:32:21.000Z",
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://oaaa.org/news-and-events/",
+          "observation": "news/重定向此处；日期、新闻分类与详情链接可见"
+        },
+        {
+          "url": "https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/",
+          "observation": "详情Published: October 16, 2026"
+        },
+        {
+          "url": "https://oaaa.org/news-and-events/",
+          "observation": "2026-11-03T04:34:51.740Z G1: preview 14条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "web-chipone-news",
+      "source_id": "web-chipone-news",
+      "candidate_id": "led-chipone-official",
+      "name": "Chipone / 集创北方新闻",
+      "entry_url": "https://www.chiponeic.com/",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 3,
+      "historical_sample": {
+        "items": 3,
+        "dated": 0,
+        "undated": 3,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "zh-CN",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "集创北方亮相DIC FORUM 2026 ，解读车规级显示芯片架构发展趋势",
+          "url": "https://www.chiponeic.com/qydt/728",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "IC WORLD 2026丨集创北方携全系显示解决方案参展",
+          "url": "https://www.chiponeic.com/qydt/730",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "集创北方亮相2026行家说峰会，全方位解码车载MLED系统化解决方案",
+          "url": "https://www.chiponeic.com/qydt/729",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.chiponeic.com/",
+          "observation": "官方搜索索引有27/08/2026新闻；直接打开超时；不能把索引当当前HTML可采集证据"
+        },
+        {
+          "url": "https://www.chiponeic.com/",
+          "observation": "2026-11-03T04:41:16.671Z G1: preview 3条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "web-czcl-news",
+      "source_id": "web-czcl-news",
+      "candidate_id": "led-czcl-news",
+      "name": "CZCL / 创联公司新闻",
+      "entry_url": "https://www.cl-power.com/newslist/11.html",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 8,
+      "historical_sample": {
+        "items": 8,
+        "dated": 2,
+        "undated": 6,
+        "date_field_nonempty_pct": 25,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-07-31T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "zh-CN",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "创联电源正式加入中国充电联盟开放服务平台 共筑充电生态新未来",
+          "url": "https://www.cl-power.com/newsdetail/55.html",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "深耕实业铸匠心 智改数转启新程 | 创联电源迎来复旦EMBA学子参访交流",
+          "url": "https://www.cl-power.com/newsdetail/57.html",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "全心全力·增量共赢 | 创联电源2026年工控亮化经销商峰会圆满成功",
+          "url": "https://www.cl-power.com/newsdetail/56.html",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.cl-power.com/newslist/11.html",
+          "observation": "2026-11-03T04:42:27.389Z G1: preview 8条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "web-g-energy-news",
+      "source_id": "web-g-energy-news",
+      "candidate_id": "led-g-energy-news",
+      "name": "G-energy / 巨能伟业资讯",
+      "entry_url": "https://www.g-energy.cn/article/new.html",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 2,
+      "historical_sample": {
+        "items": 2,
+        "dated": 0,
+        "undated": 2,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "zh-CN",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "巨能伟业高端LED显示屏电源助力世园会开幕式圆满成功",
+          "url": "https://www.g-energy.cn/article/detail/256.html",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "巨能伟业强势助力亚洲文化嘉年华完美呈现",
+          "url": "https://www.g-energy.cn/article/detail/257.html",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.g-energy.cn/article/new.html",
+          "observation": "2026-11-03T04:37:34.306Z G1: preview 2条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "web-huidu-news",
+      "source_id": "web-huidu-news",
+      "candidate_id": "led-huidu-news",
+      "name": "Huidu / 灰度新闻",
+      "entry_url": "https://www.huidu.cn/CnNews/",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 8,
+      "historical_sample": {
+        "items": 8,
+        "dated": 8,
+        "undated": 0,
+        "date_field_nonempty_pct": 100,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-10-20T16:00:00.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "zh-CN",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "展讯 | 灰度科技闪耀ISLE 2026，彰显前沿创新实力",
+          "url": "https://www.huidu.cn/CnNews/59.html",
+          "original_timestamp": "2026-03-10T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "智控芯生 视界共启 | 灰度科技×安路科技共筑LED显控新生态",
+          "url": "https://www.huidu.cn/CnNews/60.html",
+          "original_timestamp": "2026-03-30T16:00:00.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "灰度科技2026 AI 战略发布会完美收官：发布AI 显控新品及全场景解决方案",
+          "url": "https://www.huidu.cn/CnNews/1060.html",
+          "original_timestamp": "2026-10-20T16:00:00.000Z",
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.huidu.cn/CnNews/",
+          "observation": "2026-11-03T04:37:31.829Z G1: preview 8条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "保留已核列表入口，等待正文与30天范围验证"
+    },
+    {
+      "id": "web-huidu-hdplayer",
+      "source_id": "web-huidu-hdplayer",
+      "candidate_id": "led-huidu-hdplayer",
+      "name": "Huidu / HDPlayer软件版本",
+      "entry_url": "https://www.huidu.cn/CnDownload/",
+      "use": "version_baseline",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 4,
+      "historical_sample": {
+        "items": 4,
+        "dated": 0,
+        "undated": 4,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "zh-CN",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "HDPlayer V5.3.102.0(老版本）",
+          "url": "https://cdn1.huidu.cn/huidu.cn/HDPlayer.5.3.102.0.exe",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "HDPlayer V7.4.40.0",
+          "url": "https://cdn1.huidu.cn/huidu.cn/HDPlayer.7.4.40.0.exe",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "HDPlayer.7.11.51.0(最新版本）",
+          "url": "https://cdn1.huidu.cn/huidu.cn/HDPlayer.7.11.51.0.exe",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.huidu.cn/CnDownload/",
+          "observation": "2026-11-03T04:38:08.057Z G1: preview 4条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "只建版本基线，日期未知不冒充新闻日期"
+    },
+    {
+      "id": "web-colorlight-software",
+      "source_id": "web-colorlight-software",
+      "candidate_id": "led-colorlight-software",
+      "name": "Colorlight / 控制软件版本",
+      "entry_url": "https://en.colorlightinside.com/service/download/?cat=242",
+      "use": "version_baseline",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 4,
+      "historical_sample": {
+        "items": 4,
+        "dated": 0,
+        "undated": 4,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "LEDSETTING V2.2.6",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://mkt-department-external.oss-cn-shenzhen.aliyuncs.com/File-EN/LEDSetting_2.2.6_3180.zip&id=14847",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "LEDSETTING V2.0",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://mkt-department-external.oss-cn-shenzhen.aliyuncs.com/%E5%85%B6%E4%BB%96%E6%96%87%E4%BB%B6/LEDSetting_2.0.0_3069.zip&id=1265",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "LEDSETTING V2.2",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://mkt-department-external.oss-cn-shenzhen.aliyuncs.com/%E5%85%B6%E4%BB%96%E6%96%87%E4%BB%B6/LEDSetting_2.2.0_3129.zip&id=13026",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://en.colorlightinside.com/service/download/?cat=242",
+          "observation": "2026-11-03T04:38:09.250Z G1: preview 4条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "只建版本基线，日期未知不冒充新闻日期"
+    },
+    {
+      "id": "web-novastar-news",
+      "source_id": "web-novastar-news",
+      "candidate_id": "led-novastar-official",
+      "name": "NovaStar / 诺瓦新闻",
+      "entry_url": "https://www.novastar.tech/content/content.html?catid=19",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 3,
+      "historical_sample": {
+        "items": 3,
+        "dated": 0,
+        "undated": 3,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "LG and NovaStar Open a New Era of Home Audio-Visual Entertainment",
+          "url": "https://www.novastar.tech/content/detail.html?catit=19&id=104",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "Livegrade Studio & NovaStar",
+          "url": "https://www.novastar.tech/content/detail.html?catit=19&id=94",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "NovaStar and Sony Deepen Collaboration as Crystal LED S Series Showcases at InfoComm 2026",
+          "url": "https://www.novastar.tech/content/detail.html?catit=19&id=105",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.novastar.tech/news/",
+          "observation": "404，不用该猜测入口"
+        },
+        {
+          "url": "https://www.novastar.tech/",
+          "observation": "Recent News有标题及24/03/2026；官网NEWS链接指向content/content.html?catid=19"
+        },
+        {
+          "url": "https://www.novastar.tech/content/detail.html?catit=19&id=105",
+          "observation": "浏览返回导航和空标题，未读到正文日期"
+        },
+        {
+          "url": "https://www.novastar.tech/content/content.html?catid=19",
+          "observation": "2026-11-03T04:38:37.868Z G1: preview 3条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "修复",
+      "reason": "列表缺日期；需要真实详情补抓对比，暂不能归咎解析器"
+    },
+    {
+      "id": "rss-ledinside-news",
+      "source_id": "rss-ledinside-news",
+      "candidate_id": "led-ledinside-news",
+      "name": "LEDinside / TrendForce新闻",
+      "entry_url": "https://www.ledinside.com/rss.xml",
+      "use": "news_discovery",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 10,
+      "historical_sample": {
+        "items": 10,
+        "dated": 10,
+        "undated": 0,
+        "date_field_nonempty_pct": 100,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": "2026-11-01T23:07:05.000Z",
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "[News] Oxford Analysis Links Circular Approaches to Business Benefits in 74% of Real-World Lighting Projects Studied",
+          "url": "https://www.ledinside.com/news/2026/10/2026_10_30_02",
+          "original_timestamp": "2026-10-29T14:39:18.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "[News] FORVIA HELLA Presents Financial Results for the First Nine Months of 2026",
+          "url": "https://www.ledinside.com/news/2026/11/2026_11_02_04",
+          "original_timestamp": "2026-11-01T23:07:05.000Z",
+          "body_characters": null
+        },
+        {
+          "title": "[News] Nichia will Exhibit at IES Street and Area Lighting Conference 2026 in Phoenix, AZ",
+          "url": "https://www.ledinside.com/news/2026/10/2026_10_30_05",
+          "original_timestamp": "2026-10-29T23:24:17.000Z",
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.ledinside.com/rss.xml",
+          "observation": "2026-11-03T04:38:37.615Z G1: preview 10条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "保留已核列表入口，等待正文与30天范围验证"
+    },
+    {
+      "id": "web-colorlight-ledvision",
+      "source_id": "web-colorlight-ledvision",
+      "candidate_id": "led-colorlight-ledvision",
+      "name": "Colorlight / LEDVISION版本（停产软件）",
+      "entry_url": "https://en.colorlightinside.com/service/download/?cat=3559",
+      "use": "version_baseline",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 11,
+      "historical_sample": {
+        "items": 11,
+        "dated": 0,
+        "undated": 11,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "LEDVISION V8.8",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://support.colorlightinside.com/uploads/LEDVISIONV8.8_1712797235.zip&id=10935",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "LEDVISION V7.0",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://support.colorlightinside.com/software/LEDVISION%20V7.0.rar&id=10932",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "LEDVISION V9.0",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://clt-test1.oss-cn-hongkong.aliyuncs.com/software/LEDVISION%209.0.zip&id=10936",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://en.colorlightinside.com/service/download/?cat=3559",
+          "observation": "2026-11-03T04:42:50.758Z G1: preview 11条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "只建版本基线，日期未知不冒充新闻日期"
+    },
+    {
+      "id": "web-colorlight-firmware",
+      "source_id": "web-colorlight-firmware",
+      "candidate_id": "led-colorlight-firmware",
+      "name": "Colorlight / 控制器固件",
+      "entry_url": "https://en.colorlightinside.com/service/download/?cat=62",
+      "use": "version_baseline",
+      "config_enabled": false,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PREVIEW_PASSED_DISABLED",
+      "historical_preview_total": 3,
+      "historical_sample": {
+        "items": 3,
+        "dated": 0,
+        "undated": 3,
+        "date_field_nonempty_pct": 0,
+        "duplicate_exact_urls": 0
+      },
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": "en",
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [
+        {
+          "title": "U9 Max",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://mkt-department-external.oss-cn-shenzhen.aliyuncs.com/%E5%9B%BA%E4%BB%B6/Splicer-U9%20Max-1.3020260210.zip&id=14777",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "U15 Max",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://mkt-department-external.oss-cn-shenzhen.aliyuncs.com/%E5%9B%BA%E4%BB%B6/Splice-U15Max-1.2.17-8.zip&id=14776",
+          "original_timestamp": null,
+          "body_characters": null
+        },
+        {
+          "title": "U6 Max",
+          "url": "https://en.colorlightinside.com/dow_beforb/?url=https://mkt-department-external.oss-cn-shenzhen.aliyuncs.com/%E5%9B%BA%E4%BB%B6/Splice-U6%20Max-1.2.6-1.0.zip&id=14778",
+          "original_timestamp": null,
+          "body_characters": null
+        }
+      ],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://en.colorlightinside.com/service/download/?cat=62",
+          "observation": "2026-11-03T04:42:50.241Z G1: preview 3条；保持停用; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "保留",
+      "reason": "只建版本基线，日期未知不冒充新闻日期"
+    },
+    {
+      "id": "led-isa-news",
+      "source_id": null,
+      "candidate_id": "led-isa-news",
+      "name": "International Sign Association",
+      "entry_url": "https://signs.org/news/",
+      "use": "news_discovery",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://signs.org/news/",
+          "observation": "公开列表有标题、日期、Read More与分页；样本2026-10-07"
+        },
+        {
+          "url": "https://signs.org/news/",
+          "observation": "2026-11-03T04:42:26.535Z G1: getaddrinfo ENOTFOUND signs.org; source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-signs-of-the-times",
+      "source_id": null,
+      "candidate_id": "led-signs-of-the-times",
+      "name": "Signs of the Times",
+      "entry_url": "https://signsofthetimes.com/",
+      "use": "news_discovery",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN_HTTP_403",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://signsofthetimes.com/",
+          "observation": "浏览工具返回403；本次未读正文"
+        }
+      ],
+      "stopped_urls": [
+        {
+          "url": "https://signsofthetimes.com/",
+          "observation": "浏览工具返回403；本次未读正文"
+        }
+      ],
+      "conclusion": "停用",
+      "reason": "保留既有拒绝，不重试该入口"
+    },
+    {
+      "id": "led-energy-star-displays",
+      "source_id": null,
+      "candidate_id": "led-energy-star-displays",
+      "name": "ENERGY STAR Displays",
+      "entry_url": "https://www.energystar.gov/products/monitors/partners",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "OFFICIAL_SPEC_INDEX_READ",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.energystar.gov/products/monitors/partners",
+          "observation": "Current指向Displays Version8.0 Rev.Nov-2021；生效2020-01-28"
+        },
+        {
+          "url": "https://www.energystar.gov/products/spec/displays_specification_version_8_0_pd",
+          "observation": "版本过程页列2019-05-02定稿及2021-11-24修订"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-eu-display-ecodesign",
+      "source_id": null,
+      "candidate_id": "led-eu-display-ecodesign",
+      "name": "欧盟电子显示器生态设计",
+      "entry_url": "https://energy-efficient-products.ec.europa.eu/product-list/electronic-displays_en",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "OVERVIEW_READ_LEGAL_TEXT_CHALLENGED",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://energy-efficient-products.ec.europa.eu/product-list/electronic-displays_en",
+          "observation": "2019/2021与2019/2013及范围概述；FAQ日期17 June2025"
+        },
+        {
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=celex:32019R2021",
+          "observation": "打开法规正文遇JavaScript机器人验证，未完成条文与排除项核验"
+        }
+      ],
+      "stopped_urls": [
+        {
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=celex:32019R2021",
+          "observation": "打开法规正文遇JavaScript机器人验证，未完成条文与排除项核验"
+        }
+      ],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-macroblock-monthly-revenue",
+      "source_id": null,
+      "candidate_id": "led-macroblock-monthly-revenue",
+      "name": "台湾月营收：聚积 Macroblock",
+      "entry_url": "https://www.mblock.com.tw/en/investordetail/1/2",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PARTIAL_ENTRY_NO_MONTHLY_ROWS",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.mblock.com.tw/en/investor",
+          "observation": "官网投资者页链接Monthly Revenue和M.O.P.S."
+        },
+        {
+          "url": "https://www.mblock.com.tw/en/investordetail/1/2",
+          "observation": "可打开但正文只有导航，未读月表"
+        },
+        {
+          "url": "https://emops.twse.com.tw/server-java/t58query",
+          "observation": "MOPS入口可读，公司查询与Operating Statements存在，未查询到聚积月表"
+        },
+        {
+          "url": "https://www.tpex.org.tw/openapi/",
+          "observation": "403；未核实聚积专属可用API"
+        }
+      ],
+      "stopped_urls": [
+        {
+          "url": "https://www.tpex.org.tw/openapi/",
+          "observation": "403；未核实聚积专属可用API"
+        }
+      ],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-cninfo-investor-records",
+      "source_id": null,
+      "candidate_id": "led-cninfo-investor-records",
+      "name": "巨潮投资者关系记录",
+      "entry_url": "https://www.cninfo.com.cn/new/commonUrl?url=disclosure/list/notice",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "PARTIAL_LIST_SHELL_OFFICIAL_PDF_READ",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.cninfo.com.cn/new/commonUrl?url=disclosure/list/notice",
+          "observation": "调研入口只有announcementTitle/announcementTime模板变量，没有可验证记录列表"
+        },
+        {
+          "url": "https://static.cninfo.com.cn/finalpage/2026-08-22/1225490168.PDF",
+          "observation": "官方2026半年报PDF可读；不是已核投资者活动记录原件"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-daktronics-investor-news",
+      "source_id": null,
+      "candidate_id": "led-daktronics-investor-news",
+      "name": "Daktronics 投资者新闻",
+      "entry_url": "https://investor.daktronics.com/news-events/press-releases",
+      "use": "news_discovery",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "BROWSER_LIST_AND_DETAIL_READ",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://investor.daktronics.com/news-events/press-releases",
+          "observation": "浏览工具可读日期、标题、分页，显示499条/当前10条；本机普通HTTP403"
+        },
+        {
+          "url": "https://investor.daktronics.com/news-releases/news-release-details/daktronics-announces-implementation-actions-strategic-structural",
+          "observation": "详情日期October14,2026；有PDF Version"
+        }
+      ],
+      "stopped_urls": [
+        {
+          "url": "https://investor.daktronics.com/news-events/press-releases",
+          "observation": "浏览工具可读日期、标题、分页，显示499条/当前10条；本机普通HTTP403"
+        }
+      ],
+      "conclusion": "停用",
+      "reason": "保留既有拒绝，不重试该入口"
+    },
+    {
+      "id": "led-eia-electricity",
+      "source_id": null,
+      "candidate_id": "led-eia-electricity",
+      "name": "EIA Electric Power Monthly 电价",
+      "entry_url": "https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a",
+          "observation": "Table5.6.A有州/终端部门/美分每kWh；Data for August2026，Release Date October23,2026，Next Release November24,2026"
+        },
+        {
+          "url": "https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a",
+          "observation": "2026-11-03T04:39:23.910Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        },
+        {
+          "url": "https://api.eia.gov/v2/electricity/retail-sales/data/?frequency=monthly&data[0]=price&facets[sectorid][]=COM&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=60",
+          "observation": "2026-11-03T05:37:12.901Z 已授权官方JSON补核；previewSource无key请求HTTP403，未返回数据，保留UNKNOWN。 详见既有source-previews.json.conditionJsonFollowup。"
+        }
+      ],
+      "stopped_urls": [
+        {
+          "url": "https://api.eia.gov/v2/electricity/retail-sales/data/?frequency=monthly&data[0]=price&facets[sectorid][]=COM&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=60",
+          "observation": "2026-11-03T05:37:12.901Z 已授权官方JSON补核；previewSource无key请求HTTP403，未返回数据，保留UNKNOWN。 详见既有source-previews.json.conditionJsonFollowup。"
+        }
+      ],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-roe-carbon-markii",
+      "source_id": null,
+      "candidate_id": "led-roe-carbon-markii",
+      "name": "ROE Visual Carbon MarkII",
+      "entry_url": "https://www.roevisual.com/us-en/products/carbon-markii",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "OFFICIAL_PRODUCT_PAGE_READ",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.roevisual.com/us-en/products/carbon-markii",
+          "observation": "官方产品页具有Features/Specs/Downloads/Accessories；箱体结构与应用定位资料，后续同页读取出现超时"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-absen-kv3-manual",
+      "source_id": null,
+      "candidate_id": "led-absen-kv3-manual",
+      "name": "艾比森 K V3 维护手册",
+      "entry_url": "https://www.absen.com/wp-content/uploads/2025/06/K-V3-Series-User-Manual-V202407-K-V3-Series-User-Manual-V202407.pdf",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "OFFICIAL_MANUAL_PDF_READ",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.absen.com/wp-content/uploads/2025/06/K-V3-Series-User-Manual-V202407-K-V3-Series-User-Manual-V202407.pdf",
+          "observation": "42页官方手册：箱体、安装、接线、31页起维护；第6.2节前维护/第6.3节后维护；应用范围为室内"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-huidu-firmware",
+      "source_id": null,
+      "candidate_id": "led-huidu-firmware",
+      "name": "Huidu / 异步全彩固件",
+      "entry_url": "https://www.huidu.cn/CnDownload/index_100000010831811.html",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.huidu.cn/CnDownload/index_100000010831811.html",
+          "observation": "2026-11-03T04:43:19.049Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-linsn-news",
+      "source_id": null,
+      "candidate_id": "led-linsn-news",
+      "name": "Linsn / 灵星雨新闻",
+      "entry_url": "https://www.linsn.com/list/News-information",
+      "use": "news_discovery",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.linsn.com/list/News-information",
+          "observation": "2026-11-03T04:39:07.192Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-linsn-software",
+      "source_id": null,
+      "candidate_id": "led-linsn-software",
+      "name": "Linsn / LEDStudio软件版本",
+      "entry_url": "https://www.linsn.com/list/18",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.linsn.com/list/18",
+          "observation": "2026-11-03T04:39:07.218Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-novastar-software",
+      "source_id": null,
+      "candidate_id": "led-novastar-software",
+      "name": "NovaStar / 软件固件版本",
+      "entry_url": "https://www.novastar.tech/download/download.html?catid=7",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.novastar.tech/download/download.html?catid=7",
+          "observation": "2026-11-03T04:39:24.382Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-sixteen-nine-news",
+      "source_id": null,
+      "candidate_id": "led-sixteen-nine-news",
+      "name": "Sixteen:Nine / 数字标牌新闻",
+      "entry_url": "https://www.sixteen-nine.net/",
+      "use": "news_discovery",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.sixteen-nine.net/",
+          "observation": "2026-11-03T04:39:55.345Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-eurostat-nrg-pc-205",
+      "source_id": null,
+      "candidate_id": "led-eurostat-nrg-pc-205",
+      "name": "Eurostat / nrg_pc_205",
+      "entry_url": "https://ec.europa.eu/eurostat/databrowser/view/NRG_PC_205/default/table?category=nrg.nrg_price.nrg_pc&lang=en",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://ec.europa.eu/eurostat/databrowser/view/NRG_PC_205/default/table?category=nrg.nrg_price.nrg_pc&lang=en",
+          "observation": "2026-11-03T04:39:56.517Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        },
+        {
+          "url": "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_pc_205?format=JSON&lang=EN&freq=S&siec=E7000&unit=KWH&currency=EUR&geo=EU27_2020&nrg_cons=MWH20-499&tax=X_VAT&lastTimePeriod=2",
+          "observation": "2026-11-03T05:37:12.901Z 已授权官方JSON补核；免key JSON返回两期EUR/kWh数据；原生标量preview只剩1条且丢失统计期，期码索引preview无条目。两种配置均拒绝。 详见既有source-previews.json.conditionJsonFollowup。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-linsn-firmware",
+      "source_id": null,
+      "candidate_id": "led-linsn-firmware",
+      "name": "Linsn / 固件版本",
+      "entry_url": "https://www.linsn.com/list/firmware",
+      "use": "reference_baseline",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://www.linsn.com/list/firmware",
+          "observation": "2026-11-03T04:43:18.802Z G1: no items matched (html); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [],
+      "conclusion": "待定",
+      "reason": "候选尚无运行映射；先核原入口和现有解析能力"
+    },
+    {
+      "id": "led-rave-news",
+      "source_id": null,
+      "candidate_id": "led-rave-news",
+      "name": "rAVe PUBS / AV新闻",
+      "entry_url": "https://ravepubs.com/",
+      "use": "news_discovery",
+      "config_enabled": null,
+      "runtime_enabled": null,
+      "current_run_status": "NOT_RUN",
+      "historical_status": "UNKNOWN",
+      "historical_preview_total": null,
+      "historical_sample": null,
+      "original_date_precision": "UNKNOWN_IN_PREVIEW_FIXTURE",
+      "latest_preview_timestamp": null,
+      "current_date_coverage_pct": null,
+      "body_extraction_pct": null,
+      "average_body_characters": null,
+      "current_duplicate_count": null,
+      "language": null,
+      "language_basis": "source_configuration_or_unknown",
+      "samples": [],
+      "sample_method": "first 3 by SHA256(source_id + original URL), reproducible sample of historical listing only",
+      "historical_observations": [
+        {
+          "url": "https://ravepubs.com/",
+          "observation": "2026-11-03T04:31:42.889Z G1: HTTP 403 (entry read; preview not retried); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "stopped_urls": [
+        {
+          "url": "https://ravepubs.com/",
+          "observation": "2026-11-03T04:31:42.889Z G1: HTTP 403 (entry read; preview not retried); source-previews.json保存实际输出摘要。"
+        }
+      ],
+      "conclusion": "停用",
+      "reason": "保留既有拒绝，不重试该入口"
+    }
+  ]
+}

@@ -86,12 +86,12 @@ export async function studioGenerationStatus() {
   }
 }
 
-export async function studioMaterial(id: string) {
-  const [a] = await sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.revision,a.published_at,a.publication_time,a.body_status,a.body_text,a.discovered_at,
+export async function studioMaterial(id: string, db: Db = sql, lock = false) {
+  const [a] = await db`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,coalesce(s.config->'detail'->>'publishedAtUtcOffset',s.config->>'publishedAtUtcOffset','+08:00') AS source_utc_offset,a.revision,a.published_at,a.publication_time,a.body_status,a.body_text,a.discovered_at,
     (SELECT jsonb_build_object('state',l.after->>'state','notice',l.after->>'notice','at',l.created_at)
       FROM audit_log l WHERE l.subject='content:' || a.id AND l.action='studio.material.extract'
       ORDER BY l.created_at DESC,l.id DESC LIMIT 1) AS last_extraction
-    FROM articles a JOIN sources s ON a.source_id=s.id WHERE a.id=${id}`;
+    FROM articles a JOIN sources s ON a.source_id=s.id WHERE a.id=${id} ${lock ? db`FOR SHARE OF a,s` : db``}`;
   return a ?? null;
 }
 function snapshot(a: Record<string, any>) {
@@ -101,7 +101,7 @@ function snapshot(a: Record<string, any>) {
 async function checkSources(packet: Packet, db: Db) {
   for (const a of packet.articles) {
     const [current] = await db`SELECT id,revision,title,body_status,body_text,url,published_at FROM articles WHERE id=${a.binding.article_id} FOR SHARE`;
-    if (!current || current.revision !== a.binding.revision || snapshot(current).binding.content_sha256 !== a.binding.content_sha256 || current.url !== a.binding.url) {
+    if (!current || current.revision !== a.binding.revision || snapshot(current).binding.content_sha256 !== a.binding.content_sha256 || current.url !== a.binding.url || snapshot(current).binding.published_at !== a.binding.published_at) {
       throw new Conflict('原文已更新或不存在，请重新建立采编任务；已有稿件不会被覆盖。');
     }
   }
@@ -169,8 +169,8 @@ export async function bindStudioTaskMaterials(id:string,input:unknown,actor:stri
     return {id,materials:packet.articles.length};
   });
 }
-export async function studioTask(id: string) {
-  const [row] = await sql`SELECT * FROM studio_tasks WHERE id=${id}`;
+export async function studioTask(id: string, db: Db = sql, lock = false) {
+  const [row] = await db`SELECT * FROM studio_tasks WHERE id=${id} ${lock ? db`FOR SHARE` : db``}`;
   return row ?? null;
 }
 export async function exportStudioTask(id: string) {
@@ -231,14 +231,17 @@ export async function generateStudioTask(id: string, actor: string) {
   await audit(actor, 'studio.task.generate', `studio-task:${id}`, null, null, { receiptId: result.receiptId });
   return { ...received, receiptId: result.receiptId };
 }
+async function draftReviewState(row: DraftRow, packet: Packet, db: Db = sql) {
+  const gate=await currentDraftGate(packet,storedDraft(row.document),row.id,db);
+  const issues=buildEditorialIssues(packet,storedDraft(row.document),gate);
+  return { gate, issues, confirmed_issues:await priorConfirmations(row.id,issues,db) };
+}
 export async function studioDraft(id: string) {
   const [row] = await sql<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id}`;
   if (!row) return null;
   const task=await studioTask(row.task_id);
   const packet=packetSchema.parse(task.request);
-  const gate=await currentDraftGate(packet,storedDraft(row.document),id);
-  const issues=buildEditorialIssues(packet,storedDraft(row.document),gate);
-  return { ...row, gate, issues, confirmed_issues:await priorConfirmations(id,issues), source_snapshot:packet.articles.find(a=>a.binding.article_id===row.article_id)!, material: await studioMaterial(row.article_id), history: await auditHistory(`studio-draft:${id}`) };
+  return { ...row, ...await draftReviewState(row,packet), source_snapshot:packet.articles.find(a=>a.binding.article_id===row.article_id)!, material: await studioMaterial(row.article_id), history: await auditHistory(`studio-draft:${id}`) };
 }
 const editSchema = z.object({ version: z.number().int().positive(), title_zh: z.string().trim().min(1).max(300), title_en: z.string().trim().min(1).max(300),
   news_status: draftSchema.shape.news_status,
@@ -274,6 +277,7 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
     if (b.action === 'return' && !b.note.trim()) invalid('请填写退回修改意见。');
     let confirmations: EditorialConfirmation[] = [];
     let fullyConfirmed = false;
+    let sourceDate: { publicationTime: string | null; utcOffset: string } | undefined;
     if (b.action !== 'return') {
       const [task] = await tx`SELECT request FROM studio_tasks WHERE id=${row.task_id}`;
       const packet = packetSchema.parse(task.request);
@@ -287,6 +291,13 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
       const checked=validateEditorialConfirmations(issues,{confirmations:b.confirmations},b.action==='confirm'?[]:await priorConfirmations(id,issues,tx));
       if (checked.errors.length) invalid('逐项确认已失效或对象不符，请刷新后核对。');
       if (b.action==='approve'&&!checked.canApprove) invalid(`请逐项确认风险提示及逐字检查后再审核通过；尚缺${checked.missingIssueIds.length}项。`);
+      if (b.action==='approve') {
+        const material=await studioMaterial(row.article_id,tx,true);
+        if (!material) throw new Conflict('原文已不存在，请重新建立采编任务。');
+        sourceDate={publicationTime:material.publication_time,utcOffset:material.source_utc_offset};
+        try { publicDraft(doc,packet.writing?.site,sourceDate); }
+        catch(error) { invalid('来源日期无法确认，请先修复素材再审稿：'+(error instanceof Error?error.message:String(error))); }
+      }
       confirmations=checked.confirmed;
       fullyConfirmed=checked.canApprove;
       for (const e of doc.evidence) if (!article.body_text?.includes(e.quote) && !article.title.includes(e.quote)) invalid('证据引用不在原文中，请重新核对。');
@@ -294,27 +305,37 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
     const status = b.action === 'confirm' ? row.status==='approved'&&!fullyConfirmed?'in_review':row.status : b.action === 'submit' ? 'in_review' : b.action === 'approve' ? 'approved' : 'draft';
     await tx`UPDATE studio_drafts SET status=${status},version=version+1,updated_by=${actor},updated_at=now(),
       reviewed_by=${b.action === 'approve' ? actor : b.action === 'confirm'&&status==='approved' ? row.reviewed_by : null},reviewed_at=${b.action === 'approve' ? new Date() : b.action === 'confirm'&&status==='approved' ? row.reviewed_at : null} WHERE id=${id}`;
-    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: row.version + 1, document_hash:documentIdentity(row.document),confirmations }, { db: tx });
+    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: row.version + 1, document_hash:documentIdentity(row.document),confirmations,...(sourceDate?{source_date:sourceDate}:{}) }, { db: tx });
     return { id, status, version: row.version + 1 };
   });
 }
 export async function exportStudioDraft(id: string, format: string) {
-  const row = await studioDraft(id);
-  if (!row) return null;
-  if (row.status !== 'approved') invalid('请完成审稿后再导出成稿。');
-  if(row.gate.blocked)invalid('当前稿件存在否决项，请修改并重新审稿。');
-  const d = storedDraft(row.document);
-  const approved=row.history.find(h=>h.action==='studio.draft.approve');
-  if(!approved||!validateEditorialConfirmations(row.issues,{confirmations:row.confirmed_issues}).canApprove)invalid('当前规则需要补充逐项人工风险确认，请重新审稿。');
-  const task=await studioTask(row.task_id);
-  const packet=packetSchema.parse(task.request);
-  await checkSources({...packet,articles:packet.articles.filter(a=>a.binding.article_id===row.article_id)},sql);
-  if (format === 'review') return { type: 'application/json', extension: 'review.json', body: JSON.stringify({ id, version: row.version, audience: 'INTERNAL_REVIEW_ONLY', reviewed_by: row.reviewed_by, reviewed_at: row.reviewed_at, document: {...d,camos:row.document.camos,editorial_gate:row.gate} }, null, 2) };
-  const publication = publicDraft(d,packet.writing?.site);
-  const markdown = `# ${publication.title}\n\n${publication.body}\n\nMeta description: ${publication.meta_description}\n`;
-  if (format === 'json') return { type: 'application/json', extension: 'json', body: JSON.stringify({ id, version: row.version, publication }, null, 2) };
-  if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };
-  return { type: 'text/markdown; charset=utf-8', extension: 'md', body: markdown };
+  return sql.begin(async tx => {
+    // Hold the approved draft and its source until the complete export is built.
+    const [row] = await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR SHARE`;
+    if (!row) return null;
+    if (row.status !== 'approved') invalid('请完成审稿后再导出成稿。');
+    const task=await studioTask(row.task_id,tx,true);
+    const packet=packetSchema.parse(task.request);
+    await checkSources({...packet,articles:packet.articles.filter(a=>a.binding.article_id===row.article_id)},tx);
+    const material=await studioMaterial(row.article_id,tx,true);
+    if (!material) throw new Conflict('原文已不存在，请重新建立采编任务。');
+    const review=await draftReviewState(row,packet,tx);
+    if(review.gate.blocked)invalid('当前稿件存在否决项，请修改并重新审稿。');
+    const d = storedDraft(row.document);
+    const [approved]=await tx`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`} AND action='studio.draft.approve' ORDER BY created_at DESC,id DESC LIMIT 1`;
+    if(!approved||approved.after?.document_hash!==documentIdentity(row.document)||!Number.isInteger(approved.after?.version)||approved.after.version<1||approved.after.version>row.version||!validateEditorialConfirmations(review.issues,{confirmations:review.confirmed_issues}).canApprove)invalid('当前规则需要补充逐项人工风险确认，请重新审稿。');
+    const sourceDate=approved.after.source_date;
+    if(!sourceDate||sourceDate.publicationTime!==material.publication_time||sourceDate.utcOffset!==material.source_utc_offset)throw new Conflict('来源日期精度或时区与批准记录不一致，请重新审稿后导出。');
+    if (format === 'review') return { type: 'application/json', extension: 'review.json', body: JSON.stringify({ id, version: row.version, audience: 'INTERNAL_REVIEW_ONLY', reviewed_by: row.reviewed_by, reviewed_at: row.reviewed_at, document: {...d,camos:row.document.camos,editorial_gate:review.gate} }, null, 2) };
+    let publication;
+    try { publication = publicDraft(d,packet.writing?.site,sourceDate); }
+    catch(error) { throw new Conflict('来源日期无法确认，请重新审稿：'+(error instanceof Error?error.message:String(error))); }
+    const markdown = `# ${publication.title}\n\n${publication.body}\n\nMeta description: ${publication.meta_description}\n`;
+    if (format === 'json') return { type: 'application/json', extension: 'json', body: JSON.stringify({ id, version: row.version, publication }, null, 2) };
+    if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };
+    return { type: 'text/markdown; charset=utf-8', extension: 'md', body: markdown };
+  });
 }
 export async function collectStudioSource(id: string, actor: string) {
   const [source] = await sql`SELECT id,kind FROM sources WHERE id=${id}`;
