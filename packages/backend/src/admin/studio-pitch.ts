@@ -8,7 +8,7 @@ import { sha256 } from '../lib/ids.ts';
 import { upsertMaterial } from '../content/materials.ts';
 import { fetchDetail } from '../sources/web-list.ts';
 import type { SourceRow } from '../sources/types.ts';
-import { chatJson } from '../providers/llm.ts';
+import { chatJson, type ChatJsonOptions, type ChatJsonResult } from '../providers/llm.ts';
 import { createStudioTask, extractStudioMaterial, generateStudioTask, studioMaterial, studioGenerationStatus } from './studio.ts';
 import { redactPitch, normalizePitch, searchPitchMaterials } from './studio-pitch-evidence.ts';
 import { companyFactRules } from './studio-company-facts.ts';
@@ -22,7 +22,7 @@ type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
   version:number;status:'preparing'|'ready'|'insufficient'|'failed'|'confirmed';question:string;output_type:z.infer<typeof pitchType>;existing_url:string;links:string[];
   started_at:string;finished_at?:string;question_en?:string;keywords?:string[];entities?:string[];materials?:Material[];
   related_pages?:{title:string;url:string}[];blacklist?:{configured:boolean;blocked:number;pending:number};
-  error?:string;link_errors?:{url:string;reason:string}[];metrics?:{preparation_ms:number;confirmation_elapsed_ms?:number;receipts:{id:number;usage:unknown;model:string}[]};
+  error?:string;link_errors?:{url:string;reason:string}[];metrics?:{preparation_ms:number;replayed?:boolean;replay_ms?:number;confirmation_elapsed_ms?:number;receipts:{id:number;usage:unknown;model:string}[]};
 };
 type Card={id:string;question_id:string;task_id:string|null;status:string;document:Record<string,any>&{prep?:Prep};updated_at:Date;task_state?:string|null};
 const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/${name}.md`,import.meta.url),'utf8');
@@ -120,17 +120,25 @@ export function validatePitchEvidence(plan:z.infer<typeof pitchPlanSchema>,mater
   return plan;
 }
 
-export async function preparePitch(id:string,version:number,actor:string){
+async function pitchModel<S extends z.ZodType>(options:ChatJsonOptions<S>,replay:boolean):Promise<ChatJsonResult<z.infer<S>>>{
+  if(!replay)return chatJson(options);
+  const [saved]=await sql`SELECT id,model,response,usage FROM receipts WHERE subject=${options.subject} AND purpose=${options.purpose} AND response IS NOT NULL ORDER BY id DESC LIMIT 1`;
+  if(!saved)invalid('没有已保存的模型结果，不能进行免调用重放。');
+  const content=saved.response?.choices?.[0]?.message?.content;
+  const data=options.schema.parse(JSON.parse(content));
+  return {data,receiptId:Number(saved.id),model:saved.model,usage:saved.usage,reused:true};
+}
+export async function preparePitch(id:string,version:number,actor:string,replay=false){
   const [card]=await sql<Card[]>`SELECT * FROM studio_recommendations WHERE id=${id}`;
   const prep=card?.document.prep;
-  if(!card||!prep||prep.version!==version||prep.status!=='preparing')return {reused:true};
+  if(!card||!prep||prep.version!==version||prep.status!=='preparing'&&!(replay&&prep.status==='failed'))return {reused:true};
   const receipts:NonNullable<Prep['metrics']>['receipts']=[];
   const start=performance.now();
   const save=async(next:Prep)=>sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json(next as never)}),updated_at=now() WHERE id=${id} AND (document->'prep'->>'version')::int=${version}`;
   try{
-    const enabled=await studioGenerationStatus();if(!enabled.ready)invalid(enabled.reason);
+    if(!replay){const enabled=await studioGenerationStatus();if(!enabled.ready)invalid(enabled.reason);}
     const system=prompt('studio-pitch-keywords');
-    const query=await chatJson({model:'default',purpose:'studio_prep_keywords',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system),system,user:JSON.stringify({question:prep.question,schema:{question_en:'English buyer question',keywords:['5-10 Chinese/English terms'],entities:['exact entities']}}),schema:pitchKeywordsSchema,maxTokens:1500,temperature:0.2,timeoutMs:120000,sessionId:id});
+    const query=await pitchModel({model:'default',purpose:'studio_prep_keywords',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system),system,user:JSON.stringify({question:prep.question,schema:{question_en:'English buyer question',keywords:['5-10 Chinese/English terms'],entities:['exact entities']}}),schema:pitchKeywordsSchema,maxTokens:1500,temperature:0.2,timeoutMs:120000,sessionId:id},replay);
     receipts.push({id:query.receiptId,usage:query.usage,model:query.model});
     const keywords=query.data.keywords;
     const materials=await searchPitchMaterials(keywords,8);
@@ -144,12 +152,13 @@ export async function preparePitch(id:string,version:number,actor:string){
     const related=questions.filter(q=>keywords.some(k=>(q.document.question+' '+q.document.question_en+' '+(q.document.keywords??[]).join(' ')).toLowerCase().includes(k.toLowerCase()))).map(q=>({title:q.document.question,url:q.document.existing_url})).slice(0,5);
     const facts=companyFactRules();
     const common={...prep,...query.data,materials:selected,related_pages:related,link_errors:linkErrors,blacklist:{configured:facts.configured,blocked:0,pending:0}};
-    const complete=(next:Prep)=>({...next,finished_at:new Date().toISOString(),metrics:{preparation_ms:Math.round(performance.now()-start),receipts}});
+    await save(common);
+    const complete=(next:Prep)=>({...next,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??0):Math.round(performance.now()-start),...(replay?{replayed:true,replay_ms:Math.round(performance.now()-start)}:{}),receipts}});
     if(selected.filter(m=>m.body_status==='ok'&&m.body_text).length<2&&!selected.some(m=>m.existing_page)){
       await save(complete({...common,status:'insufficient',error:'证据不足：请补充线索链接，或调整为短文章后重新核对；不生成全文。'}));return {status:'insufficient'};
     }
     const system2=prompt('studio-pitch-outline');
-    const result=await chatJson({model:'default',purpose:'studio_prep_outline',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user:JSON.stringify({question:prep.question,question_en:query.data.question_en,output_type:prep.output_type,existing_url:prep.existing_url,materials:selected.map(m=>({id:m.id,title:m.title,body_text:m.body_text?.slice(0,18000),published_at:m.publication_time??m.published_at,existing_page:m.existing_page})),response_format:{output_type:'update|guide|short',outline:[{id:'s1',heading:'中文小节',evidence:[{article_id:'provided ID',quote:'exact source sentence'}],gap:'',action:''}],titles:[{title:'English title <=60 chars',anchor:'中文说明',article_id:'provided ID',quote:'exact quote'}],hooks:[{title:'English social hook',anchor:'中文说明',article_id:'provided ID',quote:'exact quote'}],engineer_questions:[{id:'q1',question:'中文问题',section_ids:['s1'],options:[{id:'A',label:'保守写法',instruction:'以型号安装图为准，不写数值',conservative:true},{id:'B',label:'其他，请写明',instruction:'依据工程师回复',conservative:false}],withheld_numbers:['only actual unsupported values with units']}]}}),schema:pitchPlanSchema,maxTokens:6000,temperature:0.2,timeoutMs:180000,sessionId:id});
+    const result=await pitchModel({model:'default',purpose:'studio_prep_outline',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user:JSON.stringify({question:prep.question,question_en:query.data.question_en,output_type:prep.output_type,existing_url:prep.existing_url,materials:selected.map(m=>({id:m.id,title:m.title,body_text:m.body_text?.slice(0,18000),published_at:m.publication_time??m.published_at,existing_page:m.existing_page})),response_format:{output_type:prep.output_type==='auto'?'guide':prep.output_type,outline:[{id:'s1',heading:'中文小节',evidence:[{article_id:'provided ID',quote:'exact source sentence'}],gap:'',action:''}],titles:[{title:'English title <=60 chars',anchor:'中文说明',article_id:'provided ID',quote:'exact quote'}],hooks:[{title:'English social hook',anchor:'中文说明',article_id:'provided ID',quote:'exact quote'}],engineer_questions:[{id:'q1',question:'中文问题',section_ids:['s1'],options:[{id:'A',label:'保守写法',instruction:'以型号安装图为准，不写数值',conservative:true},{id:'B',label:'其他，请写明',instruction:'依据工程师回复',conservative:false}],withheld_numbers:['only actual unsupported values with units']}]}}),schema:pitchPlanSchema,maxTokens:6000,temperature:0.2,timeoutMs:180000,sessionId:id},replay);
     receipts.push({id:result.receiptId,usage:result.usage,model:result.model});
     const plan=validatePitchEvidence(result.data,selected);
     if(prep.output_type!=='auto')plan.output_type=prep.output_type;
@@ -167,11 +176,12 @@ export async function preparePitch(id:string,version:number,actor:string){
     });
     if(!plan.outline.length)invalid('备料大纲全部命中公司事实禁止项，请更换选题范围。');
     await save(complete({...common,...plan,status:'ready',blacklist:{configured:facts.configured,blocked,pending}}));
+    if(replay)await audit(actor,'studio.pitch.replay',`studio-recommendation:${id}`, '复用已保存的模型回答，重新验证结构和逐字出处，无新调用',null,{version,receipt_ids:receipts.map(r=>r.id)});
     await sql`UPDATE studio_questions SET document=document||${sql.json({question_en:query.data.question_en,keywords:[],keywords_en:keywords.filter(k=>/[a-z]/i.test(k)),keywords_zh:keywords.filter(k=>/[\u3400-\u9fff]/.test(k)),source_ids:[...new Set(selected.map(m=>m.source_id))]})} WHERE id=${card.question_id} AND document->>'origin'='pitch'`;
     return {status:'ready',materials:selected.length};
   }catch(error){
     const message=error instanceof Error?error.message.slice(0,300):'备料失败';
-    await save({...prep,status:'failed',error:message,finished_at:new Date().toISOString(),metrics:{preparation_ms:Math.round(performance.now()-start),receipts}});
+    await save({...prep,status:'failed',error:message,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??0):Math.round(performance.now()-start),...(replay?{replayed:true,replay_ms:Math.round(performance.now()-start)}:{}),receipts}});
     throw error;
   }
 }

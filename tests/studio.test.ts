@@ -514,7 +514,7 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
   const empty=data.question.includes('ZZZZ');
   const materialId=data.materials?.[0]?.id??ids[0];
   const answer=data.response_format?{
-   output_type:'guide',outline:Array.from({length:4},(_,i)=>({id:`s${i}`,heading:`安装条件 ${i}`,evidence:[{article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'}],gap:'',action:''})),
+   type:'guide',outline:Array.from({length:4},(_,i)=>({id:`s${i}`,heading:`安装条件 ${i}`,evidence:[{article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'}],gap:'',action:''})),
    titles:['Cabinet Dimensions and Installation','Plan LED Cabinet Access','Cabinet Drawings for Buyers'].map(title=>({title,anchor:'图纸决定尺寸',article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'})),hooks:[],
    engineer_questions:[{id:'q1',question:'维护空间怎么写？',section_ids:['s0'],options:[{id:'A',label:'按图纸确定',instruction:'按选定型号安装图确定，不写数值',conservative:true},{id:'B',label:'工程师提供实测条件',instruction:'保留确认条件',conservative:false},{id:'C',label:'其他，请写明',instruction:'依据工程回复',conservative:false}],withheld_numbers:['600 mm']}]
   }:{question_en:'How should cabinet installation be planned?',keywords:empty?['ZZZZ','ZZZX','ZZZY','ZZZK','ZZZQ']:['cabinet','installation','drawing','dimensions','access'],entities:[]};

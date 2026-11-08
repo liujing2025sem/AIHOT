@@ -223,7 +223,7 @@ function MaterialList({ materials, selected, toggle, busy }: { materials: Materi
         <SourceLink url={material.url} title={material.title || material.url} />
         <p className="text-xs leading-5 text-ink-3">
           {material.existing_page ? '已有页面正文' : material.first_party ? '一手来源' : '其他来源'}
-          {' · '}原文日期：{material.publication_time || (material.published_at ? <Time at={material.published_at} /> : '未知')}
+          {' · '}原文日期：{material.publication_time && /^\d{4}-\d{2}-\d{2}$/.test(material.publication_time) ? material.publication_time : material.published_at ? <Time at={material.published_at} /> : '未知'}
           {' · '}版本：{material.revision ?? '未知'} · 命中 {material.hit_count} 项
         </p>
         {material.snippet && <blockquote className="break-words border-l-2 border-accent pl-2 text-sm">{material.snippet}</blockquote>}
@@ -235,7 +235,10 @@ function MaterialList({ materials, selected, toggle, busy }: { materials: Materi
 
 function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Prep; onConfirmed: (taskId: string | null) => void }) {
   const [panel, setPanel] = useState(0);
-  const [selected, setSelected] = useState(() => prep.materials.filter(readable).map(material => material.id));
+  const [selected, setSelected] = useState(() => {
+    const cited = new Set([...prep.outline.flatMap(s => s.evidence.map(e => e.article_id)), ...prep.titles.map(t => t.article_id)]);
+    return prep.materials.filter(m => readable(m) && (m.existing_page || cited.has(m.id))).map(m => m.id);
+  });
   const [outline, setOutline] = useState(() => prep.outline.map(({ id, heading }) => ({ id, heading, include: true })));
   const [output, setOutput] = useState<FinalOutput>(prep.output_type === 'auto' ? (prep.existing_url ? 'update' : 'guide') : prep.output_type);
   const [title, setTitle] = useState('');
