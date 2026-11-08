@@ -54,6 +54,7 @@ type V2 = {
   conclusion?: 'upgrade' | 'no_change';
 };
 type Prep = Brief & {
+  model_outcome?: 'unknown'; pending_receipt_id?: number | null;
   question: string; question_en: string; keywords: string[]; materials: Material[]; related_pages: { url: string; title: string }[];
   outline: Section[]; titles: Title[]; hooks: Title[]; engineer_questions: EngineerQuestion[];
   blacklist?: { configured: boolean; blocked: number; pending: number }; error?: string | null;
@@ -83,6 +84,7 @@ function readPrep(raw: PitchResponse['prep']): Prep | null {
   const { workflow_version, subquestions, facts, paragraphs, edit_plan, weak_material_ids, fragments, assembled, conclusion } = raw;
   return {
     question: raw.question, output_type: raw.output_type, existing_url: raw.existing_url, links: raw.links,
+    model_outcome:raw.model_outcome,pending_receipt_id:raw.pending_receipt_id,
     blacklist: raw.blacklist, error: raw.error, link_errors: raw.link_errors, started_at: raw.started_at,
     question_en: raw.question_en ?? '', keywords: raw.keywords ?? [], related_pages: raw.related_pages ?? [],
     outline: raw.outline ?? [], titles: raw.titles ?? [], hooks: raw.hooks ?? [], engineer_questions: raw.engineer_questions ?? [],
@@ -691,13 +693,14 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
     onConfirmed={taskId => setConfirmation({ taskId })} />;
 
   return <div className="space-y-4">
-    <Card title={statusLabels[status]} right={<Badge tone="warn">{statusLabels[status]}</Badge>}>
+    <Card title={prep?.model_outcome==='unknown'?'结果待核对':statusLabels[status]} right={<Badge tone="warn">{prep?.model_outcome==='unknown'?'未重试':statusLabels[status]}</Badge>}>
       <p role="status" className={warning}>{status === 'insufficient' ? v2 ? '证据不足，暂不能确认或成稿。可以给缺证据的子问题补一个公开链接。'
         : '证据不足，暂不能确认或成稿。请补线索，或改成短文章后重新备料。成稿仍需至少 2 条素材，或包含已有页面正文。'
+        : prep?.model_outcome==='unknown'?'模型没有返回确定结果，可能已经计费。已保存的拆题与检索仍可查看，等待核对后决定下一步。'
         : status === 'failed' ? '这次备料没有完成。可以检查线索后再试。' : '还没有可确认的备料内容。'}</p>
       {prep?.error && <p className="mt-2 break-words text-sm text-ink-3">{prep.error}</p>}
-      {status === 'insufficient' && prep && v2 ? <div className="mt-3 space-y-4">
-        <Coverage pitch={pitch} v2={v2} run={run} busy={busy} editable />
+      {(status === 'insufficient'||prep?.model_outcome==='unknown') && prep && v2 ? <div className="mt-3 space-y-4">
+        <Coverage pitch={pitch} v2={v2} run={run} busy={busy} editable={status==='insufficient'} />
         {!!prep.materials.length && <CandidateMaterials prep={prep} selected={[]} busy={busy} />}
       </div> : status === 'insufficient' && !!prep?.materials.length && <div className="mt-3 space-y-2">
         <p className={muted}>已找到 {prep.materials.length} 条候选：</p>
@@ -705,7 +708,7 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
       </div>}
       {!prep && <Button className="mt-3" disabled={state !== 'idle'} onClick={() => void revalidate()}>刷新状态</Button>}
     </Card>
-    {prep && <Reprepare key={pitch.version} pitch={pitch} prep={prep} run={run} busy={busy} />}
+    {prep && prep.model_outcome!=='unknown' && <Reprepare key={pitch.version} pitch={pitch} prep={prep} run={run} busy={busy} />}
   </div>;
 }
 

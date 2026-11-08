@@ -104,7 +104,9 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     const system2=prompt('studio-pitch-edit-plan');
     const excerptLength=Math.max(90,Math.min(240,Math.floor(10500/Math.max(1,paragraphs.length))));
     const user=JSON.stringify({question:prep.question,output_type:prep.output_type,subquestions,facts,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,excerptLength)})),company_rules:rules.rules.map(r=>({id:r.id,match:r.match,action:r.action,conservative:r.conservative}))});
-    const result=await call({model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,schema:editPlanSchema,maxTokens:3500,timeoutMs:45000,sessionId:id},replay);
+    const remainingMs=90000-Math.round(performance.now()-start);
+    if(!replay&&remainingMs<1000)invalid('本轮备料已用完90秒，已保存拆题与检索结果，未发送第二段。');
+    const result=await call({model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,schema:editPlanSchema,maxTokens:3500,timeoutMs:replay?90000:remainingMs,sessionId:id},replay);
     receipts.push({id:result.receiptId,usage:result.usage,model:result.model});
     const plan=result.data;
     if(Number(result.usage?.prompt_tokens)>6000)invalid('第二段备料输入超过6000 token；已保存回答，停止新增调用。');
@@ -126,7 +128,11 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     const engineer=plan.engineer_questions.map(q=>({...q,section_ids:q.section_ids.flatMap(id=>changes.map((e,i)=>e.subquestion===id?`change-${i}`:'').filter(Boolean))}));
     prep={...prep,subquestions,edit_plan:editPlan,conclusion:changes.length?'upgrade':'no_change',outline,titles:plan.titles,hooks:plan.hooks,engineer_questions:engineer,output_type:prep.output_type==='auto'?(page?'update':'guide'):prep.output_type};
     await complete('ready');return {status:'ready',subquestions:subquestions.length,changes:changes.length};
-  }catch(error){await complete('failed',String(error instanceof Error?error.message:error).slice(0,500));throw error;}
+  }catch(error){
+    const receiptId=failedReceiptId(error);
+    if(failureKind(error)==='unknown')prep={...prep,model_outcome:'unknown',pending_receipt_id:receiptId};
+    await complete('failed',failureKind(error)==='unknown'?`调用 ${receiptId} 结果待核对，可能已计费；未重复调用。已保存拆题与检索结果。`:String(error instanceof Error?error.message:error).slice(0,500));throw error;
+  }
 }
 
 export function confirmedFragmentPlan(raw:Prep,input:{article_ids:string[];outline:{id:string;include:boolean}[]},pitch:Pitch){

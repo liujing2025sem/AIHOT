@@ -1,6 +1,6 @@
 # AIHOT LIVE：现在有效的决定、底线和状态
 
-> 先读本文件，再读 `docs/aihot-exec-plan-20261108-v2.md`。其他规划文档（v3、v4、v4.1、v5、执行计划 v1、Chat 参谋任务包）只作参考；与本文件冲突时，以本文件为准。
+> 先读本文件，再读 `docs/aihot-pitch-prd-v2-20261108.md`（当前 Goal）和 `docs/aihot-exec-plan-20261108-v2.md`。其他旧规划只作参考；用户当前明确指令优先。
 >
 > 维护规则：Codex 每次合并后更新“状态”和“下一步”，每节不超过 5 行。改“决定”要有用户的原话；加“底线”要附一个真实发生的失败例子，并且不超过推进工作的 1/5。
 >
@@ -38,12 +38,33 @@
 
 ## 状态（2026-11-08，Codex目标机核验）
 
-- main 为 `504ce20`；PR #17（WP 草稿）CI [42469856336](https://github.com/liujing2025sem/AIHOT/actions/runs/42469856336) 已通过，真实已批准稿推送仍待人工审稿，未合并。
-- 目标已确定为 WorkBuddy `K:/codex/AIHOT-wbtest`，入口 53181；迁移输出 database is up to date，专用 Studio worker 已运行，只处理手动备料/成稿。
-- 命题采编分支 `codex/pitch-desk-v1-20261108` 基于 PR #17。相关后端 42/42，浏览器 4/4，类型检查和构建通过。真实尺寸指南首轮133秒，次轮130秒；修检索后8候选，但7条外部候选仅弱相关。第二轮已保存响应经字段名修复免费重放成功。
-- MiP 重复命题返回原任务；未重复调用模型。尺寸指南真实成稿300秒超时，回执12为unknown，无新稿，不重复调用。已有MiP编辑稿v3仍待人工批准；未发布，不声称SEO/GEO收益。
+- PR #17 已按 D-08 的人工审批例外合并，main 为 `3cfe992`；对应 CI [42469856336](https://github.com/liujing2025sem/AIHOT/actions/runs/42469856336) 通过，真实文章推送仍待本人批准。
+- PR #18 `c250231` 保持草稿并改以 main 为基线；新工作在 PR #19 `codex/pitch-fragments-v2-20261108`。真实完整升级稿未交出，不能用代码测试代替实测合并条件。
+- 目标机 `K:/codex/AIHOT-wbtest`、53181 已加载片段采编；无需聊天 Agent 代写。86 个旧页块在本地拼装验证中逐字节保留；数字/单片段超时/界面经合成测试。
+- 本轮真实回执14：微测试43输入/30输出token、3.465秒；15：拆题6题，2617/2069token、24.741秒；16：编辑计划等45秒后unknown，未重试。整轮备料69.921秒但没有完整结果，不能算速度达标。
+- 原回执12仍unknown；MiP v3仍待审、未代批。6098没有新升级稿；本轮尚未调用片段成稿，没有推送或公开发布。实际费用未知。
 
 ## 下一步
 
-1. 查看命题 PR 的目标机回执和真实截图；按证据确认备料、生成并人工批准，再推 WordPress 草稿。保留现有 Industry News 分类。
-2. 补充公司事实黑名单须用户确认内容；未配置时如实显示。PDF 抽取尚未验证。人工确认时间与最终发布均未代签。
+1. 当前调用16结果未知：不得重试、不得以改版本/输入绕成第二次收费；先交调用表和CI，由用户决定模型安排。本轮还没有获得可用编辑计划。
+2. 工程代码可继续免费验证/重放已有回答。未来独立任务的第二段会用90秒总预算的剩余时间，而不是固定45秒；此修正未对回执16重新调用。
+3. 未知结果不证明唯一根因：微测试只证明当时可用；历史另一次整页回执13为37711输入/18379输出token、226秒，属于不同任务，不能拿来验收6098。
+
+## 参考资料（D-17，12入口覆盖10类常青问题）
+
+清单机器版为 `industry/reference-pages.json`，信源 `studio-reference-pages`（参考资料），复用正文抽取，不按新闻新鲜度淘汰。2026-11-08 实测10个有可读正文，两个403原样保留为未接入；未绕过限制。参考事实必须保留其领域、地区和适用边界。
+
+| 主题 | 官方/机构入口 | 抽取结果 |
+|---|---|---|
+| 广告牌尺寸 | [OAAA Media Formats](https://oaaa.org/resources/media-formats/) | 可读 |
+| 英尺与米换算 | [NIST U.S. Survey Foot](https://www.nist.gov/pml/us-surveyfoot) | 可读 |
+| 像素计算输入 | [NIST Conversion Factors](https://www.nist.gov/pml/us-surveyfoot/revised-unit-conversion-factors) | 可读；像素由代码计算 |
+| 面积与单位 | [NIST SI Appendix B9](https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors/nist-guide-si-appendix-b9) | 可读 |
+| 亮度与照度 | [NIST Candela](https://www.nist.gov/si-redefinition/candela) | 可读 |
+| 功率与电量 | [Virginia Tech Energy Use](https://www.pubs.ext.vt.edu/2901/2901-9014/2901-9014.html) | 可读，不能套用家电功率 |
+| 器件与整机效率 | [US DOE LED Basics](https://www.energy.gov/cmei/ssl/led-basics) | 可读，照明资料不是直显屏实测 |
+| 户外电气安装 | [OSHA 1910.303](https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.303) | 403，未接入 |
+| 招牌许可 | [OAAA Laws](https://oaaa.org/policy-advocacy/general-information/laws-regulations/) | 可读，仅美国概览 |
+| 白点与色温 | [CIE CCT](https://www.cie.co.at/eilvterm/17-23-068) | 可读 |
+| 广告牌尺寸补充 | [OAAA Cause Related Formats](https://oaaa.org/become-an-oaaa-cause-related-campaign-partner/) | 可读，区分画面像素与物理尺寸 |
+| 亮度单位补充 | [IES Luminance](https://www.ies.org/definitions/si-unit-of-luminance/) | 403，未接入 |

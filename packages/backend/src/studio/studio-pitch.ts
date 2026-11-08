@@ -20,6 +20,7 @@ const inputSchema=z.object({question:z.string().trim().min(4).max(1000),privacy_
 type Material=Awaited<ReturnType<typeof searchPitchMaterials>>[number]&{existing_page?:boolean};
 export type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
   workflow_version?:2;
+  model_outcome?:'unknown';pending_receipt_id?:number|null;
   version:number;status:'preparing'|'ready'|'insufficient'|'failed'|'confirmed';question:string;output_type:z.infer<typeof pitchType>;existing_url:string;links:string[];
   started_at:string;finished_at?:string;question_en?:string;keywords?:string[];entities?:string[];materials?:Material[];
   related_pages?:{title:string;url:string}[];blacklist?:{configured:boolean;blocked:number;pending:number};
@@ -80,6 +81,7 @@ export async function revisePitch(id:string,input:unknown,actor:string){
     if(!old||old.version!==b.version)throw new Conflict('备料卡已变化，请刷新。');
     if(card.task_id)invalid('已经建立成稿任务，请在原任务继续。');
     if(old.status==='preparing')invalid('备料正在进行，请等待结果。');
+    if(old.model_outcome==='unknown')invalid('已有备料调用结果待核对，不会用重新备料重复发送。');
     const prep:Prep={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString()};
     await tx`UPDATE studio_recommendations SET document=${tx.json({...card.document,existing_url:b.existing_url,prep} as never)},updated_by=${actor},updated_at=now() WHERE id=${id}`;
     await enqueue(QUEUES.studioPrep,{cardId:id,version:prep.version,actor,phase:'prepare'},{singletonKey:`${id}:${prep.version}`,retryLimit:0},tx);
