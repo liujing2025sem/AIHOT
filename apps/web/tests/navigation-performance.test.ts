@@ -92,15 +92,18 @@ test('SSR list and visited query variants return offline without another read',a
     await expect(page.getByRole('link',{name:'性能检查文章',exact:true})).toBeVisible({timeout:1500});
     await context.setOffline(false);
     await page.getByRole('button',{name:/^筛选/}).click();
-    await page.getByRole('link',{name:'模型',exact:true}).click();
-    await expect(page.getByRole('link',{name:'分类 ai-models',exact:true})).toBeVisible();
+    for (const name of ['Components & ICs', 'Control & Software', 'Displays & Projects', 'Market & DOOH', 'Consumer & Near-eye']) {
+      await expect(page.getByRole('link',{name,exact:true})).toBeVisible();
+    }
+    await page.getByRole('link',{name:'Components & ICs',exact:true}).click();
+    await expect(page.getByRole('link',{name:'分类 components-ics',exact:true})).toBeVisible();
     await page.getByRole('button',{name:/^筛选/}).click();
-    await page.getByRole('link',{name:'产品',exact:true}).click();
-    await expect(page.getByRole('link',{name:'分类 ai-products',exact:true})).toBeVisible();
+    await page.getByRole('link',{name:'Control & Software',exact:true}).click();
+    await expect(page.getByRole('link',{name:'分类 control-software',exact:true})).toBeVisible();
     await context.setOffline(true);
     await page.goBack();
-    await expect(page.getByRole('link',{name:'分类 ai-models',exact:true})).toBeVisible({timeout:1500});
-    await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href',origin+'/?category=ai-models');
+    await expect(page.getByRole('link',{name:'分类 components-ics',exact:true})).toBeVisible({timeout:1500});
+    await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href',origin+'/?category=components-ics');
   }finally{await context.close();}
 });
 
@@ -153,17 +156,17 @@ test('a press on a selected link preserves visited data and the next revisit sta
   page.on('request',request=>{if(request.url().includes('.data'))requests.push(request.url());});
   try{
     await visit(page,origin+'/');
-    await page.getByRole('link',{name:'模型',exact:true}).click();
-    await expect(page.getByRole('link',{name:'分类 ai-models',exact:true})).toBeVisible();
-    await page.getByRole('link',{name:'模型',exact:true}).dispatchEvent('pointerdown',{button:0,pointerType:'mouse',isPrimary:true});
+    await page.getByRole('link',{name:'Components & ICs',exact:true}).click();
+    await expect(page.getByRole('link',{name:'分类 components-ics',exact:true})).toBeVisible();
+    await page.getByRole('link',{name:'Components & ICs',exact:true}).dispatchEvent('pointerdown',{button:0,pointerType:'mouse',isPrimary:true});
     await page.waitForTimeout(150);
-    await page.getByRole('link',{name:'产品',exact:true}).click();
-    await expect(page.getByRole('link',{name:'分类 ai-products',exact:true})).toBeVisible();
-    await page.getByRole('link',{name:'产品',exact:true}).dispatchEvent('pointerdown',{button:0,pointerType:'mouse',isPrimary:true});
+    await page.getByRole('link',{name:'Control & Software',exact:true}).click();
+    await expect(page.getByRole('link',{name:'分类 control-software',exact:true})).toBeVisible();
+    await page.getByRole('link',{name:'Control & Software',exact:true}).dispatchEvent('pointerdown',{button:0,pointerType:'mouse',isPrimary:true});
     await page.waitForTimeout(150);
     const before=requests.length;
-    await page.getByRole('link',{name:'模型',exact:true}).click();
-    await expect(page.getByRole('link',{name:'分类 ai-models',exact:true})).toBeVisible();
+    await page.getByRole('link',{name:'Components & ICs',exact:true}).click();
+    await expect(page.getByRole('link',{name:'分类 components-ics',exact:true})).toBeVisible();
     assert.deepEqual(requests.slice(before),[],'neither prefetch nor navigation may evict and reload a still-valid visited page');
   }finally{await context.close();}
 });

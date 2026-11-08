@@ -15,7 +15,7 @@ test("topic directory and pool counts stop reusing a withdrawn entry after one m
   await sql`INSERT INTO articles(id,source_id,identity_key,url,title,timeline_at,discovered_at)
     VALUES(${id},${id},${id},${`https://example.org/${id}`},'Kinglight',now(),now())`;
   await sql`INSERT INTO publications(article_id,source_id,title,summary,url,timeline_at,discovered_at,sort_at,selected,eligible,visible_after,tags,channel,category)
-    VALUES(${id},${id},'Kinglight 更新','摘要',${`https://example.org/${id}`},now(),now(),now(),true,true,now()-interval '1 minute',ARRAY['entity:kinglight'],'news','ai-products')`;
+    VALUES(${id},${id},'Kinglight 更新','摘要',${`https://example.org/${id}`},now(),now(),now(),true,true,now()-interval '1 minute',ARRAY['entity:kinglight'],'news','control-software')`;
   assert.equal((await loadTopicPage("kinglight", 1))!.topic.poolTotal, 1);
   await sql`UPDATE publications SET visibility='withdrawn' WHERE article_id=${id}`;
   t.mock.timers.tick(61_000);

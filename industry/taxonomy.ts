@@ -12,12 +12,11 @@
  * feedLabel 是分类 RSS 标题里的名字（不写就用 label）。公开接口、RSS 和 MCP 里要把一类并进另一类发布，写在站点设置里（site/site.ts 的 PUBLIC_CATEGORIES）。
  */
 export const CATEGORIES = [
-  { key: "ai-models", tagColor: "indigo", label: "模型", feedLabel: "AI 模型", section: "模型发布/更新", guide: "模型本身的发布、版本、权重开放、能力或价格变化，以及既有榜单上的模型成绩。公布一次跑分不是发布新基准，也不是教程。" },
-  { key: "ai-products", tagColor: "turquoise", label: "产品", feedLabel: "AI 产品", section: "产品发布/更新", guide: "可使用的 AI 产品、功能、应用、工具、API、平台和工程组件的发布更新。模型厂商发布的推理框架、算子库、硬件适配组件仍是产品，不能因为厂商名归成模型。" },
-  { key: "industry", tagColor: "orange", label: "行业", feedLabel: "行业动态", section: "行业动态", guide: "已发生的公司经营、融资并购、人事、合作、诉讼、政策、真实安全事故及调查进展。新闻由当事人发帖、带有态度，也不因此变成观点。" },
-  { key: "paper", tagColor: "violet", label: "论文", feedLabel: "论文", section: "论文研究", guide: "以新研究方法、实验设计与发现为核心的论文、技术报告、新基准或研究数据集。系统性红队实验属于研究；既有榜单成绩归模型，真实事故的新闻调查归行业。" },
-  { key: "tip", tagColor: "green", label: "教程", section: "技巧与观点", guide: "读者可以照着使用的方法、提示词、工具用法、工程实践复盘与技术讲解。重点是可复用的做法；单纯发布工具归产品，只有态度和预测而无做法归观点。", commentary: true },
-  { key: "opinion", tagColor: "purple", label: "观点", section: "技巧与观点", guide: "重点是作者的解释、判断、主张、预测、评论或访谈观点。讨论市场不自动归行业，作者是名人不自动归观点。", commentary: true },
+  { key: "components-ics", tagColor: "indigo", label: "Components & ICs", section: "Components & ICs", guide: "以 LED 芯片、封装（SMD、COB、MiP 等）、驱动 IC、电源、材料、制造工艺与器件可靠性为主。整屏采用某器件但重点在整屏或部署时，归 Displays & Projects。" },
+  { key: "control-software", tagColor: "turquoise", label: "Control & Software", section: "Control & Software", guide: "以发送和接收卡、视频处理器、显示控制系统、校准软件、固件和互操作为主。若重点是具体场地部署或整屏应用，归 Displays & Projects。" },
+  { key: "displays-projects", tagColor: "violet", label: "Displays & Projects", section: "Displays & Projects", guide: "专业整屏、箱体、商显、体育场馆、虚拟制作或交通等项目，以及安装和交付。某块广告屏的实际安装归本节；广告网络经营、投放规则和市场规模归 Market & DOOH。" },
+  { key: "industry", tagColor: "orange", label: "Market & DOOH", section: "Market & DOOH", guide: "行业经营、财报、并购、供需、政策、展会与数字户外广告（DOOH）媒体运营、交易和测量。展会上有明确新品或项目时，按本条报道的实际对象归类。" },
+  { key: "consumer-near-eye", tagColor: "green", label: "Consumer & Near-eye", section: "Consumer & Near-eye", guide: "以电视、显示器、笔记本、穿戴设备等消费级显示，以及 AR/VR、近眼显示和相关实测为主。仅介绍可用于消费显示的上游器件或工艺，且未以消费设备或近眼应用为重点时，归 Components & ICs。" },
 ] as const satisfies ReadonlyArray<{ key: string; tagColor: string; label: string; feedLabel?: string; section: string; guide: string; commentary?: true }>;
 
 /**
@@ -25,10 +24,10 @@ export const CATEGORIES = [
  * category 是类别，tag 是标签，两者都对上才算；unit 接在数字后面。
  * 没有这样一类的行业设成 null，报头就不显示这个数。
  */
-export const RELEASE: { category: string; tag: string; unit: string } | null = { category: "ai-models", tag: "模型发布", unit: "个新模型" };
+export const RELEASE: { category: string; tag: string; unit: string } | null = null;
 
 /** 周报月报的总述可以直接写、不必在报道里找到出处的行业通用词（小写）。站名会自动算进去。 */
-export const PLAIN_TERMS: readonly string[] = ["ai", "api", "llm", "gpu", "agi", "ceo", "ipo"];
+export const PLAIN_TERMS: readonly string[] = ["led", "ic", "smd", "dip", "cob", "mip", "pwm", "hdr", "vms", "dooh", "ar", "vr", "api", "ceo", "ipo"];
 
 /**
  * 内容理解一步给每篇资料判的“内容类型”（写在 prompts/content-understanding.md 里，改了类型要同步改那份提示词）。
@@ -46,7 +45,7 @@ export const CATEGORY_TAGS = [
 
 /** 可选的主题标签。 */
 export const TOPIC_TAGS = [
-  "LED控制系统", "LED封装", "LED驱动IC", "LED电源", "户外LED显示", "LED采购选型", "LED项目案例", "LED安装维护",
+  "LED控制系统", "LED封装", "LED驱动IC", "LED电源", "户外LED显示", "LED采购选型", "LED项目案例", "LED安装维护", "DOOH", "consumer-display", "近眼显示",
   "Agent", "编码", "推理", "多模态", "语音", "视频", "图像生成", "RAG", "端侧", "数据/训练", "搜索", "部署/工程", "开源生态", "具身智能", "MCP/工具调用",
 ] as const;
 

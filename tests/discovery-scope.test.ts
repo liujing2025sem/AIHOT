@@ -19,7 +19,7 @@ test("llms and sitemap build from current topic scope rather than a cached direc
     await sql`INSERT INTO articles (id,source_id,identity_key,url,title,timeline_at,discovered_at)
       VALUES (${id},${source},${id},${`https://example.org/${id}`},'Kinglight',now(),now())`;
     await sql`INSERT INTO publications (article_id,source_id,title,summary,url,timeline_at,discovered_at,sort_at,selected,eligible,visible_after,tags,channel,category)
-      VALUES (${id},${source},'Kinglight 发布 LED 封装器件','Summary',${`https://example.org/${id}`},now(),now(),now(),true,true,now() - interval '1 minute',ARRAY['entity:kinglight'],'news','ai-products')`;
+      VALUES (${id},${source},'Kinglight 发布 LED 封装器件','Summary',${`https://example.org/${id}`},now(),now(),now(),true,true,now() - interval '1 minute',ARRAY['entity:kinglight'],'news','components-ics')`;
   }
   assert.equal((await topicPageCounts()).find((topic) => topic.slug === "kinglight")!.indexable, true);
   await sql`UPDATE publications SET visibility = 'withdrawn' WHERE source_id = ${source}`;
