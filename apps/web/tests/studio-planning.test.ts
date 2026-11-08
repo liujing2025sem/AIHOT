@@ -225,7 +225,7 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
         outline:[{id:'s1',heading:'先核对图纸',include:true}],engineer:{mode:'conservative',name:'',reply:'',answers:[{question_id:'q1',choice:'A',note:''}]}}},
     ]);
     await page.getByRole('button',{name:'生成英文稿',exact:true}).click();
-    await expect(page.getByText('英文成稿已排队。',{exact:false}).first()).toBeVisible();
+    await expect(page.getByText(/英文稿正在后台处理/).first()).toBeVisible();
     assert.deepEqual(writes.at(-1),{method:'POST',path:pitches+'/'+id+'/generate',body:{}});
     await page.reload();
     await expect(page.getByRole('link',{name:'继续原采编任务 →',exact:true})).toHaveAttribute('href','/admin/studio?tab=tasks#task-'+taskId);
