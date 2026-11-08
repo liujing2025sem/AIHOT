@@ -18,8 +18,8 @@ const policyKey='studio.recommendations.weekly_limit';
 const daysKey='studio.recommendations.lookback_days',refreshKey='studio.recommendations.last_refresh';
 const plain=(s:string)=>s.replace(/\s+/g,' ').trim();
 export type PlanningMaterial={id:string;revision:number;title:string;body_text:string|null;body_status:string;url:string;source_id:string;published_at:string|Date|null;discovered_at?:string|Date|null;backfill_reason?:string|null;imported_title?:string|null;previous_revision?:number|null;previous_title?:string|null;previous_body?:string|null;first_party?:boolean;source_kind?:string;reference_only?:boolean};
-export type Recommendation={key:string;trigger:'A'|'E'|'B'|'C'|'D';question_id:string|null;article_id:string|null;article_revision:number|null;title:string;change:string;evidence:{url:string;date:string|null;discovered_at?:string|null;revision:number|null;before?:string;after?:string;query?:string}[];reason:string;action:'new_brief'|'new_explainer'|'new_tutorial'|'update_page';channels:string[];existing_url:string;requires_first_party:boolean;needs_material:boolean;demand_mentions:number;priority:number;bound_article_ids?:string[];evidence_checklist?:{source_body:boolean;existing_page_body:boolean|null;first_party:boolean|null};affected_page?:{url:string;paragraph:string|null;article_id:string|null;revision:number|null}|null};
-type RecommendationCounts={total:number;adopted:number;rejected:number;update_opportunities:number;updates_completed:number;baseline_missed_updates:number;baseline_unknown:number};
+export type Recommendation={key:string;trigger:'A'|'E'|'B'|'C'|'D'|'M';question_id:string|null;article_id:string|null;article_revision:number|null;title:string;change:string;evidence:{url:string;date:string|null;discovered_at?:string|null;revision:number|null;before?:string;after?:string;query?:string}[];reason:string;action:'new_brief'|'new_explainer'|'new_tutorial'|'update_page';channels:string[];existing_url:string;requires_first_party:boolean;needs_material:boolean;demand_mentions:number;priority:number;bound_article_ids?:string[];evidence_checklist?:{source_body:boolean;existing_page_body:boolean|null;first_party:boolean|null};affected_page?:{url:string;paragraph:string|null;article_id:string|null;revision:number|null}|null};
+type RecommendationCounts={total:number;adopted:number;rejected:number;update_opportunities:number;updates_completed:number;baseline_missed_updates:number;baseline_unknown:number;manual_total:number;manual_adopted:number;manual_rejected:number};
 type StoredRecommendation={id:string;status:string;created_at:Date;document:Recommendation;stale?:boolean;article_id:string|null;article_revision:number|null;current_revision?:number|null;question_id:string|null;task_id:string|null;baseline_found:boolean|null;completed:boolean;[key:string]:unknown};
 const actionFor=(q:StudioQuestion):Recommendation['action']=>q.existing_url?'update_page':q.content_type==='tutorial'?'new_tutorial':q.content_type==='news'?'new_brief':'new_explainer';
 const readership=(q:StudioQuestion,profiles:DemandProfiles)=>profiles.groups.filter(g=>q.roles.includes(g.role)&&(g.scenario===q.scenario||g.needTags.some(tag=>keywordMatch(q,tag.tag)>0)));
@@ -33,14 +33,14 @@ function changedParagraphs(before:string,after:string){
   return {before:a.slice(offset,offset+350),after:b.slice(offset,offset+350),full_before:a,full_after:b};
 }
 
-export function enrichRecommendation(card:Recommendation,materials:PlanningMaterial[],question?:StudioQuestion){
+export function enrichRecommendation(card:Recommendation,materials:PlanningMaterial[],question?:StudioQuestion):Recommendation&{evidence_checklist:NonNullable<Recommendation['evidence_checklist']>}{
   const bound=new Set([card.article_id,...(card.bound_article_ids??[])]),readable=(m:PlanningMaterial)=>m.body_status==='ok'&&!!m.body_text?.trim();
   const page=card.existing_url?materials.find(m=>m.url===card.existing_url&&readable(m)):undefined;
   const source=materials.filter(m=>bound.has(m.id)&&readable(m));
   const paragraphs=page?.body_text?.split(/\r?\n+/).filter(p=>p.trim())??[];
   const relevant=question?paragraphs.map(text=>({text,n:keywordMatch(question,text)})).filter(p=>p.n>0).sort((a,b)=>b.n-a.n)[0]?.text:null;
   const checklist={source_body:card.article_id?source.some(m=>m.id===card.article_id):source.some(m=>m.url!==card.existing_url),existing_page_body:card.existing_url?!!page&&bound.has(page.id):null,first_party:card.requires_first_party?source.some(m=>m.first_party&&m.source_kind==='external'):null};
-  return {...card,evidence_checklist:checklist,needs_material:Object.values(checklist).some(value=>value===false),
+  return {...card,...(card.trigger==='M'?{evidence:source.map(m=>({url:m.url,date:dateValue(m.published_at),revision:m.revision}))}:{}),evidence_checklist:checklist,needs_material:Object.values(checklist).some(value=>value===false),
     affected_page:card.existing_url?{url:card.existing_url,paragraph:relevant?.slice(0,600)??null,article_id:page?.id??null,revision:page?.revision??null}:null};
 }
 export function planRecommendations(input:{questions:StudioQuestionRow[];materials:PlanningMaterial[];profiles:DemandProfiles;search:SearchSignal[];now:string;ownedDomains?:readonly string[]}):Recommendation[]{
@@ -114,13 +114,30 @@ export async function recommendationOverview(){
   const material=await cardMaterials(rows.map(r=>r.document));
   const questions=await studioQuestions();
   const queue=allocateRecommendationCapacity(rows.map(r=>({...r,document:enrichRecommendation(r.document,material,questions.rows.find(q=>q.id===r.question_id)?.document)})),setting?.value??null);
-  const [counts]=await sql<RecommendationCounts[]>`SELECT count(*)::int AS total,count(*) FILTER(WHERE status='adopted')::int AS adopted,count(*) FILTER(WHERE status='rejected')::int AS rejected,
-    count(*) FILTER(WHERE document->>'action'='update_page')::int AS update_opportunities,count(*) FILTER(WHERE document->>'action'='update_page' AND completed)::int AS updates_completed,
-    count(*) FILTER(WHERE document->>'action'='update_page' AND baseline_found=false)::int AS baseline_missed_updates,
-    count(*) FILTER(WHERE document->>'action'='update_page' AND baseline_found IS NULL)::int AS baseline_unknown FROM studio_recommendations`;
-  const reasons=await sql`SELECT rejection_reason AS reason,count(*)::int AS count FROM studio_recommendations WHERE status='rejected' GROUP BY rejection_reason ORDER BY count(*) DESC,rejection_reason`;
+  const [counts]=await sql<RecommendationCounts[]>`SELECT count(*) FILTER(WHERE document->>'trigger'<>'M')::int AS total,count(*) FILTER(WHERE document->>'trigger'<>'M' AND status='adopted')::int AS adopted,count(*) FILTER(WHERE document->>'trigger'<>'M' AND status='rejected')::int AS rejected,
+    count(*) FILTER(WHERE document->>'trigger'<>'M' AND document->>'action'='update_page')::int AS update_opportunities,count(*) FILTER(WHERE document->>'trigger'<>'M' AND document->>'action'='update_page' AND completed)::int AS updates_completed,
+    count(*) FILTER(WHERE document->>'trigger'<>'M' AND document->>'action'='update_page' AND baseline_found=false)::int AS baseline_missed_updates,
+    count(*) FILTER(WHERE document->>'trigger'<>'M' AND document->>'action'='update_page' AND baseline_found IS NULL)::int AS baseline_unknown,
+    count(*) FILTER(WHERE document->>'trigger'='M')::int AS manual_total,count(*) FILTER(WHERE document->>'trigger'='M' AND status='adopted')::int AS manual_adopted,count(*) FILTER(WHERE document->>'trigger'='M' AND status='rejected')::int AS manual_rejected FROM studio_recommendations`;
+  const reasons=await sql`SELECT rejection_reason AS reason,count(*)::int AS count FROM studio_recommendations WHERE status='rejected' AND document->>'trigger'<>'M' GROUP BY rejection_reason ORDER BY count(*) DESC,rejection_reason`;
   const decided=counts.adopted+counts.rejected;
-  return {...queue,historicalVersionCount:history.n,lookbackDays:days?.value??null,ownershipConfigured:editorialOwnedDomains.length>0,weeklyLimit:setting?.value??null,metrics:{...counts,adoptionRate:decided?counts.adopted/decided:null,denominator:'采纳数+否决数；稍后再看与未处理不计分母',reasons},note:'人工分钟和调用成本继续由现有回执记录，不作为本期验收门槛。'};
+  return {...queue,historicalVersionCount:history.n,lookbackDays:days?.value??null,ownershipConfigured:editorialOwnedDomains.length>0,weeklyLimit:setting?.value??null,metrics:{...counts,adoptionRate:decided?counts.adopted/decided:null,denominator:'自动推荐采纳数+否决数；人工选题、稍后再看与未处理不计分母',reasons},note:'人工分钟和调用成本继续由现有回执记录，不作为本期验收门槛。'};
+}
+export async function createManualRecommendation(input:unknown,actor:string){
+  const body=z.object({question_id:z.string().min(1),question_version:z.number().int().positive()}).strict().parse(input);
+  return sql.begin(async tx=>{
+    const [question]=await tx<StudioQuestionRow[]>`SELECT id,document,version,created_at,updated_at FROM studio_questions WHERE id=${body.question_id} FOR SHARE`;
+    if(!question||!question.document.active)invalid('请选择问题地图中启用的问题，再发起人工选题。');
+    if(question.version!==body.question_version)throw new Conflict('问题已修改，请刷新后确认当前问法再发起。');
+    const q=question.document,key=`manual:${question.id}:${question.version}`,id=`recommendation-${sha256(key).slice(0,32)}`;
+    if(actionFor(q)==='new_brief')invalid('人工选题用于解释文、工具页、教程或旧页更新；时讯请使用近期新闻卡。');
+    const document:Recommendation={key,trigger:'M',question_id:question.id,article_id:null,article_revision:null,title:q.question,
+      change:'运营从问题地图主动发起，等待绑定能回答该问题的原文。',reason:'人工选题；保留材料原始日期，补齐证据后继续采编。',evidence:[],action:actionFor(q),channels:['blog','social'],existing_url:q.existing_url,requires_first_party:q.requires_first_party,needs_material:true,demand_mentions:0,priority:2};
+    const inserted=await tx`INSERT INTO studio_recommendations(id,input_key,question_id,document,updated_by) VALUES(${id},${key},${question.id},${tx.json(document)},${actor}) ON CONFLICT DO NOTHING RETURNING id`;
+    if(inserted.length)await audit(actor,'studio.recommendation.manual',`studio-recommendation:${id}`,null,null,{question_id:question.id,question_version:question.version},{db:tx});
+    const [card]=await tx<{id:string;status:string;task_id:string|null}[]>`SELECT id,status,task_id FROM studio_recommendations WHERE input_key=${key}`;
+    return {...card,created:inserted.length>0};
+  });
 }
 export async function setRecommendationCapacity(input:unknown,actor:string){
   const body=z.object({weekly_limit:z.number().int().min(5).max(15),lookback_days:z.number().int().positive().optional()}).strict().parse(input);
@@ -189,7 +206,7 @@ export async function decideRecommendation(id:string,input:unknown,actor:string)
       const queue=allocateRecommendationCapacity(pending.map(r=>({...r,stale:r.article_id!==null&&r.current_revision!==r.article_revision})),policy?.value??null);
       if(queue.rows.some(r=>r.id===id&&r.expired))invalid('该短讯已超过7天新鲜窗口，保留作历史参考，不再采纳为时讯。');
       if(!queue.rows.some(r=>r.id===id&&!r.stale&&!r.expired&&!r.capacity_full))invalid('待处理名额已满，请先处理更高优先级的卡片。');
-      const task=await createStudioTask({article_ids:articleIds,planning_context:{card_id:id,question_id:card.question_id,action:document.action,question:document.title,existing_url:document.existing_url,requires_first_party:document.requires_first_party}},actor,tx);
+      const task=await createStudioTask({article_ids:articleIds,planning_context:{card_id:id,question_id:card.question_id,selection_origin:document.trigger==='M'?'operator':'automatic',action:document.action,question:document.title,existing_url:document.existing_url,requires_first_party:document.requires_first_party}},actor,tx);
       await tx`UPDATE studio_recommendations SET status='adopted',task_id=${task.id},updated_by=${actor},updated_at=now() WHERE id=${id}`;
       await audit(actor,'studio.recommendation.adopt',`studio-recommendation:${id}`,null,null,{task_id:task.id},{db:tx});
       return {id,status:'adopted',task_id:task.id};
