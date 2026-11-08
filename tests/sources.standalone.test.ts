@@ -338,11 +338,12 @@ test("a source's language is an Accept-Language value, refused by kinds that rea
   for (const kind of ["x_search", "mp_account", "external"] as const) assert.deepEqual(unsupportedConfig(kind, { acceptLanguage: "en" }), ["acceptLanguage"], kind);
 });
 
-test("LED seed enables verified dated lists and pauses date repair, version and search feeds", () => {
+test("LED seed enables verified news, version baselines and search discovery while pausing date repair", () => {
   const { sources } = JSON.parse(readFileSync(new URL("../industry/sources.json", import.meta.url), "utf8"));
   const dated = new Set([
     "web-kinglight-news", "web-nationstar-product-news", "web-meanwell-new-products",
     "web-colorlight-news", "web-huidu-news", "rss-ledinside-news",
+    "web-huidu-hdplayer", "web-colorlight-software", "web-colorlight-ledvision", "web-colorlight-firmware", "rss-led-search-components", "rss-led-search-micro-led", "rss-led-search-control", "rss-led-search-projects", "rss-led-search-virtual-production", "rss-led-search-dooh", "rss-led-search-consumer", "rss-led-search-near-eye",
   ]);
   const enabled = sources.filter((s: SourceRow) => s.enabled);
   assert.deepEqual(new Set(enabled.map((s: SourceRow) => s.id)), dated);
