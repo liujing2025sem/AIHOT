@@ -22,7 +22,7 @@ type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
   version:number;status:'preparing'|'ready'|'insufficient'|'failed'|'confirmed';question:string;output_type:z.infer<typeof pitchType>;existing_url:string;links:string[];
   started_at:string;finished_at?:string;question_en?:string;keywords?:string[];entities?:string[];materials?:Material[];
   related_pages?:{title:string;url:string}[];blacklist?:{configured:boolean;blocked:number;pending:number};
-  error?:string;link_errors?:{url:string;reason:string}[];metrics?:{preparation_ms:number;replayed?:boolean;replay_ms?:number;confirmation_elapsed_ms?:number;receipts:{id:number;usage:unknown;model:string}[]};
+  error?:string;link_errors?:{url:string;reason:string}[];metrics?:{preparation_ms:number|null;replayed?:boolean;replay_ms?:number;confirmation_elapsed_ms?:number;receipts:{id:number;usage:unknown;model:string}[]};
 };
 type Card={id:string;question_id:string;task_id:string|null;status:string;document:Record<string,any>&{prep?:Prep};updated_at:Date;task_state?:string|null};
 const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/${name}.md`,import.meta.url),'utf8');
@@ -35,7 +35,7 @@ export async function listPitches(){
   const rows=await sql<Card[]>`SELECT * FROM studio_recommendations WHERE document ? 'prep' ORDER BY updated_at DESC LIMIT 50`;
   return {rows:rows.map(view)};
 }
-export async function getPitch(id:string){const [card]=await sql<Card[]>`SELECT r.*,(SELECT state FROM studio_tasks t WHERE t.id=r.task_id) AS task_state FROM studio_recommendations r WHERE r.id=${id}`;return card?view(card):null;}
+export async function getPitch(id:string){const [card]=await sql<Card[]>`SELECT r.*,(SELECT CASE WHEN t.state='waiting' AND EXISTS(SELECT 1 FROM receipts p WHERE p.subject='studio-task:'||t.id AND p.status='unknown') THEN 'unknown' WHEN t.state='waiting' AND EXISTS(SELECT 1 FROM receipts p WHERE p.subject='studio-task:'||t.id AND p.status='pending') THEN 'writing' ELSE t.state END FROM studio_tasks t WHERE t.id=r.task_id) AS task_state FROM studio_recommendations r WHERE r.id=${id}`;return card?view(card):null;}
 
 export async function createPitch(input:unknown,actor:string){
   const b=inputSchema.parse(input),redacted=redactPitch(b.question);
@@ -153,7 +153,7 @@ export async function preparePitch(id:string,version:number,actor:string,replay=
     const facts=companyFactRules();
     const common={...prep,...query.data,materials:selected,related_pages:related,link_errors:linkErrors,blacklist:{configured:facts.configured,blocked:0,pending:0}};
     await save(common);
-    const complete=(next:Prep)=>({...next,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??0):Math.round(performance.now()-start),...(replay?{replayed:true,replay_ms:Math.round(performance.now()-start)}:{}),receipts}});
+    const complete=(next:Prep)=>({...next,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??null):Math.round(performance.now()-start),...(replay?{replayed:true,replay_ms:Math.round(performance.now()-start)}:{}),receipts}});
     if(selected.filter(m=>m.body_status==='ok'&&m.body_text).length<2&&!selected.some(m=>m.existing_page)){
       await save(complete({...common,status:'insufficient',error:'证据不足：请补充线索链接，或调整为短文章后重新核对；不生成全文。'}));return {status:'insufficient'};
     }
@@ -181,7 +181,7 @@ export async function preparePitch(id:string,version:number,actor:string,replay=
     return {status:'ready',materials:selected.length};
   }catch(error){
     const message=error instanceof Error?error.message.slice(0,300):'备料失败';
-    await save({...prep,status:'failed',error:message,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??0):Math.round(performance.now()-start),...(replay?{replayed:true,replay_ms:Math.round(performance.now()-start)}:{}),receipts}});
+    await save({...prep,status:'failed',error:message,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??null):Math.round(performance.now()-start),...(replay?{replayed:true,replay_ms:Math.round(performance.now()-start)}:{}),receipts}});
     throw error;
   }
 }

@@ -203,5 +203,42 @@
     "buyer_questions": "30 个（采购 15、工程 15），作每月 AI 引用观察集并入长文选题池",
     "evergreen_top10": "见计划第 4.3 节",
     "calendar": "2026-11 至 2027-01 共 8 个事件，日期先核官网"
+  },
+  "codex_execution_update_20261108": {
+    "takes_precedence_over_snapshot_status": true,
+    "main": "504ce20b548bd4648f92fcc0a83b9366fb53d21e",
+    "wp_pr": 17,
+    "pitch_pr": 18,
+    "pitch_branch": "codex/pitch-desk-v1-20261108",
+    "target": "K:/codex/AIHOT-wbtest",
+    "entry": "http://127.0.0.1:53181/admin/studio/pitch",
+    "category_override": "User explicitly chose existing Industry News (industry-news, ID72), not LED Display Brief.",
+    "real_sample": {
+      "first_preparation_ms": 132678,
+      "second_preparation_ms": 130349,
+      "candidates": 8,
+      "direct_existing_page": 1,
+      "other_candidates_relevance": "weak keyword matches; not seven useful sources",
+      "replayed_receipts": [
+        10,
+        11
+      ],
+      "draft_receipt": 12,
+      "draft_state": "unknown: 300s timeout; no blind retry",
+      "human_approved": false,
+      "wp_article_pushed": false
+    },
+    "tests": {
+      "related_backend": "42/42",
+      "browser": "4/4",
+      "typecheck": "passed",
+      "build": "passed"
+    },
+    "review_focus": [
+      "Do the evidence and outline materially improve the current page?",
+      "Which weak matches should be hidden without hiding useful evidence?",
+      "Reduce input and reasoning time before another paid attempt; verify receipt12 first."
+    ],
+    "status_source": "PR18 description and its final CI link; original Claude fields below retain historical context"
   }
 }

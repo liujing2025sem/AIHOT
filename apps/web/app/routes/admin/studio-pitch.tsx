@@ -376,12 +376,13 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
   const taskId = generation?.task_id ?? pitch.task_id ?? confirmation?.taskId;
   const canGenerate = status === 'confirmed' && !generation && (!taskId || !!confirmation || pitch.task_state === 'waiting');
   const preparing = status === 'preparing' && !taskId;
+  const writing = pitch.task_state === 'writing' || !!generation?.queued && !['received','blocked','unknown'].includes(pitch.task_state ?? '');
 
   useEffect(() => {
-    if (!preparing || state !== 'idle') return;
+    if (!(preparing || writing) || state !== 'idle') return;
     const timer = window.setTimeout(() => void revalidate(), 3500);
     return () => window.clearTimeout(timer);
-  }, [preparing, state, revalidate]);
+  }, [preparing, writing, state, revalidate]);
 
   async function generate() {
     if (!canGenerate) return;
@@ -389,9 +390,9 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
     if (result) setGeneration(result);
   }
 
-  if (taskId || status === 'confirmed') return <Card title="生成与继续任务" right={<Badge tone="ok">{generation?.queued ? '已排队' : taskId && !canGenerate ? '已有任务' : '已确认'}</Badge>}>
+  if (taskId || status === 'confirmed') return <Card title="生成与继续任务" right={<Badge tone="ok">{pitch.task_state === 'unknown' ? '结果待核对' : writing ? '正在成稿' : taskId && !canGenerate ? '已有任务' : '已确认'}</Badge>}>
     <div className="space-y-3">
-      <p role="status" className={muted}>{generation?.queued ? '英文成稿已排队。请在采编工作台查看进度和稿件。'
+      <p role="status" className={muted}>{pitch.task_state === 'unknown' ? '模型调用没有返回确定结果，可能已经计费。已保留任务和回执，请维护人核对后再决定是否重试。' : writing ? '英文稿正在后台处理，可以离开本页，稍后继续原任务查看结果。'
         : canGenerate ? '备料已确认。点击生成后，后台会排队写英文稿。'
         : '已有采编任务，请在工作台继续原任务并查看进度。'}</p>
       <div className="flex flex-wrap gap-2">
