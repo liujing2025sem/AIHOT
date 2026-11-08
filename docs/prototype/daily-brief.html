@@ -1,212 +1,144 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LED 商显日报 · 2026 年 11 月 2 日（版式意图稿）</title>
-<meta name="description" content="版式意图稿：每日 5–10 条 LED 商显一句话短讯，每条附原文链接。">
-<!-- 正式页每种语言一个 URL，互相用 hreflang 指向；canonical 指向自己。意图稿把两种语言放在一个文件里。 -->
-<link rel="alternate" hreflang="zh-CN" href="https://example.com/zh/daily/2026-11-02/">
-<link rel="alternate" hreflang="en" href="https://example.com/daily/2026-11-02/">
+<title>LED Display Brief · WordPress 区块意图稿 v2</title>
+<meta name="description" content="版式意图稿 v2：短讯作为 WordPress 文章发布。正文是一段固定结构的 HTML 区块，样式是一段限定在 .cs-brief 里的 CSS。">
 <style>
-  /* 只用系统字体：国内打不开 Google Fonts，日报也不该为字体多等一秒。 */
-  :root {
-    --bg: #fbfaf7; --ink: #13191c; --muted: #5c676c; --accent: #0a6f75; --brand: #2ce2e8; --hair: #e2e0da;
-    --serif-zh: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
-    --sans-zh: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-    --serif-en: "Iowan Old Style", "Palatino Linotype", Palatino, "Source Serif 4", Georgia, serif;
-    color-scheme: light dark;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #111517; --ink: #e7ecee; --muted: #9aa6ab; --accent: #5fd6db; --hair: #263034; }
-  }
-  :root[data-theme="dark"] { --bg: #111517; --ink: #e7ecee; --muted: #9aa6ab; --accent: #5fd6db; --hair: #263034; }
+  /* ===== 原型外壳（只为在浏览器里预览，正式不需要） ===== */
+  body { margin: 0; background: #f1f0ec; font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #13191c; }
+  .proto { padding: 10px 16px; font-size: 13px; color: #5c676c; border-bottom: 1px dashed #d9d6cf; background: #fbfaf7; }
+  .proto b { color: #13191c; }
+  .proto button { font: inherit; border: 1px solid #c9c5bc; background: none; padding: 1px 10px; margin-left: 6px; cursor: pointer; color: inherit; }
+  .stage { max-width: 760px; margin: 24px auto 64px; padding: 0 16px; }
+  .stage > h3 { font-size: 13px; color: #5c676c; font-weight: 600; letter-spacing: .06em; margin: 32px 0 10px; }
+  .wp-title { font: 700 clamp(26px, 5vw, 36px)/1.2 Georgia, serif; margin: 0 0 6px; }
+  .wp-meta { font-size: 13px; color: #5c676c; margin-bottom: 20px; }
+  .wp-post { background: #fbfaf7; padding: 28px clamp(16px, 4vw, 40px) 36px; border: 1px solid #e2e0da; }
 
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.75 var(--sans-zh); }
-  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
-  a:hover { border-bottom-color: var(--accent); }
-  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* ===== 正式 CSS：只作用于 .cs-brief，一次性加到 WordPress「额外 CSS」 ===== */
+  .cs-brief { --ink: #13191c; --muted: #5c676c; --accent: #0a6f75; --brand: #2ce2e8; --hair: #e2e0da; --panel: #eef4f2;
+    color: var(--ink); font: 17px/1.65 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+  .cs-brief a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .cs-brief .cs-dek { margin: 0 0 18px; font-size: 15px; color: var(--muted); border-top: 3px solid var(--brand); padding-top: 12px; }
+  .cs-brief .cs-five { background: var(--panel); padding: 14px 18px 12px; margin: 0 0 28px; }
+  .cs-brief .cs-five p { margin: 0 0 6px; font: 600 13px/1.4 -apple-system, "Segoe UI", sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .cs-brief .cs-five ol { margin: 0; padding-left: 1.3em; }
+  .cs-brief .cs-five li { margin: 4px 0; font-weight: 600; }
+  .cs-brief .cs-item { padding: 22px 0; border-bottom: 1px solid var(--hair); }
+  .cs-brief .cs-tag { margin: 0 0 4px; font: 600 12px/1.4 -apple-system, "Segoe UI", sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .cs-brief h2 { margin: 0 0 8px; font: 700 clamp(21px, 4.2vw, 25px)/1.3 Georgia, serif; }
+  .cs-brief .cs-item p { margin: 0 0 8px; }
+  .cs-brief .cs-why strong { color: var(--accent); }
+  .cs-brief .cs-more, .cs-brief .cs-src { font: 14px/1.5 -apple-system, "Segoe UI", sans-serif; color: var(--muted); }
+  .cs-brief .cs-note { margin-top: 24px; font: 13px/1.6 -apple-system, "Segoe UI", sans-serif; color: var(--muted); }
+  @media (max-width: 480px) { .cs-brief { font-size: 16px; } }
 
-  /* 原型专用：语言切换和说明条，正式页没有。 */
-  .proto { font: 13px/1.5 var(--sans-zh); color: var(--muted); border-bottom: 1px dashed var(--hair); padding: 8px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  .proto button { font: inherit; color: var(--ink); background: none; border: 1px solid var(--hair); padding: 2px 10px; cursor: pointer; }
-  .proto button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-
-  .page { max-width: 680px; margin: 0 auto; padding: 0 16px 64px; }
-  .page[hidden] { display: none; }
-  .bar { display: flex; justify-content: space-between; align-items: baseline; padding: 20px 0 14px; font-size: 14px; color: var(--muted); }
-  .bar .name { color: var(--ink); font-weight: 600; letter-spacing: .02em; border: 0; }
-  .bar nav a { margin-left: 16px; color: var(--muted); border: 0; }
-
-  .mast { border-top: 3px solid var(--brand); padding-top: 28px; margin-bottom: 8px; }
-  .mast .kicker { margin: 0; font-size: 14px; color: var(--accent); letter-spacing: .04em; }
-  .mast h1 { margin: 6px 0 10px; font: 600 clamp(28px, 6vw, 40px)/1.2 var(--serif-zh); letter-spacing: .01em; }
-  .mast .dek { margin: 0; font-size: 15px; color: var(--muted); }
-
-  .lead { margin: 32px 0 8px; padding: 0 0 28px; border-bottom: 1px solid var(--hair); }
-  .lead .label { font-size: 13px; color: var(--accent); letter-spacing: .08em; }
-  .lead .line { margin: 6px 0 8px; font: 600 clamp(20px, 4.4vw, 24px)/1.5 var(--serif-zh); }
-
-  section h2 { margin: 36px 0 4px; font: 600 15px/1.4 var(--sans-zh); color: var(--muted); letter-spacing: .12em; }
-  ol.items { list-style: none; margin: 0; padding: 0; }
-  .item { display: grid; grid-template-columns: 2.4em 1fr; padding: 16px 0; border-bottom: 1px solid var(--hair); }
-  .item .no { font: 600 15px/1.9 var(--serif-en); color: var(--accent); font-variant-numeric: tabular-nums; }
-  .line { margin: 0; }
-  .who { font-weight: 600; }
-  .meta { margin: 4px 0 0; font-size: 14px; line-height: 1.6; color: var(--muted); }
-  .meta .sep { padding: 0 .4em; }
-
-  footer { margin-top: 40px; font-size: 14px; line-height: 1.7; color: var(--muted); }
-  footer p { margin: 0 0 10px; }
-  .pager { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--hair); }
-
-  /* 英文页：同一套栅格，换成英文衬线，行距收一点。 */
-  .en { font-family: var(--serif-en); line-height: 1.6; }
-  .en .mast h1, .en .lead .line { font-family: var(--serif-en); }
-  .en section h2, .en .lead .label, .en .mast .kicker { font-family: var(--serif-en); letter-spacing: .06em; text-transform: uppercase; font-size: 13px; }
-  .en .meta, .en footer, .en .bar { font-family: var(--serif-en); }
-
-  @media (max-width: 480px) {
-    body { font-size: 16px; }
-    .item { grid-template-columns: 2em 1fr; }
-    .bar nav a { margin-left: 12px; }
-  }
-  @media print { .proto, .bar nav, .pager { display: none; } a { border: 0; color: inherit; } }
+  /* ===== 封面模板（服务器渲染成 PNG；尺寸以官网主题特色图为准，另出 1200×630 社交图） ===== */
+  .cs-cover { position: relative; aspect-ratio: 1200 / 630; background: #13191c; color: #fbfaf7; overflow: hidden;
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; container-type: inline-size; }
+  .cs-cover .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 2.2%; background: #2ce2e8; }
+  .cs-cover .kick { position: absolute; left: 7%; top: 9%; font-size: 3.1cqw; letter-spacing: .12em; text-transform: uppercase; color: #2ce2e8; font-weight: 700; }
+  .cs-cover .hook { position: absolute; left: 7%; right: 7%; top: 22%; font: 800 7.4cqw/1.06 Georgia, serif; }
+  .cs-cover .foot { position: absolute; left: 7%; right: 7%; bottom: 8%; display: flex; justify-content: space-between; font-size: 2.7cqw; color: #9aa6ab; }
+  .cs-cover .foot b { color: #fbfaf7; letter-spacing: .04em; }
 </style>
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"NewsArticle","headline":"LED 商显日报 · 2026 年 11 月 2 日","inLanguage":"zh-CN","datePublished":"2026-11-02T08:00:00+08:00","publisher":{"@type":"Organization","name":"Chipshow"},"mainEntity":{"@type":"ItemList","numberOfItems":9,"itemListElement":[{"@type":"ListItem","position":1,"url":"https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/"}]}}
-</script>
 </head>
 <body>
 <div class="proto" role="note">
-  <span>版式意图稿（非正式页）：条目标题取自仓库里的真实信源样本，一句话是示意写法，没有按单日窗口筛选；日期按原文所在地。</span>
-  <button type="button" data-lang="zh" aria-pressed="true">中文页</button>
-  <button type="button" data-lang="en" aria-pressed="false">English page</button>
-  <button type="button" data-theme-toggle>明 / 暗</button>
+  <b>版式意图稿 v2（2026-11-08）</b>。短讯作为 WordPress 文章发布：标题和顶部区域由主题负责，正文是下面的固定区块。条目标题取自仓库里的真实信源样本，钩子与“Why it matters”是示范写法，没有按 7 天窗口筛选；内链指向的常青页是示例路径，需按页面登记表替换。正式区块跟随官网主题配色，不单独做深色模式（主题是浅色时，区块若自行切深色会出现白底浅字）。
 </div>
 
-<main class="page" id="zh" lang="zh-CN">
-  <div class="bar"><a class="name" href="#">齐普 LED 商显日报</a><nav><a href="#">往期</a><a href="#">RSS</a><a href="#" data-go="en">English</a></nav></div>
-  <header class="mast">
-    <p class="kicker">第 12 期 · 周末合刊</p>
-    <h1>2026 年 11 月 2 日 星期一</h1>
-    <p class="dek">9 条 · 8 个信源 · 覆盖 10 月 31 日至 11 月 2 日</p>
-  </header>
+<div class="stage">
+  <h3>① WordPress 文章（标题由主题渲染，正文为 .cs-brief 区块）</h3>
+  <h1 class="wp-title">LED Display Brief: MiP Takes the Stage, Compact Power for Cabinets, and the 84th OBIE Winners</h1>
+  <div class="wp-meta">Chipshow Blog · LED Display Brief · No. 12</div>
 
-  <section class="lead" aria-label="头条">
-    <div class="label">头条</div>
-    <p class="line">美国户外广告协会（OAAA）公布第 84 届 OBIE 奖获奖名单。</p>
-    <p class="meta"><a href="https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/">OAAA 新闻</a><span class="sep">·</span>原文 10 月 16 日</p>
-  </section>
+  <div class="wp-post">
+    <div class="cs-brief">
+      <p class="cs-dek">7 stories from 6 sources. Every story links to its original source.</p>
 
-  <section aria-labelledby="zh-s1">
-    <h2 id="zh-s1">器件与芯片</h2>
-    <ol class="items">
-      <li class="item"><span class="no">01</span><div><p class="line"><span class="who">晶台光电</span>在第 21 届全国 LED 研讨会上介绍其 MiP 技术。</p><p class="meta"><a href="https://en.kinglight.com/blog/kinglight-mip-technology-led-seminar.html">Kinglight 官网</a><span class="sep">·</span>原文 10 月 23 日</p></div></li>
-      <li class="item"><span class="no">02</span><div><p class="line"><span class="who">明纬</span>推出 UDP-200/300/400 系列，面向 LED 显示屏的 200–400W 紧凑型电源。</p><p class="meta"><a href="https://www.meanwell.com/newsInfo.aspx?c=1&amp;i=1554">MEAN WELL 新品</a><span class="sep">·</span>原文 9 月 29 日</p></div></li>
-      <li class="item"><span class="no">03</span><div><p class="line"><span class="who">Wolfspeed</span> 宣布透明碳化硅技术商用，面向 AR 与量子应用。</p><p class="meta"><a href="https://www.ledinside.com/news/2026/11/2026_11_02_03">LEDinside</a><span class="sep">·</span>原文 11 月 2 日</p></div></li>
-    </ol>
-  </section>
+      <div class="cs-five">
+        <p>In 5 seconds</p>
+        <ol>
+          <li><a href="#cs-1">MiP takes the conference stage in China</a></li>
+          <li><a href="#cs-2">200–400 W power supplies built for LED cabinets</a></li>
+          <li><a href="#cs-0">The 84th OBIE Awards are out</a></li>
+        </ol>
+      </div>
 
-  <section aria-labelledby="zh-s2">
-    <h2 id="zh-s2">控制与软件</h2>
-    <ol class="items">
-      <li class="item"><span class="no">04</span><div><p class="line"><span class="who">诺瓦星云</span>称与索尼深化合作，Crystal LED S 系列在 InfoComm 2026 展出。</p><p class="meta"><a href="https://www.novastar.tech/content/detail.html?catit=19&amp;id=105">NovaStar 新闻</a><span class="sep">·</span>原文未标日期，11 月 2 日发现</p></div></li>
-    </ol>
-  </section>
+      <section class="cs-item" id="cs-0">
+        <p class="cs-tag">Market &amp; DOOH</p>
+        <h2>The 84th OBIE Awards just named outdoor advertising's best work</h2>
+        <p>The Out of Home Advertising Association of America (OAAA) has announced the winners of its 84th annual OBIE Awards.</p>
+        <p class="cs-why"><strong>Why it matters:</strong> winning campaigns show what an outdoor screen has to deliver—motion, scale and readability at a distance.</p>
+        <p class="cs-more">Go deeper: <a href="/blog/example-outdoor-led-brightness/">How bright should an outdoor LED billboard be?</a></p>
+        <p class="cs-src">Source: <a href="https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/">OAAA</a> · 16 Oct 2026</p>
+      </section>
 
-  <section aria-labelledby="zh-s3">
-    <h2 id="zh-s3">屏体与应用</h2>
-    <ol class="items">
-      <li class="item"><span class="no">05</span><div><p class="line"><span class="who">卡莱特</span>发布 2026 年夏季演唱会项目案例。</p><p class="meta"><a href="https://en.colorlightinside.com/news/cases/15556.html">Colorlight 案例</a><span class="sep">·</span>原文 9 月 5 日</p></div></li>
-      <li class="item"><span class="no">06</span><div><p class="line"><span class="who">国星光电</span>介绍面向户外显示屏的 2727 透镜 LED。</p><p class="meta"><a href="https://www.nationstar.com/nationstar/content/2082377123784130562">NATIONSTAR 产品新闻</a><span class="sep">·</span>原文 5 月 15 日</p></div></li>
-    </ol>
-  </section>
+      <section class="cs-item" id="cs-1">
+        <p class="cs-tag">Components &amp; Packaging</p>
+        <h2>MiP leaves the lab: Kinglight takes it to China's national LED seminar</h2>
+        <p>Kinglight says it presented its MiP (Mini LED in Package) technology at the 21st National LED Seminar.</p>
+        <p class="cs-why"><strong>Why it matters:</strong> if you compare fine-pitch quotes, MiP is now a third packaging option next to COB and SMD—and its package size is easy to confuse with pixel pitch.</p>
+        <p class="cs-more">Go deeper: <a href="/blog/example-mip-package-size-vs-display-specs/">MiP package size vs. display specs: how to read the numbers</a></p>
+        <p class="cs-src">Source: <a href="https://en.kinglight.com/blog/kinglight-mip-technology-led-seminar.html">Kinglight</a> · 23 Oct 2026</p>
+      </section>
 
-  <section aria-labelledby="zh-s4">
-    <h2 id="zh-s4">市场与标准</h2>
-    <ol class="items">
-      <li class="item"><span class="no">07</span><div><p class="line"><span class="who">创联电源</span>提示 GB/T 47033—2026 将于 8 月 1 日实施。</p><p class="meta"><a href="https://www.cl-power.com/newsdetail/66.html">创联电源新闻</a><span class="sep">·</span>原文 8 月 1 日</p></div></li>
-      <li class="item"><span class="no">08</span><div><p class="line"><span class="who">OUTFRONT</span> 首席执行官 Nick Brien 出任 OAAA 董事会主席。</p><p class="meta"><a href="https://oaaa.org/news/outfront-ceo-nick-brien-named-chairman-of-oaaa-board-of-directors/">OAAA 新闻</a><span class="sep">·</span>原文 10 月 15 日</p></div></li>
-    </ol>
-  </section>
+      <section class="cs-item" id="cs-2">
+        <p class="cs-tag">Components &amp; Power</p>
+        <h2>MEAN WELL shrinks LED display power: new 200–400 W UDP series</h2>
+        <p>MEAN WELL has introduced the UDP-200/300/400 series, which it describes as next-generation compact power supplies for LED displays.</p>
+        <p class="cs-why"><strong>Why it matters:</strong> the power supply drives a cabinet's weight, heat and service access, so a smaller unit changes how thin and serviceable a cabinet can be.</p>
+        <p class="cs-more">Go deeper: <a href="/blog/example-led-screen-power-consumption/">How to estimate an LED screen's power consumption</a></p>
+        <p class="cs-src">Source: <a href="https://www.meanwell.com/newsInfo.aspx?c=1&amp;i=1554">MEAN WELL</a> · 29 Sep 2026</p>
+      </section>
 
-  <footer>
-    <p>每条是编辑部写的一句话摘要，并附原文链接；参数和说法以原文为准。日期是原文发布地的日历日期，原文未标日期的写发现日期。</p>
-    <p>周一至周五早上出刊，周一合并周末。</p>
-    <div class="pager"><a href="#">← 10 月 30 日</a><a href="#">往期全部</a></div>
-  </footer>
-</main>
+      <section class="cs-item" id="cs-3">
+        <p class="cs-tag">Consumer &amp; Near-eye</p>
+        <h2>See-through silicon carbide goes commercial, aimed at AR glasses</h2>
+        <p>Wolfspeed says it has commercially introduced a transparent silicon carbide technology for augmented reality and quantum applications, LEDinside reports.</p>
+        <p class="cs-why"><strong>Why it matters:</strong> AR glasses are one of the biggest bets for micro-displays, and their optics are part of the same supply chain.</p>
+        <p class="cs-src">Source: <a href="https://www.ledinside.com/news/2026/11/2026_11_02_03">LEDinside</a> · 2 Nov 2026</p>
+      </section>
 
-<main class="page en" id="en" lang="en" hidden>
-  <div class="bar"><a class="name" href="#">Chipshow LED Display Daily</a><nav><a href="#">Archive</a><a href="#">RSS</a><a href="#" data-go="zh">中文</a></nav></div>
-  <header class="mast">
-    <p class="kicker">No. 12 · Weekend edition</p>
-    <h1>Monday, 2 November 2026</h1>
-    <p class="dek">9 items from 8 sources, covering 31 October to 2 November</p>
-  </header>
+      <section class="cs-item" id="cs-4">
+        <p class="cs-tag">Projects &amp; Live Events</p>
+        <h2>Inside the concert screens of summer 2026: Colorlight's case file</h2>
+        <p>Colorlight has published a case story on its summer 2026 concert projects.</p>
+        <p class="cs-why"><strong>Why it matters:</strong> touring stages are where screens and control systems get stress-tested—fast setup, live switching, no second take.</p>
+        <p class="cs-more">Go deeper: <a href="/blog/example-rental-led-screen-checklist/">Renting an LED screen for an event: what to check first</a></p>
+        <p class="cs-src">Source: <a href="https://en.colorlightinside.com/news/cases/15556.html">Colorlight</a> · 5 Sep 2026</p>
+      </section>
 
-  <section class="lead" aria-label="Top story">
-    <div class="label">Top story</div>
-    <p class="line">The Out of Home Advertising Association of America (OAAA) has announced the winners of the 84th annual OBIE Awards.</p>
-    <p class="meta"><a href="https://oaaa.org/news/oaaa-announces-winners-of-the-84th-annual-obie-awards/">OAAA News</a><span class="sep">·</span>Published 16 Oct</p>
-  </section>
+      <section class="cs-item" id="cs-5">
+        <p class="cs-tag">Components &amp; Packaging</p>
+        <h2>A lens on every LED: NATIONSTAR's 2727 package targets outdoor screens</h2>
+        <p>NATIONSTAR is promoting its 2727 lens LED as a solution for outdoor displays.</p>
+        <p class="cs-why"><strong>Why it matters:</strong> a lens shapes where the light goes, which matters most when viewers stand in one known direction.</p>
+        <p class="cs-src">Source: <a href="https://www.nationstar.com/nationstar/content/2082377123784130562">NATIONSTAR</a> · 15 May 2026</p>
+      </section>
 
-  <section aria-labelledby="en-s1">
-    <h2 id="en-s1">Components &amp; ICs</h2>
-    <ol class="items">
-      <li class="item"><span class="no">01</span><div><p class="line"><span class="who">Kinglight</span> presented its MiP technology at the 21st National LED Seminar.</p><p class="meta"><a href="https://en.kinglight.com/blog/kinglight-mip-technology-led-seminar.html">Kinglight</a><span class="sep">·</span>Published 23 Oct</p></div></li>
-      <li class="item"><span class="no">02</span><div><p class="line"><span class="who">MEAN WELL</span> introduced the UDP-200/300/400 series, 200–400 W compact power supplies for LED displays.</p><p class="meta"><a href="https://www.meanwell.com/newsInfo.aspx?c=1&amp;i=1554">MEAN WELL</a><span class="sep">·</span>Published 29 Sep</p></div></li>
-      <li class="item"><span class="no">03</span><div><p class="line"><span class="who">Wolfspeed</span> says its transparent silicon carbide technology is now commercially available for AR and quantum applications.</p><p class="meta"><a href="https://www.ledinside.com/news/2026/11/2026_11_02_03">LEDinside</a><span class="sep">·</span>Published 2 Nov</p></div></li>
-    </ol>
-  </section>
+      <section class="cs-item" id="cs-6">
+        <p class="cs-tag">Market &amp; DOOH</p>
+        <h2>OUTFRONT's CEO now chairs the US outdoor advertising association</h2>
+        <p>The OAAA has named OUTFRONT CEO Nick Brien chairman of its board of directors.</p>
+        <p class="cs-src">Source: <a href="https://oaaa.org/news/outfront-ceo-nick-brien-named-chairman-of-oaaa-board-of-directors/">OAAA</a> · 15 Oct 2026</p>
+      </section>
 
-  <section aria-labelledby="en-s2">
-    <h2 id="en-s2">Control &amp; Software</h2>
-    <ol class="items">
-      <li class="item"><span class="no">04</span><div><p class="line"><span class="who">NovaStar</span> says it is deepening its collaboration with Sony, with the Crystal LED S series shown at InfoComm 2026.</p><p class="meta"><a href="https://www.novastar.tech/content/detail.html?catit=19&amp;id=105">NovaStar</a><span class="sep">·</span>Undated; found 2 Nov</p></div></li>
-    </ol>
-  </section>
+      <p class="cs-note">Each story is summarized by our editors from the linked source. Specifications and claims are as stated by the source.</p>
+    </div>
+  </div>
 
-  <section aria-labelledby="en-s3">
-    <h2 id="en-s3">Displays &amp; Applications</h2>
-    <ol class="items">
-      <li class="item"><span class="no">05</span><div><p class="line"><span class="who">Colorlight</span> published a case story on its summer 2026 concert projects.</p><p class="meta"><a href="https://en.colorlightinside.com/news/cases/15556.html">Colorlight</a><span class="sep">·</span>Published 5 Sep</p></div></li>
-      <li class="item"><span class="no">06</span><div><p class="line"><span class="who">NATIONSTAR</span> outlined its 2727 lens LED for outdoor displays.</p><p class="meta"><a href="https://www.nationstar.com/nationstar/content/2082377123784130562">NATIONSTAR</a><span class="sep">·</span>Published 15 May</p></div></li>
-    </ol>
-  </section>
+  <h3>② 封面模板（每期一张：钩子文字 + 期号 + 日期，不用原厂图片）</h3>
+  <div class="cs-cover" role="img" aria-label="封面示例">
+    <div class="bar"></div>
+    <div class="kick">LED Display Brief · No. 12</div>
+    <div class="hook">MiP takes the stage.<br>Power gets compact.</div>
+    <div class="foot"><span>7 stories · 2 Nov 2026</span><b>CHIPSHOW</b></div>
+  </div>
+</div>
 
-  <section aria-labelledby="en-s4">
-    <h2 id="en-s4">Market &amp; Standards</h2>
-    <ol class="items">
-      <li class="item"><span class="no">07</span><div><p class="line"><span class="who">CL Power</span> notes that the Chinese standard GB/T 47033—2026 takes effect on 1 August.</p><p class="meta"><a href="https://www.cl-power.com/newsdetail/66.html">CL Power</a><span class="sep">·</span>Published 1 Aug</p></div></li>
-      <li class="item"><span class="no">08</span><div><p class="line"><span class="who">OUTFRONT</span> CEO Nick Brien has been named chairman of the OAAA board of directors.</p><p class="meta"><a href="https://oaaa.org/news/outfront-ceo-nick-brien-named-chairman-of-oaaa-board-of-directors/">OAAA News</a><span class="sep">·</span>Published 15 Oct</p></div></li>
-    </ol>
-  </section>
-
-  <footer>
-    <p>Each item is a one-sentence summary written by our editors, with a link to the original. Specifications and claims are as stated by the source. Dates are the source's local calendar date; undated items show when we found them.</p>
-    <p>Published weekday mornings (Beijing time); Monday covers the weekend.</p>
-    <div class="pager"><a href="#">← 30 October</a><a href="#">All issues</a></div>
-  </footer>
-</main>
-
-<script>
-  // 原型专用：切换语言和明暗。正式页不需要任何脚本。
-  const show = (lang) => {
-    for (const id of ["zh", "en"]) document.getElementById(id).hidden = id !== lang;
-    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-    for (const b of document.querySelectorAll("[data-lang]")) b.setAttribute("aria-pressed", String(b.dataset.lang === lang));
-  };
-  for (const b of document.querySelectorAll("[data-lang]")) b.addEventListener("click", () => show(b.dataset.lang));
-  for (const a of document.querySelectorAll("[data-go]")) a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.go); });
-  document.querySelector("[data-theme-toggle]").addEventListener("click", () => {
-    const root = document.documentElement;
-    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-    root.dataset.theme = dark ? "light" : "dark";
-  });
-</script>
 </body>
 </html>
