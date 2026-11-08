@@ -1,4 +1,4 @@
-import { tag, stub, gate } from './setup.ts';
+import { tag, stub, gate, Reply } from './setup.ts';
 import http from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -61,6 +61,157 @@ test('receive, edit, review and export persist; duplicate receives do not overwr
 test('source revision drift rejects imported results; no partial drafts are inserted',async()=>{
  const {task,response}=await input();await sql`UPDATE articles SET revision=revision+1 WHERE id=${article}`;
  await assert.rejects(receiveStudioTask(task.id,response,actor),/原文已更新/);assert.equal((await sql`SELECT count(*)::int AS n FROM studio_drafts WHERE task_id=${task.id}`)[0].n,0);
+});
+test('WordPress push only writes approved English to one draft, with safe recovery',async t=>{
+ const env=process.env;
+ const keyValues={WP_BASE_URL:'https://wp.invalid/subsite/',WP_USER:'studio-fixture',WP_APP_PASSWORD:'synthetic-wp-secret',
+   WP_GUIDE_CATEGORY_SLUG:'choose-guides',WP_FEATURED_MEDIA_COMPONENTS_CONTROL:'91'};
+ Object.assign(env,keyValues);
+ delete env.WP_DRAFT_PUSH_ENABLED;
+ t.after(()=>{for(const key of Object.keys(keyValues))delete env[key];env.WP_DRAFT_PUSH_ENABLED='false';});
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','wordpress-test');
+ const cookie=`${SESSION_COOKIE}=${token}`, csrf=(await sessionPrincipal(cookie))!.csrf;
+ async function fixture(){
+   const {task,response}=await input();
+   await receiveStudioTask(task.id,response,actor);
+   const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+   const draft=(await studioDraft(row.id))!;
+   return {draft,edit:response.drafts[0]};
+ }
+ async function approve(id:string,version:number){
+   await reviewStudioDraft(id,{version,action:'submit'},actor);
+   const current=(await studioDraft(id))!;
+   const result=await reviewStudioDraft(id,{version:current.version,action:'approve',confirmations:current.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);
+   return result!.version;
+ }
+ const push=(id:string,version:number,kind='guide',section='components-ics',withCsrf=true)=>
+   app.inject({method:'POST',url:`/api/admin/studio/drafts/${id}/wordpress`,headers:{cookie,...(withCsrf?{'x-csrf-token':csrf}:{})},payload:{version,kind,section}});
+ const detail=(id:string)=>app.inject({url:`/api/admin/studio/drafts/${id}`,headers:{cookie}});
+ type Post={id:number;slug:string;status:string;categories:number[];tags:number[];featured_media:number};
+ type Write={id:number|null;title:string;content:string;status:string;slug?:string;categories:number[];tags:number[];featured_media?:number};
+ const unrelated:Post={id:999,slug:'unrelated-latest-post',status:'draft',categories:[29],tags:[],featured_media:0};
+ const posts=new Map<number,Post>([[unrelated.id,unrelated]]);
+ const writes:Write[]=[];
+ let nextId=100, shortReady=false, mode:'ok'|'fail'|'disconnect'='ok', mismatchedRead=false, redirect=false;
+ const wp=await stub((_hit,req)=>{
+   const url=new URL(req.url,'http://loopback.invalid'), slug=url.searchParams.get('slug');
+   if(url.pathname.endsWith('/categories'))return slug==='choose-guides'?[{id:29,slug}]:shortReady&&slug==='industry-news'?[{id:72,slug}]:[];
+   if(url.pathname.endsWith('/tags'))return slug==='consumer-display'?[{id:12,slug}]:[];
+   const match=/\/posts\/(\d+)$/.exec(url.pathname), id=match?Number(match[1]):null;
+   if(!req.body){
+     if(id===null)return [...posts.values()]; // The site may ignore filters and return unrelated recent posts first.
+     return mismatchedRead?unrelated:posts.get(id)??new Reply(404,{code:'rest_post_invalid_id'});
+   }
+   const data=JSON.parse(req.body);
+   writes.push({id,...data});
+   if(mode==='fail')return new Reply(503,{message:'synthetic-wp-secret'});
+   const post:Post={id:id??nextId++,slug:data.slug??posts.get(id!)?.slug,status:data.status,categories:data.categories,tags:data.tags,featured_media:data.featured_media??0};
+   posts.set(post.id,post);
+   return post;
+ });
+ t.after(()=>wp.close());
+ const localFetch=globalThis.fetch;
+ const calls:{url:string;init?:RequestInit}[]=[];
+ t.mock.method(globalThis,'fetch',async (input: URL | string | Request,init?:RequestInit)=>{
+   const url=new URL(input instanceof Request?input.url:input);
+   calls.push({url:url.href,init});
+   if(url.origin!=='https://wp.invalid')throw new Error('Unexpected request in WordPress test');
+   if(redirect)return Response.redirect('https://other.invalid/wp-json/',302);
+   const response=await localFetch(wp.url+url.pathname+url.search,init);
+   if(mode==='disconnect'&&init?.method==='POST'){
+     await response.text(); // Remote committed but the acknowledgement never reached Studio.
+     throw new Error('synthetic-wp-secret');
+   }
+   return response;
+ });
+
+ const {draft,edit}=await fixture(), id=draft.id;
+ assert.match((await push(id,draft.version)).json().detail,/尚未开启/);
+ assert.equal((await detail(id)).json().wordpress.ready,false);
+ env.WP_DRAFT_PUSH_ENABLED='true';
+ assert.equal((await push(id,draft.version,'guide','components-ics',false)).statusCode,403);
+ assert.match((await push(id,draft.version)).json().detail,/审稿/);
+ assert.equal(calls.length,0);
+ const version=await approve(id,draft.version);
+ env.WP_BASE_URL='http://wp.invalid/subsite/';
+ assert.match((await push(id,version)).json().detail,/HTTPS/);
+ assert.equal(calls.length,0);
+ env.WP_BASE_URL=keyValues.WP_BASE_URL;
+ env.WP_GUIDE_CATEGORY_SLUG='company-news';
+ assert.match((await push(id,version)).json().detail,/不会使用 Company News/);
+ assert.equal(calls.length,0);
+ env.WP_GUIDE_CATEGORY_SLUG=keyValues.WP_GUIDE_CATEGORY_SLUG;
+ assert.match((await push(id,version,'brief')).json().detail,/industry-news/);
+ assert.equal(writes.length,0);
+ redirect=true;
+ const beforeRedirect=calls.length;
+ assert.match((await push(id,version)).json().detail,/HTTP 302/);
+ assert.equal(calls.length,beforeRedirect+1);
+ redirect=false;
+
+ const [first,second]=await Promise.all([push(id,version),push(id,version)]);
+ assert.ok([first,second].some(res=>res.statusCode===200&&res.json().state==='pushed'));
+ assert.equal(writes.filter(write=>write.id===null).length,1);
+ const saved=(await detail(id)).json().wordpress.receipt;
+ assert.equal(saved.state,'pushed');assert.equal(saved.postId,100);assert.equal(saved.media,'set');
+ assert.equal(saved.editUrl,'https://wp.invalid/subsite/wp-admin/post.php?post=100&action=edit');
+ assert.equal(saved.metaDescription,'Driver sample timing and scan conditions.');
+ assert.equal((await push(id,version,'guide','control-software')).json().postId,100);
+ assert.deepEqual(writes[0]?.categories,[29]);
+ assert.equal(writes.at(-1)?.id,100);assert.equal(writes.at(-1)?.featured_media,91);
+ assert.match(writes[0]!.content,/Original source date/);
+ assert.doesNotMatch(writes[0]!.content,/厂商/);
+ assert.equal('meta' in writes[0]!,false);
+ assert.equal('slug' in writes.at(-1)!,false);
+ assert.ok(writes.every(write=>write.status==='draft'));
+ const requestCount=writes.length;
+ for (const status of ['publish','trash']) {
+   posts.get(100)!.status=status;
+   assert.equal((await push(id,version)).json().state,'blocked');
+   assert.equal(writes.length,requestCount);
+ }
+ posts.get(100)!.status='draft';
+ const changed=await saveStudioDraft(id,{...edit,version,title_en:'Updated LED driver sample plan'},actor);
+ assert.match((await push(id,version)).json().detail,/版本已更新/);
+ assert.match((await push(id,changed!.version)).json().detail,/审稿/);
+ assert.equal(writes.length,requestCount);
+ const updatedVersion=await approve(id,changed!.version);
+ assert.equal((await push(id,updatedVersion)).json().postId,100);
+ assert.equal(writes.at(-1)?.title,'Updated LED driver sample plan');
+
+ const errorDraft=(await fixture()).draft, errorVersion=await approve(errorDraft.id,errorDraft.version);
+ mode='fail';
+ const failed=await push(errorDraft.id,errorVersion);
+ assert.equal(failed.json().state,'unknown');assert.equal(failed.json().httpStatus,503);
+ assert.doesNotMatch(failed.body,/synthetic-wp-secret/);
+ const afterFailure=writes.length;
+ mode='ok';
+ assert.equal((await push(errorDraft.id,errorVersion)).json().state,'unknown');
+ assert.equal(writes.length,afterFailure);
+
+ const lost=(await fixture()).draft, lostVersion=await approve(lost.id,lost.version);
+ mode='disconnect';shortReady=true;
+ const lostResponse=(await push(lost.id,lostVersion,'brief','consumer-near-eye')).json();
+ assert.equal(lostResponse.state,'unknown');
+ assert.equal(writes.at(-1)?.slug,lostResponse.recoveryKey);
+ const afterLost=writes.length;
+ mode='ok';mismatchedRead=true;
+ assert.match((await push(lost.id,lostVersion,'brief','consumer-near-eye')).json().detail,/无法确认/);
+ assert.equal(writes.length,afterLost);
+ mismatchedRead=false;
+ const recovered=(await push(lost.id,lostVersion,'brief','consumer-near-eye')).json();
+ assert.equal(recovered.state,'pushed');assert.equal(recovered.postId,101);
+ assert.equal(writes.at(-1)?.id,101);assert.deepEqual(writes.at(-1)?.categories,[72]);assert.deepEqual(writes.at(-1)?.tags,[12]);
+ assert.match(writes.at(-1)!.content,/class="cs-brief"/);
+ assert.equal(recovered.media,'not_configured');
+ assert.ok(calls.every(call=>call.url.startsWith('https://wp.invalid/subsite/wp-json/wp/v2/')&&call.init?.redirect==='manual'));
+ assert.ok(calls.every(call=>new Headers(call.init?.headers).get('authorization')===`Basic ${Buffer.from('studio-fixture:synthetic-wp-secret').toString('base64')}`));
+ const log=await sql`SELECT after FROM audit_log WHERE action='studio.draft.wordpress'`;
+ assert.doesNotMatch(JSON.stringify(log),/synthetic-wp-secret|Authorization/);
+ const beforeSourceChange=calls.length;
+ await sql`UPDATE articles SET revision=revision+1 WHERE id=${article}`;
+ try{assert.match((await push(id,updatedVersion)).json().detail,/原文已更新/);assert.equal(calls.length,beforeSourceChange);}
+ finally{await sql`UPDATE articles SET revision=revision-1 WHERE id=${article}`;}
 });
 test('API generation really calls the configured endpoint, stores drafts and reuses the completed task',async()=>{
  const {task,response}=await input();let calls=0;

@@ -9,7 +9,7 @@ AIHOT 会往 chipshow.com 的 WordPress 推英文文章草稿，由用户手动�
 ## AIHOT 这边的输出
 
 - **页面类型：** WordPress 文章（posts），不是产品页。
-- **分类：** 两个。`LED Display Brief`（slug `led-display-brief`）放短讯和短文章；长文和升级后的常青页放在现有的指南类分类。消费级显示的内容另带标签 `consumer-display`。
+- **分类：** 2026-11-08 用户覆写：短讯和短文章进现有 Industry News（`industry-news`，ID 72，父分类 News）；长文和升级页进现有 Choose Guides（`choose-guides`，ID 29）。不建新分类。消费级显示的内容另带标签 `consumer-display`。
 - **正文结构：** 短讯是固定结构的 HTML 区块（外层 `div.cs-brief`；每条一个 `section.cs-item`，含标签、`h2` 标题、正文段落和来源行）。所有文字都在 HTML 里，没有放进图片、CSS 伪元素或脚本。样例见 AIHOT 仓库的 `docs/prototype/daily-brief.html`。
 - **特色图：** 4 张无字品牌底图，按分节选用，不需要翻译。
 - **更新方式：** 发布后不改 slug；更新文章时在同一个 URL 上改。

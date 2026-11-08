@@ -309,15 +309,14 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
     return { id, status, version: row.version + 1 };
   });
 }
-export async function exportStudioDraft(id: string, format: string) {
-  return sql.begin(async tx => {
-    // Hold the approved draft and its source until the complete export is built.
-    const [row] = await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR SHARE`;
-    if (!row) return null;
-    if (row.status !== 'approved') invalid('请完成审稿后再导出成稿。');
+async function approvedDraft(row: DraftRow, tx: Db) {
+    const id = row.id;
+    if (row.status !== 'approved') invalid('请完成当前版本的审稿后再交付成稿。');
     const task=await studioTask(row.task_id,tx,true);
     const packet=packetSchema.parse(task.request);
-    await checkSources({...packet,articles:packet.articles.filter(a=>a.binding.article_id===row.article_id)},tx);
+    const source=packet.articles.find(a=>a.binding.article_id===row.article_id);
+    if (!source) throw new Conflict('稿件无法匹配已审核的原文，请重新建立采编任务。');
+    await checkSources({...packet,articles:[source]},tx);
     const material=await studioMaterial(row.article_id,tx,true);
     if (!material) throw new Conflict('原文已不存在，请重新建立采编任务。');
     const review=await draftReviewState(row,packet,tx);
@@ -326,11 +325,26 @@ export async function exportStudioDraft(id: string, format: string) {
     const [approved]=await tx`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`} AND action='studio.draft.approve' ORDER BY created_at DESC,id DESC LIMIT 1`;
     if(!approved||approved.after?.document_hash!==documentIdentity(row.document)||!Number.isInteger(approved.after?.version)||approved.after.version<1||approved.after.version>row.version||!validateEditorialConfirmations(review.issues,{confirmations:review.confirmed_issues}).canApprove)invalid('当前规则需要补充逐项人工风险确认，请重新审稿。');
     const sourceDate=approved.after.source_date;
-    if(!sourceDate||sourceDate.publicationTime!==material.publication_time||sourceDate.utcOffset!==material.source_utc_offset)throw new Conflict('来源日期精度或时区与批准记录不一致，请重新审稿后导出。');
-    if (format === 'review') return { type: 'application/json', extension: 'review.json', body: JSON.stringify({ id, version: row.version, audience: 'INTERNAL_REVIEW_ONLY', reviewed_by: row.reviewed_by, reviewed_at: row.reviewed_at, document: {...d,camos:row.document.camos,editorial_gate:review.gate} }, null, 2) };
-    let publication;
-    try { publication = publicDraft(d,packet.writing?.site,sourceDate); }
+    if(!sourceDate||sourceDate.publicationTime!==material.publication_time||sourceDate.utcOffset!==material.source_utc_offset)throw new Conflict('来源日期精度或时区与批准记录不一致，请重新审稿。');
+    return { d, site: packet.writing?.site, sourceDate, gate: review.gate };
+}
+function approvedPublication({ d, site, sourceDate }: Awaited<ReturnType<typeof approvedDraft>>) {
+    try { return publicDraft(d,site,sourceDate); }
     catch(error) { throw new Conflict('来源日期无法确认，请重新审稿：'+(error instanceof Error?error.message:String(error))); }
+}
+export async function lockStudioPublication(id: string, version: number, tx: Db) {
+  const [row] = await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR UPDATE`;
+  if (!row) return null;
+  if (row.version !== version) throw new Conflict('稿件版本已更新，请刷新并核对后再推送。');
+  return approvedPublication(await approvedDraft(row,tx));
+}
+export async function exportStudioDraft(id: string, format: string) {
+  return sql.begin(async tx => {
+    const [row] = await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR SHARE`;
+    if (!row) return null;
+    const approved=await approvedDraft(row,tx);
+    if (format === 'review') return { type: 'application/json', extension: 'review.json', body: JSON.stringify({ id, version: row.version, audience: 'INTERNAL_REVIEW_ONLY', reviewed_by: row.reviewed_by, reviewed_at: row.reviewed_at, document: {...approved.d,camos:row.document.camos,editorial_gate:approved.gate} }, null, 2) };
+    const publication = approvedPublication(approved);
     const markdown = `# ${publication.title}\n\n${publication.body}\n\nMeta description: ${publication.meta_description}\n`;
     if (format === 'json') return { type: 'application/json', extension: 'json', body: JSON.stringify({ id, version: row.version, publication }, null, 2) };
     if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };

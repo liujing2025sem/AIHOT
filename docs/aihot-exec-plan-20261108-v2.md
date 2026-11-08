@@ -40,7 +40,7 @@
 | D-07 | 短讯攒够 5 条出一期 | 不变 |
 | D-08 | Codex 合并：CI 通过，加一个真实样例 | 不变 |
 | D-09 | 风险清单 v2 | 不变 |
-| D-10（改） | WP 分类：短讯和短文章进新分类 LED Display Brief（slug led-display-brief）；长文和升级后的常青页进现有的指南类分类 | 不再混进 Company News |
+| D-10（2026-11-08 用户覆写） | 短讯和短文章使用现有 Industry News（`industry-news`，ID 72，父分类 News）；长文和升级页使用现有 Choose Guides（`choose-guides`，ID 29） | 不建新分类，不改现有分类，不投 Company News |
 | D-11（新） | 工程师把关用 1 分钟中文确认卡 | 每篇长文最多 3 道中文单选题，工程师在手机上勾选；署名 Reviewed by Chipshow Engineering Team；没勾完只卡这一篇 |
 | D-12（新） | 误报的 BLOCK 可以放行，但要指明出处 | 运营选“这句的出处是 ___”或“不是数字声明”，记入日志；误报词进入每周的词典修复队列，由 Codex 提 PR 跑 CI；Claude 每周抽查放行记录。黑名单和风险清单的命中不能放行 |
 | D-13（新） | 先升级现有第一流量页（尺寸指南），再做 MiP | 短讯负责给常青页导流 |
@@ -232,7 +232,7 @@ JSON 见 docs/handoff/aihot-exec-a2a-20261108-v2.json，Drive 上有同一份。
 
 ## 9. 给 CSM 项目的输入（供你提 issue）
 
-- **页面类型：** WordPress 文章（posts）。分类有两个：LED Display Brief（短讯、短文章）和指南类分类（长文、升级页）。正文是固定结构的 HTML 区块（.cs-brief），文字都在 HTML 里，没有放进图片和 CSS。
+- **页面类型：** WordPress 文章（posts）。按 2026-11-08 用户覆写：短讯和短文章进现有 Industry News，长文和升级页进现有 Choose Guides。正文使用 HTML；短讯区块使用 `.cs-brief`，文字不放进图片和 CSS。
 - **预计量：** 每周短讯 2–4 篇、短文章 2–4 篇、长文和升级页 1–3 篇，合计 5–11 篇。按每篇一个 /de/ 路由算，每月新增约 20–45 个路由。
 - **与容量的关系：** 按 10 月 30 日的试点上限（100 路由 / 500 任务 / 8 MiB 主文档），2–5 个月内会碰到路由上限，主文档可能更早吃紧。建议 issue 写明：先做容量（CSM 计划里的 N07–N09），再接 Blog 文章模板。
 - **模板验证：** CSM 目前验证过的是产品模板（另有文章 9509 的一次翻译），Blog 文章模板和 .cs-brief 区块需要单独验证。
