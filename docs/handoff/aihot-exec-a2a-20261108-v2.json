@@ -1,6 +1,6 @@
 {
   "schema": "aihot-agent-handoff/1.0",
-  "packet_id": "AIHOT-EXEC-S0-S2-20261108-v2",
+  "packet_id": "AIHOT-EXEC-S0-S2-20261108-v2.1",
   "prepared_at": "2026-11-08T06:40:00Z",
   "from": "Claude（审校，不写代码）",
   "to": "Codex（执行、合并）",
@@ -10,6 +10,8 @@
   "read_first": [
     "docs/LIVE.md",
     "docs/aihot-exec-plan-20261108-v2.md",
+    "docs/aihot-pitch-desk-spec-20261108.md",
+    "docs/prototype/pitch-desk.html",
     "docs/prototype/daily-brief.html"
   ],
   "supersedes": [
@@ -71,7 +73,8 @@
     "D-11": "工程师把关：每篇长文 ≤3 道中文单选题（1 分钟确认卡）；署名 Reviewed by Chipshow Engineering Team；没勾完只卡这一篇",
     "D-12": "误报 BLOCK 可放行，但须选出处主体或标“不是数字声明”；记日志；误报词每周修进词典；黑名单和风险清单命中不能放行",
     "D-13": "先升级现有第一流量页（尺寸指南），再做 MiP；短讯给常青页导流",
-    "D-14": "新增防御上限：每阶段 ≤ 推进工作的 1/5，须附真实失败例子"
+    "D-14": "新增防御上限：每阶段 ≤ 推进工作的 1/5，须附真实失败例子",
+    "D-15": "长文和升级页的入口是命题采编：一句题目 → worker 备料（库内正文检索、防撞题、大纲与出处、标题、≤3 道工程确认题）→ 运营 3 分钟确认 → 才生成全文；规格 docs/aihot-pitch-desk-spec-20261108.md"
   },
   "guards": [
     "G1 公开的就是批准的：WP 草稿等于批准的英文版本，改过就重新批准",
@@ -118,8 +121,8 @@
     },
     {
       "id": "S1-2",
-      "title": "尺寸指南升级稿：以现有页面为素材重写成买家问题答案页（首屏答案、计算表、询价六项、FAQ、内链），推成 [UPDATE] 草稿并附改动清单；用户替换进原 URL",
-      "done_when": "WP 预览链接；改动清单"
+      "title": "命题采编 v1（规格 docs/aihot-pitch-desk-spec-20261108.md 第 3–7 节；在 PR #11 人工卡上加备料，不新建表），第一个用例是尺寸指南升级稿：推成 [UPDATE] 草稿并附改动清单，用户替换进原 URL",
+      "done_when": "规格第 7 节的 5 个验收样例；尺寸指南 [UPDATE] 草稿的 WP 预览链接；备料与确认的实际分钟数"
     },
     {
       "id": "S1-3",
@@ -153,7 +156,7 @@
     },
     {
       "id": "S2-3",
-      "title": "第 2 篇升级稿（DOOH 测量页或 VMS 指南）+ 1 篇新长文（30 问或询盘原题）",
+      "title": "用命题采编做第 2 篇升级稿（DOOH 测量页或 VMS 指南）+ 1 篇新长文；加上按新闻搜索补采",
       "done_when": "WP 预览链接"
     },
     {
