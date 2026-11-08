@@ -241,3 +241,168 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
     assert.deepEqual(errors,[]);
   }finally{await browser?.close();await web.stop();}
 });
+
+test('pitch v2 explains the plan and only retries the chosen fragment after consent on a narrow screen',async()=>{
+  const pitches='/api/admin/studio/pitches', id='pitch-v2', url=pitches+'/'+id;
+  const oldUrl='https://guide.example.test/dimensions', sourceUrl='https://reference.example.test/dimensions';
+  const materials=[
+    {id:'page',title:'旧版尺寸指南',url:oldUrl,snippet:'Standard size table.',hit_count:2,first_party:true,existing_page:true},
+    {id:'weak',title:'弱相关行业新闻',url:'https://news.example.test/update',snippet:'Billboard industry news.',hit_count:1,first_party:false},
+    {id:'reference',title:'尺寸参考资料',url:sourceUrl,snippet:'Verify the enclosure before ordering.',hit_count:3,first_party:false},
+  ];
+  const paragraphs=[
+    {id:'p1',text:'旧版标准尺寸表',html:'<p>Original table</p>'},
+    {id:'p2',text:'旧版订购提示',html:'<p>Order today</p>'},
+  ];
+  const calc={id:'c1',kind:'calc',statement:'按点间距换算画面像素',attribution:'单位换算'};
+  const source={id:'f1',kind:'source',statement:'下单前应核对外壳尺寸',quote:materials[2].snippet,url:sourceUrl,attribution:'尺寸参考资料',article_id:'reference'};
+  const covered='原文有哪些标准尺寸？', gap='下单前要核对什么尺寸？', pixels='如何换算画面像素？';
+  const change=[
+    {op:'keep',paragraph:'p1',facts:[]},
+    {op:'revise',paragraph:'p2',subquestion:'q2',heading:'下单前的检查清单',reason:'旧页没有下单前的检查步骤',facts:['f1']},
+    {op:'insert_after',paragraph:'p2',subquestion:'q3',heading:'画面像素换算示例',reason:'买家需要知道画面分辨率',facts:['c1']},
+    {op:'insert_after',paragraph:'p1',subquestion:'q3',heading:'额外的换算附录',reason:'可提供更多换算示例',facts:['c1']},
+  ];
+  const safeHtml='<p id="probe" onclick="window.fixtureRan=true">New '+ 'x'.repeat(360) + '</p><script>window.fixtureRan=true</script>';
+  const chinese='中文审稿：先核对外壳尺寸，再下单。';
+  const writes:{path:string;body:unknown}[]=[];
+  let phase:'insufficient'|'ready'|'waiting'|'running'|'unknown'|'retry-queued'|'done'='insufficient', version=7, polls=0, legacyUpgraded=false;
+  const api=fakeApi(async(requestUrl,_res,req)=>{
+    const pathname=requestUrl.pathname;
+    if(pathname==='/api/admin/me')return {name:'Synthetic operator',csrf:'fixture',dev:false};
+    if(pathname===pitches)return {rows:[]};
+    if(pathname===url+'/evidence'){
+      let input='';for await(const chunk of req)input+=chunk;
+      writes.push({path:pathname,body:JSON.parse(input)});phase='ready';version++;
+      return {id,version};
+    }
+    if(pathname===url+'/confirm'||pathname===url+'/generate'||pathname===url+'/fragments/2/retry'){
+      let input='';for await(const chunk of req)input+=chunk;
+      writes.push({path:pathname,body:JSON.parse(input)});
+      if(pathname.endsWith('/confirm')){phase='waiting';version++;return {id,status:'confirmed',task_id:'task-v2'};}
+      if(pathname.endsWith('/generate')){phase='running';return {id,task_id:'task-v2',queued:true};}
+      phase='retry-queued';polls=0;return {queued:true};
+    }
+    if(pathname===pitches+'/old-unknown/upgrade'){
+      let input='';for await(const chunk of req)input+=chunk;
+      writes.push({path:pathname,body:JSON.parse(input)});legacyUpgraded=true;
+      return {id:'old-unknown',version:2,status:'preparing'};
+    }
+    if(pathname===pitches+'/old-unknown')return legacyUpgraded
+      ? {id:'old-unknown',title:'旧任务结果待核对',status:'preparing',version:2,task_id:null,prep:{workflow_version:2,question:'旧任务结果待核对',output_type:'update',existing_url:oldUrl,links:[]}}
+      : {id:'old-unknown',title:'旧任务结果待核对',status:'confirmed',version:1,task_id:'old-task',task_state:'unknown',prep:null};
+    if(pathname!==url&&pathname!==pitches+'/no-change')return;
+    const noChange=pathname===pitches+'/no-change';
+    if(!noChange&&phase==='running'&&++polls>1){phase='unknown';version++;}
+    if(!noChange&&phase==='retry-queued'&&++polls>1){phase='done';version++;}
+    const task=!noChange&&!['insufficient','ready'].includes(phase);
+    return {id:noChange?'no-change':id,title:'升级尺寸指南',status:noChange?'ready':task?'confirmed':phase,version,
+      task_id:task?'task-v2':null,task_state:task?(phase==='running'?'writing':phase==='done'?'received':phase==='retry-queued'?'unknown':phase):null,
+      prep:{
+        workflow_version:2,question:'升级尺寸指南',output_type:'update',existing_url:oldUrl,links:[],weak_material_ids:['weak'],
+        materials:phase==='insufficient'?materials.slice(0,2):materials,paragraphs,facts:phase==='insufficient'?[calc]:[calc,source],
+        subquestions:[
+          {id:'q1',zh:covered,en:'Standard sizes?',need:'page',answer_shape:'table',terms:[],coverage:{status:'page_good',page_paragraphs:['p1'],evidence:[]},demand:{queries:[],inquiries:0}},
+          {id:'q2',zh:gap,en:'What to check?',need:'source',answer_shape:'steps',terms:[],coverage:{status:phase==='insufficient'?'missing':'direct',page_paragraphs:[],evidence:phase==='insufficient'?[]:['f1'],action:phase==='insufficient'?'需要一份尺寸参考资料。':null},demand:{queries:[],inquiries:0}},
+          {id:'q3',zh:pixels,en:'How many pixels?',need:'calc',answer_shape:'number',terms:[],coverage:{status:'calc',page_paragraphs:[],evidence:['c1']},demand:{queries:[{query:'billboard size in pixels',impressions:31,position:4.5}],inquiries:2}},
+        ],
+        edit_plan:noChange?[change[0]]:phase==='insufficient'?[]:task?change.slice(0,3):change,conclusion:noChange?'no_change':'upgrade',
+        outline:change.slice(1).map((item,i)=>({id:'change-'+i,heading:item.heading,evidence:[],gap:null,action:null})),
+        titles:[{title:'Billboard Size Guide',anchor:'原页尺寸',article_id:'page'}],
+        fragments:task?[{op_index:1,status:phase==='waiting'?'pending':'done',...(phase!=='waiting'?{zh_review:chinese,html_en:safeHtml,used_facts:['f1']}:{})},
+          {op_index:2,status:phase==='unknown'||phase==='retry-queued'?'unknown':phase==='done'?'done':phase==='running'?'running':'pending',...(phase==='unknown'||phase==='retry-queued'?{receipt_id:71}:phase==='done'?{zh_review:'中文审稿：给出像素换算方法。'}:{})}]:[],
+        assembled:phase==='done'&&!noChange?{html_en:paragraphs[0].html+safeHtml,zh_review:chinese,diff:[
+          {op:'keep',paragraph:'p1',before:paragraphs[0].html,after:paragraphs[0].html},
+          {op:'revise',paragraph:'p2',before:paragraphs[1].html,after:safeHtml},
+        ],draft_id:'draft-v2'}:null,
+      }};
+  });
+  const web=await startWebServer(api);let browser;
+  try{
+    browser=await chromium.launch();
+    const page=await browser.newPage({viewport:{width:360,height:840}});
+    const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.route('**/*',route=>new URL(route.request().url()).origin===web.origin?route.continue():route.abort());
+    const open=(pitch:string)=>visit(page,web.origin+'/admin/studio/pitch?id='+pitch);
+    await open(id);
+    await expect(page.getByRole('heading',{name:'缺证据 · 1 题'})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'旧页已答好 · 1 题'})).toBeVisible();
+    await expect(page.getByText('无需求数据',{exact:true}).first()).toBeVisible();
+    await expect(page.getByText('billboard size in pixels · 曝光 31 · 排名 4.5')).toBeVisible();
+    const find=page.getByRole('button',{name:'只检索这一题'});
+    await expect(find).toBeDisabled();
+    await page.getByRole('textbox',{name:'补充证据链接：'+gap}).fill(sourceUrl);
+    await find.click();
+    await expect(page.getByRole('heading',{name:'有直接证据 · 1 题'})).toBeVisible();
+    assert.deepEqual(writes,[{path:url+'/evidence',body:{version:7,subquestion_id:'q2',url:sourceUrl}}]);
+    const weak=page.getByRole('checkbox',{name:'选用 弱相关行业新闻'});
+    await expect(weak).toBeHidden();
+    await page.getByText('弱相关 1 条',{exact:true}).click();
+    await expect(weak).toBeVisible();
+    await expect(weak).not.toBeChecked();
+    await expect(page.getByRole('checkbox',{name:'选用 尺寸参考资料'})).toBeChecked();
+
+    await page.getByRole('button',{name:'编辑计划',exact:true}).click();
+    await expect(page.getByText('买家问题：'+gap)).toBeVisible();
+    await expect(page.getByText('原文：'+source.quote)).toBeVisible();
+    const pixelEdit=page.getByRole('article').filter({has:page.getByRole('heading',{name:'新增 · 画面像素换算示例',exact:true})});
+    await expect(pixelEdit.getByText('需求信号：2 条已登记询盘')).toBeVisible();
+    const keep=page.getByText('p1：'+paragraphs[0].text,{exact:true});
+    await expect(keep).toBeHidden();
+    await page.getByText('原样保留 1 段',{exact:true}).click();
+    await expect(keep).toBeVisible();
+    await page.getByRole('checkbox',{name:'保留改动：额外的换算附录'}).uncheck();
+    await page.getByRole('button',{name:'标题',exact:true}).click();
+    await page.getByRole('radio',{name:/Billboard Size Guide/}).check();
+    await page.getByRole('button',{name:'确认备料',exact:true}).click();
+    const generate=page.getByRole('button',{name:'生成英文稿',exact:true});
+    await expect(generate).toBeEnabled();
+    assert.deepEqual(writes[1],{path:url+'/confirm',body:{version:8,article_ids:['page','reference'],selected_title:'Billboard Size Guide',output_type:'update',
+      outline:[{id:'change-0',heading:change[1].heading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],
+      engineer:{mode:'conservative',name:'',reply:'',answers:[]}}});
+    await expect(page.getByRole('heading',{name:/额外的换算附录/})).toHaveCount(0);
+
+    await generate.click();
+    const retry=page.getByRole('button',{name:'只重试此片段'});
+    await expect(retry).toBeVisible({timeout:9000});
+    await expect(page.getByText(/上一次调用结果未知，可能已经计费/)).toBeVisible();
+    await page.reload();
+    await expect(generate).toHaveCount(0);
+    await expect(retry).toBeVisible();
+    await page.getByText('查看中文片段审稿',{exact:true}).click();
+    await expect(page.getByText(chinese,{exact:true})).toBeVisible();
+    await retry.click();
+    const approveRetry=page.getByRole('button',{name:'确认重试此片段'});
+    await expect(approveRetry).toBeVisible();
+    assert.deepEqual(writes.slice(2),[{path:url+'/generate',body:{}}],'opening or reloading the unknown result, and reviewing retry, never starts another call');
+    await page.getByRole('button',{name:'取消',exact:true}).click();
+    await expect(approveRetry).toHaveCount(0);
+    await retry.click();await approveRetry.click();
+    await expect(page.getByText('重试已提交',{exact:true})).toBeVisible();
+    await expect(retry).toHaveCount(0);
+    await expect(page.getByRole('heading',{name:'新旧对比'})).toBeVisible({timeout:9000});
+    assert.deepEqual(writes.at(-1),{path:url+'/fragments/2/retry',body:{version:10,confirm_unknown:true}});
+    assert.equal(writes.length,4);
+    await page.getByText('改写 · p2',{exact:true}).click();
+    await expect(page.getByText(paragraphs[1].html,{exact:true})).toBeVisible();
+    await expect(page.getByText(safeHtml,{exact:true})).toBeVisible();
+    await expect(page.locator('#probe')).toHaveCount(0);
+    assert.equal(await page.evaluate(()=>Reflect.has(window,'fixtureRan')),false);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await expect(page.getByRole('link',{name:'打开稿件审阅 →'})).toHaveAttribute('href','/admin/studio/drafts/draft-v2');
+    await open('old-unknown');
+    await expect(page.getByText(/模型调用没有返回确定结果/)).toBeVisible();
+    await expect(generate).toHaveCount(0);
+    await expect(retry).toHaveCount(0);
+    await expect(page.getByRole('link',{name:'继续原采编任务 →'})).toHaveAttribute('href','/admin/studio?tab=tasks#task-old-task');
+    assert.equal(writes.length,4);
+    await page.getByRole('button',{name:'改用片段采编（新备料）'}).click();
+    await expect(page.getByRole('heading',{name:'后台正在备料'})).toBeVisible();
+    assert.deepEqual(writes.at(-1),{path:pitches+'/old-unknown/upgrade',body:{version:1}});
+    await open('no-change');
+    await expect(page.getByRole('heading',{name:'无需升级',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'确认备料',exact:true})).toHaveCount(0);
+    assert.equal(writes.length,5);
+    assert.deepEqual(errors,[]);
+  }finally{await browser?.close();await web.stop();}
+});

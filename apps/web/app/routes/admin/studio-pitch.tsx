@@ -29,17 +29,42 @@ type Section = { id: string; heading: string; evidence: { article_id: string; qu
 type Title = { title: string; anchor: string; article_id?: string; quote?: string };
 type EngineerOption = { id: string; label: string; instruction: string; conservative: boolean };
 type EngineerQuestion = { id: string; question: string; section_ids: string[]; options: EngineerOption[]; withheld_numbers: string[] };
+const coverageLabels = {
+  page_good: '旧页已答好', page_weak: '旧页答得弱', direct: '有直接证据',
+  calc: '可计算', engineer: '需工程确认', missing: '缺证据',
+};
+type CoverageStatus = keyof typeof coverageLabels;
+type Fact = { id: string; kind: string; statement: string; quote?: string; url?: string; attribution?: string; article_id?: string };
+type Subquestion = {
+  id: string; zh: string; en: string; need: string; answer_shape: string; terms: string[];
+  coverage: { status: CoverageStatus; page_paragraphs: string[]; evidence: (string | Partial<Fact>)[]; reason?: string; action?: string };
+  demand?: { queries: { query: string; impressions: number; position: number | null }[]; inquiries: number };
+};
+const opLabels = { keep: '保留', revise: '改写', insert_after: '新增' };
+type Edit = { op: keyof typeof opLabels; paragraph: string; subquestion?: string; reason?: string; heading?: string; facts?: string[] };
+const fragmentLabels = { pending: '待处理', running: '生成中', done: '已完成', unknown: '结果待核对', failed: '未完成' };
+type Fragment = {
+  op_index: number; status: keyof typeof fragmentLabels; html_en?: string; zh_review?: string;
+  used_facts?: string[]; receipt_id?: string | number | null; error?: string;
+};
+type V2 = {
+  subquestions: Subquestion[]; facts: Fact[]; paragraphs: { id: string; text: string }[];
+  edit_plan: Edit[]; weak_material_ids: string[]; fragments: Fragment[];
+  assembled?: { diff: { op: Edit['op']; paragraph: string; before?: string | null; after?: string | null }[]; draft_id?: string | null } | null;
+  conclusion?: 'upgrade' | 'no_change';
+};
 type Prep = Brief & {
   question: string; question_en: string; keywords: string[]; materials: Material[]; related_pages: { url: string; title: string }[];
   outline: Section[]; titles: Title[]; hooks: Title[]; engineer_questions: EngineerQuestion[];
   blacklist?: { configured: boolean; blocked: number; pending: number }; error?: string | null;
   link_errors?: { url: string; reason: string }[]; started_at?: string | null;
+  v2: V2 | null;
 };
 type PitchRow = { id: string; title: string; status: Status; version: number; task_id: string | null; task_state?: string | null };
 type Pitch = PitchRow & { prep: Prep | null };
 type PrepResults = 'question_en' | 'keywords' | 'materials' | 'related_pages' | 'outline' | 'titles' | 'hooks' | 'engineer_questions';
-type PitchResponse = PitchRow & { prep: (Omit<Prep, PrepResults> & Partial<Omit<Pick<Prep, PrepResults>, 'materials'>> &
-  { materials?: (Material & { body_text?: string | null })[] }) | null };
+type PitchResponse = PitchRow & { prep: (Omit<Prep, PrepResults | 'v2'> & Partial<Omit<Pick<Prep, PrepResults>, 'materials'>> &
+  Partial<V2> & { workflow_version?: number; materials?: (Material & { body_text?: string | null })[] }) | null };
 type SavedQuestion = { id: string; document: { question: string; existing_url: string; active: boolean } };
 type Preview = { text: string; redactions: { kind: string; count: number }[] };
 type Answer = { question_id: string; choice: string; note: string };
@@ -55,11 +80,19 @@ const redactionLabels: Record<string, string> = {
 
 function readPrep(raw: PitchResponse['prep']): Prep | null {
   if (!raw) return null;
+  const { workflow_version, subquestions, facts, paragraphs, edit_plan, weak_material_ids, fragments, assembled, conclusion } = raw;
   return {
-    ...raw, question_en: raw.question_en ?? '', keywords: raw.keywords ?? [], related_pages: raw.related_pages ?? [],
+    question: raw.question, output_type: raw.output_type, existing_url: raw.existing_url, links: raw.links,
+    blacklist: raw.blacklist, error: raw.error, link_errors: raw.link_errors, started_at: raw.started_at,
+    question_en: raw.question_en ?? '', keywords: raw.keywords ?? [], related_pages: raw.related_pages ?? [],
     outline: raw.outline ?? [], titles: raw.titles ?? [], hooks: raw.hooks ?? [], engineer_questions: raw.engineer_questions ?? [],
     materials: (raw.materials ?? []).map(({ id, title, url, revision, published_at, publication_time, snippet, hit_count, first_party, existing_page, body_status }) =>
       ({ id, title, url, revision, published_at, publication_time, snippet, hit_count, first_party, existing_page, body_status })),
+    v2: workflow_version === 2 ? {
+      subquestions: subquestions ?? [], facts: facts ?? [], paragraphs: (paragraphs ?? []).map(({ id, text }) => ({ id, text })), edit_plan: edit_plan ?? [],
+      weak_material_ids: weak_material_ids ?? [], fragments: fragments ?? [], conclusion,
+      assembled: assembled && { draft_id: assembled.draft_id, diff: assembled.diff.filter(change => change.op !== 'keep') },
+    } : null,
   };
 }
 
@@ -215,6 +248,116 @@ function NewPitch({ question, missing }: { question: SavedQuestion | null; missi
 
 const panels = ['素材', '大纲', '标题', '工程确认'];
 const readable = (material: Material) => !material.body_status || material.body_status === 'ok';
+const disclosure = 'cursor-pointer break-words text-sm font-medium text-accent';
+const inset = 'min-w-0 space-y-2 rounded-control bg-bg-sunk p-3 [overflow-wrap:anywhere]';
+const changeEntries = (v2: V2) => v2.edit_plan.map((edit, index) => ({ edit, index })).filter(({ edit }) => edit.op !== 'keep');
+const changeHeading = (v2: V2, edit: Edit) => edit.heading?.trim()
+  || v2.subquestions.find(question => question.id === edit.subquestion)?.zh || (edit.paragraph ? '原文 ' + edit.paragraph : '新章节');
+
+function Demand({ demand }: { demand: Subquestion['demand'] }) {
+  if (!demand?.queries.length && !demand?.inquiries) return <p className={muted}>无需求数据</p>;
+  return <div className={muted}>
+    <p>需求信号：{demand?.inquiries ?? 0} 条已登记询盘</p>
+    {!!demand?.queries.length && <ul className="mt-1 space-y-1">
+      {demand.queries.map(({ query, impressions, position }, i) => <li key={i}>{query} · 曝光 {impressions} · {position == null ? '无排名数据' : '排名 ' + position}</li>)}
+    </ul>}
+  </div>;
+}
+
+function EvidenceList({ entries, v2 }: { entries: (string | Partial<Fact>)[]; v2: V2 }) {
+  if (!entries.length) return null;
+  return <ul className="space-y-2 text-sm">
+    {entries.map((entry, i) => {
+      const id = typeof entry === 'string' ? entry : entry.id;
+      const fact = v2.facts.find(item => item.id === id) ?? (typeof entry === 'string' ? null : entry);
+      return <li key={i} className="space-y-1 border-l-2 border-line-strong pl-2 [overflow-wrap:anywhere]">
+        {fact ? <>
+          {fact.statement && <p>{fact.statement}</p>}
+          {fact.quote && <blockquote className={muted}>原文：{fact.quote}</blockquote>}
+          {fact.url ? <SourceLink url={fact.url} title={fact.attribution || fact.url} /> : fact.attribution && <p className={muted}>{fact.attribution}</p>}
+        </> : <p className={muted}>未返回证据详情{id ? '（' + id + '）' : ''}</p>}
+      </li>;
+    })}
+  </ul>;
+}
+
+function EvidenceLookup({ pitch, question, run, busy }: { pitch: PitchRow; question: Subquestion; run: Run; busy: boolean }) {
+  const [url, setUrl] = useState('');
+  const valid = !!httpUrl(url.trim());
+  return <form className="space-y-2" onSubmit={async e => {
+    e.preventDefault();
+    if (busy || !valid) return;
+    if (await run('POST', pitchPath(pitch.id) + '/evidence', { version: pitch.version, subquestion_id: question.id, url: url.trim() },
+      { success: '已检索此问题的证据，请核对更新结果。' })) setUrl('');
+  }}>
+    <Field label="补充公开证据链接" hint="只检索这一题，不调用付费模型。">
+      <Input type="url" aria-label={'补充证据链接：' + question.zh} placeholder="https://" value={url} onChange={e => setUrl(e.target.value)} disabled={busy} />
+    </Field>
+    <Button type="submit" size="sm" disabled={busy || !valid}>只检索这一题</Button>
+  </form>;
+}
+
+function Coverage({ pitch, v2, run, busy, editable }: { pitch: PitchRow; v2: V2; run: Run; busy: boolean; editable: boolean }) {
+  const statuses: CoverageStatus[] = ['missing', 'engineer', 'page_weak', 'direct', 'calc', 'page_good'];
+  return <div className="space-y-3">
+    <h3 className="text-sm font-semibold">买家子问题覆盖</h3>
+    {!v2.subquestions.length && <p className={muted}>本次未返回买家子问题。</p>}
+    {statuses.map(status => {
+      const questions = v2.subquestions.filter(question => question.coverage.status === status);
+      if (!questions.length) return null;
+      return <section key={status} className="space-y-2">
+        <h4 className="text-sm font-medium">{coverageLabels[status]} · {questions.length} 题</h4>
+        {questions.map(question => <article key={question.id} className={inset}>
+          <h5 className="text-sm font-medium">{question.zh || question.en}</h5>
+          {question.coverage.reason && <p className={muted}>{question.coverage.reason}</p>}
+          {question.coverage.action && <p className={muted}>下一步：{question.coverage.action}</p>}
+          {!!question.coverage.page_paragraphs?.length && <details>
+            <summary className={disclosure}>查看旧页依据（{question.coverage.page_paragraphs.join('、')}）</summary>
+            <ul className="mt-2 space-y-2 text-sm">{question.coverage.page_paragraphs.map(id => <li key={id}>
+              {id}：{v2.paragraphs.find(paragraph => paragraph.id === id)?.text || '未返回段落原文'}
+            </li>)}</ul>
+          </details>}
+          <EvidenceList entries={question.coverage.evidence ?? []} v2={v2} />
+          <Demand demand={question.demand} />
+          {editable && (status === 'missing' || status === 'page_weak') && <EvidenceLookup pitch={pitch} question={question} run={run} busy={busy} />}
+        </article>)}
+      </section>;
+    })}
+  </div>;
+}
+
+function EditPlan({ v2, inclusion }: { v2: V2; inclusion?: { included: boolean[]; toggle: (index: number) => void; busy: boolean } }) {
+  const keeps = v2.edit_plan.filter(edit => edit.op === 'keep');
+  const changes = changeEntries(v2);
+  return <div className="space-y-3">
+    <h3 className="text-sm font-semibold">编辑计划：这次补了什么</h3>
+    {v2.conclusion === 'no_change' ? <p className={muted}>无需升级。旧页已经覆盖本次要回答的问题，可以保留原文。</p>
+      : !changes.length && <p className={muted}>还没有可确认的改写或新增项。</p>}
+    {changes.map(({ edit, index }, i) => {
+      const question = v2.subquestions.find(item => item.id === edit.subquestion);
+      const heading = changeHeading(v2, edit);
+      return <article key={index} className={inset}>
+        <h4 className="text-sm font-medium">{opLabels[edit.op]} · {heading}</h4>
+        {inclusion && <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={inclusion.included[i]} disabled={inclusion.busy} onChange={() => inclusion.toggle(i)} aria-label={'保留改动：' + heading} />
+          本次纳入
+        </label>}
+        {edit.paragraph && <p className={muted}>{edit.op === 'insert_after' ? '插入在原文之后：' : '改写原文：'}{edit.paragraph}</p>}
+        <p className="text-sm">买家问题：{question?.zh || question?.en || '未返回对应问题'}</p>
+        {edit.reason && <p className={muted}>修改理由：{edit.reason}</p>}
+        <p className={muted}>所用依据：{edit.facts?.length ? '' : question?.coverage.action || '没有列出可用事实'}</p>
+        <EvidenceList entries={edit.facts ?? []} v2={v2} />
+        <Demand demand={question?.demand} />
+      </article>;
+    })}
+    {!!keeps.length && <details className={inset}>
+      <summary className={disclosure}>原样保留 {keeps.length} 段</summary>
+      <ul className="space-y-2 text-sm">{keeps.map(({ paragraph }, i) => <li key={i}>
+        {paragraph}：{v2.paragraphs.find(item => item.id === paragraph)?.text || '保留原文'}
+      </li>)}</ul>
+    </details>}
+  </div>;
+}
 
 function MaterialList({ materials, selected, toggle, busy }: { materials: Material[]; selected: string[]; toggle: (id: string) => void; busy: boolean }) {
   return <div className="divide-y divide-line">
@@ -234,13 +377,34 @@ function MaterialList({ materials, selected, toggle, busy }: { materials: Materi
   </div>;
 }
 
+function CandidateMaterials({ prep, selected, toggle, busy }: { prep: Prep; selected: string[]; toggle?: (id: string) => void; busy: boolean }) {
+  const weak = new Set(prep.v2?.weak_material_ids);
+  const strong = prep.materials.filter(material => !weak.has(material.id));
+  const weakMaterials = prep.materials.filter(material => weak.has(material.id));
+  const list = (materials: Material[]) => toggle ? <MaterialList materials={materials} selected={selected} toggle={toggle} busy={busy} />
+    : <ul className="space-y-1">{materials.map(material => <li key={material.id}><SourceLink url={material.url} title={material.title || material.url} /></li>)}</ul>;
+  return <div className="space-y-3">
+    {strong.length ? list(strong) : <p className={warning}>没有找到可用素材。请先补充线索。</p>}
+    {!!weakMaterials.length && <details className={inset}>
+      <summary className={disclosure}>弱相关 {weakMaterials.length} 条</summary>
+      <p className={muted}>这些候选没有找到能直接回答子问题的句子。</p>
+      {list(weakMaterials)}
+    </details>}
+  </div>;
+}
+
 function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Prep; onConfirmed: (taskId: string | null) => void }) {
+  const v2 = prep.v2;
+  const tabs = v2 ? ['素材', '编辑计划', '标题', '工程确认'] : panels;
   const [panel, setPanel] = useState(0);
   const [selected, setSelected] = useState(() => {
-    const cited = new Set([...prep.outline.flatMap(s => s.evidence.map(e => e.article_id)), ...prep.titles.map(t => t.article_id)]);
-    return prep.materials.filter(m => readable(m) && (m.existing_page || cited.has(m.id))).map(m => m.id);
+    const cited = new Set([...prep.outline.flatMap(s => s.evidence.map(e => e.article_id)), ...prep.titles.map(t => t.article_id),
+      ...(v2?.facts.filter(fact => v2.edit_plan.some(edit => edit.facts?.includes(fact.id))).map(fact => fact.article_id) ?? [])]);
+    return prep.materials.filter(m => readable(m) && !v2?.weak_material_ids.includes(m.id) && (m.existing_page || cited.has(m.id))).map(m => m.id);
   });
-  const [outline, setOutline] = useState(() => prep.outline.map(({ id, heading }) => ({ id, heading, include: true })));
+  const [outline, setOutline] = useState(() => v2 ? changeEntries(v2).map(({ edit }, i) => ({
+    id: 'change-' + i, heading: (prep.outline[i]?.heading || changeHeading(v2, edit)).slice(0, 200), include: true,
+  })) : prep.outline.map(({ id, heading }) => ({ id, heading, include: true })));
   const [output, setOutput] = useState<FinalOutput>(prep.output_type === 'auto' ? (prep.existing_url ? 'update' : 'guide') : prep.output_type);
   const [title, setTitle] = useState('');
   const [conservative, setConservative] = useState(true);
@@ -264,12 +428,13 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
   const includedSections = outline.filter(section => section.include);
   const supportedSection = (section: Section) => section.evidence.some(evidence => selected.includes(evidence.article_id))
     || prep.engineer_questions.some(question => question.section_ids.includes(section.id));
-  const blocker = !enoughEvidence ? '请选至少 2 条素材，或选用已有页面正文。'
+  const blocker = !v2 && !enoughEvidence ? '请选至少 2 条素材，或选用已有页面正文。'
     : output === 'update' && !prep.existing_url ? '升级已有页需要先补充已有页面 URL 并重新备料。'
-    : output === 'update' && !selectedExistingPage ? '升级稿需要选中已有页面正文。'
+    : output === 'update' && !selectedExistingPage && (!v2 || prep.materials.some(material => material.existing_page) || !v2.paragraphs.length) ? '升级稿需要已有页面正文。'
     : !validTitle ? '请在“标题”中选择一个有已选素材支撑的标题。'
-    : !includedSections.length || includedSections.some(section => !section.heading.trim()) ? '大纲至少保留一节，且保留的章节都要有标题。'
-    : prep.outline.some((section, i) => outline[i].include && !supportedSection(section)) ? '请为保留的章节选用对应素材，或取消保留无证据、无工程确认的章节。'
+    : v2 && !includedSections.length ? '请至少纳入一处改写或新增。'
+    : !v2 && (!includedSections.length || includedSections.some(section => !section.heading.trim())) ? '大纲至少保留一节，且保留的章节都要有标题。'
+    : !v2 && prep.outline.some((section, i) => outline[i].include && !supportedSection(section)) ? '请为保留的章节选用对应素材，或取消保留无证据、无工程确认的章节。'
     : !engineer ? (conservative ? '确认卡缺少保守选项，请重做备料。' : '请填写工程师姓名和完整的实际回复，或改用保守写法。')
     : '';
 
@@ -277,7 +442,7 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
     if (blocker || !engineer) return;
     const result = await run<{ id: string; status: 'confirmed'; task_id: string | null; reused?: boolean }>('POST', pitchPath(pitch.id) + '/confirm', {
       version: pitch.version, article_ids: selected, selected_title: title, output_type: output,
-      outline: outline.map((section, i) => ({ ...section, heading: section.heading.trim() || prep.outline[i].heading })), engineer,
+      outline: outline.map((section, i) => ({ ...section, heading: section.heading.trim() || prep.outline[i]?.heading })), engineer,
     });
     if (result && !result.reused) onConfirmed(result.task_id);
   }
@@ -285,18 +450,19 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
   return <div className="space-y-4">
     <Card title="检查备料" right={<Badge tone="accent">{statusLabels.ready}</Badge>}>
       <nav aria-label="备料检查" className="mb-4 grid grid-cols-4 gap-1 rounded-control bg-bg-sunk p-1">
-        {panels.map((label, i) => <Button key={label} size="sm" tone={panel === i ? 'primary' : 'ghost'} aria-pressed={panel === i}
+        {tabs.map((label, i) => <Button key={label} size="sm" tone={panel === i ? 'primary' : 'ghost'} aria-pressed={panel === i}
           className="min-w-0 px-1 sm:px-2" onClick={() => setPanel(i)}>{label}</Button>)}
       </nav>
 
       {panel === 0 && <div className="space-y-3">
-        <p className={muted}>检查命中句和出处，只保留成稿会用到的素材。</p>
-        {prep.materials.length ? <MaterialList materials={prep.materials} selected={selected} busy={busy}
+        {v2 && <Coverage pitch={pitch} v2={v2} run={run} busy={busy} editable />}
+        <p className={muted}>{v2 ? '下方是候选素材。编辑计划会列出每处改动所用的依据。' : '检查命中句和出处，只保留成稿会用到的素材。'}</p>
+        <CandidateMaterials prep={prep} selected={selected} busy={busy}
           toggle={id => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])} />
-          : <p className={warning}>没有找到可用素材。请先补充线索。</p>}
       </div>}
 
-      {panel === 1 && <div className="space-y-3">
+      {panel === 1 && (v2 ? <EditPlan v2={v2} inclusion={{ included: outline.map(section => section.include), busy,
+        toggle: index => setOutline(items => items.map((item, i) => i === index ? { ...item, include: !item.include } : item)) }} /> : <div className="space-y-3">
         <p className={muted}>核对每一节的证据。可以改章节名，或取消保留。</p>
         {prep.outline.map((section, i) => {
           const current = outline[i];
@@ -320,14 +486,14 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
             {section.action && <p className={muted}>建议：{section.action}</p>}
           </div>;
         })}
-      </div>}
+      </div>)}
 
       {panel === 2 && <div className="space-y-4">
-        <Field label="确认产出类型">
+        {v2 ? <p className={muted}>产出类型：{outputLabels[output]}</p> : <Field label="确认产出类型">
           <Select aria-label="确认产出类型" value={output} disabled={busy} onChange={e => {
             if (isFinalOutput(e.target.value)) { setOutput(e.target.value); setTitle(''); }
           }}>{outputChoices.map(choice => <option key={choice} value={choice}>{outputLabels[choice]}</option>)}</Select>
-        </Field>
+        </Field>}
         <fieldset disabled={busy} className="min-w-0 space-y-2">
           <legend className="mb-2 text-sm font-medium">{output === 'short' ? '短文章标题（选一个）' : '页面标题（选一个）'}</legend>
           {candidates.length ? candidates.map((candidate, i) => <label key={i} className="flex items-start gap-2 rounded-control bg-bg-sunk p-3 text-sm">
@@ -354,12 +520,12 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
 
       <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-line pt-3">
         {panel > 0 && <Button onClick={() => setPanel(panel - 1)}>上一步</Button>}
-        {panel < panels.length - 1 && <Button className="ml-auto" onClick={() => setPanel(panel + 1)}>下一步：{panels[panel + 1]}</Button>}
+        {panel < tabs.length - 1 && <Button className="ml-auto" onClick={() => setPanel(panel + 1)}>下一步：{tabs[panel + 1]}</Button>}
       </div>
     </Card>
 
     <Card title="确认备料">
-      <p className={muted}>已选 {selected.length} 条素材{selectedExistingPage ? '，含已有页面正文' : ''} · 保留 {includedSections.length} 节 · {outputLabels[output]} · {conservative ? '保守写法' : '工程师回复'}</p>
+      <p className={muted}>已选 {selected.length} 条素材{selectedExistingPage ? '，含已有页面正文' : ''} · {v2 ? '纳入改写或新增 ' + includedSections.length + ' 处' : '保留 ' + includedSections.length + ' 节'} · {outputLabels[output]} · {conservative ? '保守写法' : '工程师回复'}</p>
       <p className="mt-1 break-words text-sm">{blocker || '确认后，可单独点击“生成英文稿”。'}</p>
       <Button tone="primary" className="mt-3" disabled={busy || !!blocker} onClick={() => void confirm()}>确认备料</Button>
     </Card>
@@ -367,17 +533,101 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
   </div>;
 }
 
+function ReviewText({ children }: { children: string }) {
+  return <p className="whitespace-pre-wrap text-sm leading-6 [overflow-wrap:anywhere]">{children}</p>;
+}
+
+function FragmentReview({ pitch, v2, run, busy, awaitingRetry, onRetryQueued }: {
+  pitch: PitchRow; v2: V2; run: Run; busy: boolean; awaitingRetry?: number; onRetryQueued: (fragment: Fragment) => void;
+}) {
+  const [retryIndex, setRetryIndex] = useState<number | null>(null);
+  const changes = changeEntries(v2);
+  const done = v2.fragments.filter(fragment => fragment.status === 'done').length;
+  const review = v2.assembled;
+  async function retry(fragment: Fragment) {
+    const index = fragment.op_index;
+    if (busy || retryIndex !== index || awaitingRetry !== undefined) return;
+    const result = await run('POST', pitchPath(pitch.id) + '/fragments/' + index + '/retry', {
+      version: pitch.version, confirm_unknown: true,
+    });
+    if (result) {
+      setRetryIndex(null);
+      onRetryQueued(fragment);
+    }
+  }
+
+  if (!changes.length && !review) return null;
+  return <Card title="片段进度与审稿" right={<Badge tone={review ? 'ok' : 'muted'}>{done} / {changes.length} 已完成</Badge>}>
+    <div className="space-y-3">
+      {changes.map(({ edit, index }, i) => {
+        const fragment = v2.fragments.find(item => item.op_index === index);
+        const status = fragment?.status ?? 'pending';
+        const retryable = fragment && (status === 'unknown' || status === 'failed') && awaitingRetry !== index;
+        return <article key={index} className={inset}>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <h3 className="min-w-0 text-sm font-medium">{i + 1}. {opLabels[edit.op]} · {changeHeading(v2, edit)}</h3>
+            <Badge tone={status === 'done' ? 'ok' : retryable ? 'warn' : status === 'running' ? 'accent' : 'muted'}>{awaitingRetry === index ? '重试已提交' : fragmentLabels[status]}</Badge>
+          </div>
+          {fragment?.error && <p className={muted}>{fragment.error}</p>}
+          {fragment?.receipt_id != null && <p className={muted}>调用回执：{fragment.receipt_id}</p>}
+          {status === 'done' && fragment?.zh_review && <details>
+            <summary className={disclosure}>查看中文片段审稿</summary>
+            <ReviewText>{fragment.zh_review}</ReviewText>
+          </details>}
+          {status === 'done' && fragment?.html_en && !review && <details>
+            <summary className={disclosure}>查看英文片段 HTML 原文</summary>
+            <ReviewText>{fragment.html_en}</ReviewText>
+          </details>}
+          {retryable && <>
+            {status === 'unknown' && <p className={warning}>上一次调用结果未知，可能已经计费。重试会再次调用模型，可能产生新费用。</p>}
+            {retryIndex === index ? <div className="space-y-2">
+              <p className={muted}>确认重新生成这一段？已经完成的其他片段会保留。</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" tone="primary" disabled={busy || awaitingRetry !== undefined} onClick={() => void retry(fragment)}>确认重试此片段</Button>
+                <Button size="sm" disabled={busy} onClick={() => setRetryIndex(null)}>取消</Button>
+              </div>
+            </div> : <Button size="sm" disabled={busy || awaitingRetry !== undefined} onClick={() => setRetryIndex(index)}>只重试此片段</Button>}
+          </>}
+        </article>;
+      })}
+      {review && <div className="space-y-3 border-t border-line pt-3">
+        <h3 className="text-sm font-semibold">新旧对比</h3>
+        <p className={muted}>这里只列出改动。展开后可查看新旧 HTML 原文。</p>
+        {review.diff.map(({ op, paragraph, before, after }, index) => <details key={index} className={inset}>
+          <summary className={disclosure}>{opLabels[op]}{paragraph ? ' · ' + paragraph : ' · 新章节'}</summary>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0"><h4 className="text-sm font-semibold">修改前</h4><ReviewText>{before || '无原文'}</ReviewText></div>
+            <div className="min-w-0"><h4 className="text-sm font-semibold">修改后</h4><ReviewText>{after || '无内容'}</ReviewText></div>
+          </div>
+        </details>)}
+        {review.draft_id && <ButtonLink tone="primary" to={'/admin/studio/drafts/' + encodeURIComponent(review.draft_id)}>打开稿件审阅 →</ButtonLink>}
+      </div>}
+    </div>
+  </Card>;
+}
+
 function PitchWork({ pitch }: { pitch: Pitch }) {
   const { run, busy } = useAdminAction();
   const { revalidate, state } = useRevalidator();
   const [confirmation, setConfirmation] = useState<{ taskId: string | null } | null>(null);
   const [generation, setGeneration] = useState<{ task_id: string; queued: boolean } | null>(null);
+  const [retryReceipt, setRetryReceipt] = useState<{ fragment: Fragment; submittedAt: number } | null>(null);
   const prep = pitch.prep;
+  const v2 = prep?.v2;
   const status = confirmation ? 'confirmed' : pitch.status;
   const taskId = generation?.task_id ?? pitch.task_id ?? confirmation?.taskId;
-  const canGenerate = status === 'confirmed' && !generation && (!taskId || !!confirmation || pitch.task_state === 'waiting');
+  const fragmentStarted = v2?.fragments.some(fragment => fragment.status !== 'pending');
+  const retrySnapshot = retryReceipt?.fragment;
+  const awaitingRetry = retryReceipt && retrySnapshot && Date.now() - retryReceipt.submittedAt < 20_000 && v2?.fragments.some(fragment =>
+    fragment.op_index === retrySnapshot.op_index && fragment.status === retrySnapshot.status
+    && fragment.receipt_id === retrySnapshot.receipt_id && fragment.error === retrySnapshot.error) ? retrySnapshot.op_index : undefined;
+  const canGenerate = status === 'confirmed' && !generation && !v2?.assembled && !fragmentStarted && v2?.conclusion !== 'no_change'
+    && (pitch.task_state === 'waiting' || !pitch.task_state && (!taskId || !!confirmation));
   const preparing = status === 'preparing' && !taskId;
-  const writing = pitch.task_state === 'writing' || !!generation?.queued && !['received','blocked','unknown'].includes(pitch.task_state ?? '');
+  const fragmentActive = v2?.fragments.some(fragment => fragment.status === 'running'
+    || fragment.status === 'pending' && fragmentStarted && !['received', 'blocked', 'failed'].includes(pitch.task_state ?? ''));
+  const writing = !v2?.assembled && (pitch.task_state === 'writing' || pitch.task_state === 'queued' || !!fragmentActive || awaitingRetry !== undefined
+    || !!generation?.queued && !fragmentStarted && !['received', 'blocked', 'unknown', 'failed'].includes(pitch.task_state ?? ''));
 
   useEffect(() => {
     if (!(preparing || writing) || state !== 'idle') return;
@@ -391,17 +641,39 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
     if (result) setGeneration(result);
   }
 
-  if (taskId || status === 'confirmed') return <Card title="生成与继续任务" right={<Badge tone="ok">{pitch.task_state === 'unknown' ? '结果待核对' : writing ? '正在成稿' : taskId && !canGenerate ? '已有任务' : '已确认'}</Badge>}>
-    <div className="space-y-3">
-      <p role="status" className={muted}>{pitch.task_state === 'unknown' ? '模型调用没有返回确定结果，可能已经计费。已保留任务和回执，请维护人核对后再决定是否重试。' : writing ? '英文稿正在后台处理，可以离开本页，稍后继续原任务查看结果。'
-        : canGenerate ? '备料已确认。点击生成后，后台会排队写英文稿。'
-        : '已有采编任务，请在工作台继续原任务并查看进度。'}</p>
-      <div className="flex flex-wrap gap-2">
-        {canGenerate && <Button tone="primary" disabled={busy} onClick={() => void generate()}>生成英文稿</Button>}
-        {taskId && <ButtonLink tone={canGenerate ? 'secondary' : 'primary'} to={taskLink(taskId)}>继续原采编任务 →</ButtonLink>}
+  async function upgrade() {
+    if (busy || v2 || pitch.status !== 'confirmed') return;
+    if (await run('POST', pitchPath(pitch.id) + '/upgrade', { version: pitch.version }, { success: '已开始新版备料。原任务仍保留。' })) {
+      setConfirmation(null);
+      setGeneration(null);
+    }
+  }
+
+  if (taskId || status === 'confirmed') return <div className="space-y-4">
+    <Card title="生成与继续任务" right={<Badge tone={pitch.task_state === 'unknown' ? 'warn' : 'ok'}>{writing ? '正在成稿'
+      : v2?.assembled ? '已拼装' : pitch.task_state === 'unknown' ? '结果待核对' : taskId && !canGenerate ? '已有任务' : '已确认'}</Badge>}>
+      <div className="space-y-3">
+        <p role="status" className={muted}>{v2?.assembled ? v2.assembled.draft_id
+          ? '改动已拼装。请核对中文片段和新旧对比，再打开稿件审阅。' : '改动已拼装。稿件尚未入库，可以先查看中文片段和新旧对比。'
+          : v2 && (writing || fragmentStarted) ? '下方可查看每个片段的进度。已完成的片段会保留。'
+          : pitch.task_state === 'unknown' ? '模型调用没有返回确定结果，可能已经计费。已保留任务和回执，请维护人核对后再决定是否重试。'
+          : writing ? '英文稿正在后台处理，可以离开本页，稍后继续原任务查看结果。'
+          : canGenerate ? '备料已确认。点击生成后，后台会排队写英文稿。'
+          : '已有采编任务，请在工作台继续原任务并查看进度。'}</p>
+        <div className="flex flex-wrap gap-2">
+          {canGenerate && <Button tone="primary" disabled={busy} onClick={() => void generate()}>生成英文稿</Button>}
+          {v2 && !canGenerate && !v2.assembled && <Button disabled={busy} onClick={() => void revalidate()}>刷新状态</Button>}
+          {taskId && <ButtonLink tone={canGenerate ? 'secondary' : 'primary'} to={taskLink(taskId)}>继续原采编任务 →</ButtonLink>}
+        </div>
+        {!v2 && pitch.status === 'confirmed' && <div className="space-y-2 border-t border-line pt-3">
+          <p className={muted}>新版会调用模型重新备料，再按片段成稿。原任务和回执会保留；结果未知的调用不会重试。</p>
+          <Button disabled={busy} onClick={() => void upgrade()}>改用片段采编（新备料）</Button>
+        </div>}
       </div>
-    </div>
-  </Card>;
+    </Card>
+    {v2 && <FragmentReview pitch={pitch} v2={v2} run={run} busy={busy} awaitingRetry={awaitingRetry}
+      onRetryQueued={fragment => setRetryReceipt({ fragment, submittedAt: Date.now() })} />}
+  </div>;
 
   if (preparing) return <Card title="后台正在备料" right={<Badge tone="accent">备料中</Badge>}>
     <p role="status" className={muted}>系统正在查找素材、对照已有页面并拟定大纲。可以离开，回来后从已保存的命题继续。</p>
@@ -409,15 +681,25 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
     <Button className="mt-3" disabled={state !== 'idle'} onClick={() => void revalidate()}>刷新状态</Button>
   </Card>;
 
+  if (v2?.conclusion === 'no_change') return <div className="space-y-4">
+    <Card title="无需升级" right={<Badge tone="ok">可保留原文</Badge>}><EditPlan v2={v2} /></Card>
+    <Card title="核对判断依据"><Coverage pitch={pitch} v2={v2} run={run} busy={busy} editable={false} /></Card>
+    {prep && <Reprepare key={pitch.version} pitch={pitch} prep={prep} run={run} busy={busy} />}
+  </div>;
+
   if (status === 'ready' && prep) return <Confirmation key={pitch.version} pitch={pitch} prep={prep}
     onConfirmed={taskId => setConfirmation({ taskId })} />;
 
   return <div className="space-y-4">
     <Card title={statusLabels[status]} right={<Badge tone="warn">{statusLabels[status]}</Badge>}>
-      <p role="status" className={warning}>{status === 'insufficient' ? '证据不足，暂不能确认或成稿。请补线索，或改成短文章后重新备料。成稿仍需至少 2 条素材，或包含已有页面正文。'
+      <p role="status" className={warning}>{status === 'insufficient' ? v2 ? '证据不足，暂不能确认或成稿。可以给缺证据的子问题补一个公开链接。'
+        : '证据不足，暂不能确认或成稿。请补线索，或改成短文章后重新备料。成稿仍需至少 2 条素材，或包含已有页面正文。'
         : status === 'failed' ? '这次备料没有完成。可以检查线索后再试。' : '还没有可确认的备料内容。'}</p>
       {prep?.error && <p className="mt-2 break-words text-sm text-ink-3">{prep.error}</p>}
-      {status === 'insufficient' && !!prep?.materials.length && <div className="mt-3 space-y-2">
+      {status === 'insufficient' && prep && v2 ? <div className="mt-3 space-y-4">
+        <Coverage pitch={pitch} v2={v2} run={run} busy={busy} editable />
+        {!!prep.materials.length && <CandidateMaterials prep={prep} selected={[]} busy={busy} />}
+      </div> : status === 'insufficient' && !!prep?.materials.length && <div className="mt-3 space-y-2">
         <p className={muted}>已找到 {prep.materials.length} 条候选：</p>
         {prep.materials.map(material => <div key={material.id}><SourceLink url={material.url} title={material.title || material.url} /></div>)}
       </div>}
@@ -429,7 +711,7 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
 
 export default function StudioPitch({ loaderData }: Route.ComponentProps) {
   const { history, pitch, question, questionId } = loaderData;
-  const step = !pitch ? 0 : pitch.task_id || pitch.status === 'confirmed' ? 3 : pitch.status === 'ready' ? 2 : 1;
+  const step = !pitch ? 0 : pitch.task_id || pitch.status === 'confirmed' ? 3 : pitch.status === 'ready' || pitch.prep?.v2?.conclusion === 'no_change' ? 2 : 1;
   return <AdminPage title="命题采编" subtitle="写一个问题，先备料和核对出处，再生成英文稿。"
     actions={<><ButtonLink to={desk} tone={pitch ? 'primary' : 'ghost'}>+ 新命题</ButtonLink><ButtonLink to="/admin/studio">返回采编工作台</ButtonLink></>}>
     <Progress current={step} />

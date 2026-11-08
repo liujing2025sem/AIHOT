@@ -17,6 +17,8 @@ import { upsertMaterial } from '@aihot/backend/content/materials';
 import { previewPitch, createPitch, getPitch, preparePitch, confirmPitch, confirmedPitch } from '@aihot/backend/studio/studio-pitch';
 import { stopBoss } from '@aihot/backend/jobs/queue';
 import { pitchDraftFindings } from '@aihot/backend/studio/studio-company-facts';
+import {generatePitchFragments} from '@aihot/backend/studio/studio-pitch-v2';
+import {ReceiptUnknownError} from '@aihot/backend/providers/receipts';
 const suffix=tag(),source=`studio-${suffix}`,article=`studio-item-${suffix}`,actor='test:studio';
 const original={password:config.adminPassword,dev:config.devAdmin,privateNetwork:config.allowPrivateNetworkFetch};
 const repairSource=`studio-repair-${suffix}`;
@@ -506,18 +508,19 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
  const oldDir=config.credentialsDir, oldEnabled=config.modelCallsEnabled;
  config.credentialsDir=dir;config.modelCallsEnabled=true;
  const ids=[`pitch-one-${suffix}`,`pitch-two-${suffix}`,`pitch-old-${suffix}`];
- const body='The installation drawing defines the cabinet dimensions. Service access depends on the selected cabinet.';
+ const body='Cabinet dimensions are the measurements stated in the installation drawing. Check service access against the selected cabinet.';
  for(const id of ids)await sql`INSERT INTO articles(id,source_id,identity_key,url,title,published_at,discovered_at,timeline_at,body_status,body_text) VALUES(${id},${source},${id},${`https://example.com/${id}`},'Cabinet installation drawing','2020-01-01',now(),now(),'ok',${body})`;
  const submitted:string[]=[];
  const provider=await stub((_hit,req)=>{
   const request=JSON.parse(req.body),data=JSON.parse(request.messages.at(-1).content);submitted.push(req.body);
   const empty=data.question.includes('ZZZZ');
-  const materialId=data.materials?.[0]?.id??ids[0];
-  const answer=data.response_format?{
-   type:'guide',outline:Array.from({length:4},(_,i)=>({id:`s${i}`,heading:`安装条件 ${i}`,evidence:[{article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'}],gap:'',action:''})),
-   titles:['Cabinet Dimensions and Installation','Plan LED Cabinet Access','Cabinet Drawings for Buyers'].map(title=>({title,anchor:'图纸决定尺寸',article_id:materialId,quote:'The installation drawing defines the cabinet dimensions.'})),hooks:[],
-   engineer_questions:[{id:'q1',question:'维护空间怎么写？',section_ids:['s0'],options:[{id:'A',label:'按图纸确定',instruction:'按选定型号安装图确定，不写数值',conservative:true},{id:'B',label:'工程师提供实测条件',instruction:'保留确认条件',conservative:false},{id:'C',label:'其他，请写明',instruction:'依据工程回复',conservative:false}],withheld_numbers:['600 mm']}]
-  }:{question_en:'How should cabinet installation be planned?',keywords:empty?['ZZZZ','ZZZX','ZZZY','ZZZK','ZZZQ']:['cabinet','installation','drawing','dimensions','access'],entities:[]};
+  const materialId=data.facts?.[0]?.article_id??ids[0];
+  const answer=data.facts?{
+   conclusion:'upgrade',coverage:data.subquestions.map((q:{id:string},i:number)=>({id:q.id,status:i<2?'direct':'engineer',page_paragraphs:[],reason:''})),
+   edits:[{op:'insert_after',paragraph:'start',subquestion:'q1',reason:'解释图纸尺寸',heading:'Cabinet dimensions',facts:[data.facts[0].id]},{op:'insert_after',paragraph:'start',subquestion:'q2',reason:'核对维护空间',heading:'Service access',facts:[data.facts.at(-1).id]}],
+   titles:['Cabinet Dimensions and Installation','Plan LED Cabinet Access','Cabinet Drawings for Buyers'].map(title=>({title,anchor:'图纸决定尺寸',article_id:materialId,quote:'Cabinet dimensions are the measurements stated in the installation drawing.'})),hooks:[],
+   engineer_questions:[{id:'q1',question:'维护空间怎么写？',section_ids:['q1'],options:[{id:'A',label:'按图纸确定',instruction:'按选定型号安装图确定，不写数值',conservative:true},{id:'B',label:'工程师提供实测条件',instruction:'保留确认条件',conservative:false},{id:'C',label:'其他，请写明',instruction:'依据工程回复',conservative:false}],withheld_numbers:['600 mm']}]
+  }:{question_en:'How should cabinet installation be planned?',subquestions:[{id:'q1',zh:'图纸尺寸是什么',en:'What are cabinet dimensions?',need:'reference',answer_shape:'definition',terms:empty?['ZZZZ','ZZZX']:['cabinet dimensions','installation drawing']},{id:'q2',zh:'怎么核对维护空间',en:'How to check service access?',need:'reference',answer_shape:'steps',terms:empty?['ZZZY','ZZZK']:['service access','selected cabinet']},{id:'q3',zh:'公司保证的空间是多少',en:'What clearance is guaranteed?',need:'company',answer_shape:'number',terms:['guaranteed clearance','service millimeters']}]};
   return {model:'fake-flash',choices:[{message:{content:JSON.stringify(answer)}}],usage:{prompt_tokens:100,completion_tokens:50,total_tokens:150}};
  });
  try{
@@ -545,6 +548,22 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
   const draft={source:pack.request.articles[0].binding,title_zh:'按图纸确定',review_zh:'按型号图纸核对。',title_en:'Cabinet installation',body_en:'Use the selected cabinet drawing.',evidence:[],questions_zh:[],keyword_hypothesis:'cabinet',meta_description_en:'Cabinet drawings.'};
   assert.equal(pitchDraftFindings(pack.request,draft).length,0);
   assert.ok(pitchDraftFindings(pack.request,{...draft,body_en:'Allow 600 mm. Reviewed by Chipshow Engineering Team.'}).length>=2);
+  let fragmentCalls=0;
+  assert.equal(pack.request.pitch!.fragments_plan!.edit_plan.length,2);
+  const partial=await generatePitchFragments(card.id,actor,{},async options=>{
+   fragmentCalls++;
+   assert.equal(options.timeoutMs,90000);
+   if(options.subject.endsWith(':1'))throw new ReceiptUnknownError(991,'simulated response timeout');
+   const result={html_en:'<p>According to the source, cabinet dimensions follow the installation drawing.</p>',zh_review:'据原文，箱体尺寸以安装图为准。',used_facts:JSON.parse(String(options.user)).facts.map((f:{id:string})=>f.id)};
+   return {data:options.schema.parse(result),receiptId:990,usage:{prompt_tokens:100,completion_tokens:60},model:'fake-flash',reused:false};
+  });
+  assert.equal(partial?.status,'unknown');
+  const fragmentCard=(await getPitch(card.id))!;
+  const savedFragments=(fragmentCard.prep as unknown as {fragments:{status:string}[]}).fragments;
+  assert.deepEqual(savedFragments.map(f=>f.status),['done','unknown'],'one timeout preserves the other result');
+  await generatePitchFragments(card.id,actor,{},async()=>{throw Error('must not retry unknown');});
+  assert.equal(fragmentCalls,2);
+  assert.equal((await sql`SELECT id FROM studio_drafts WHERE task_id=${confirmed.task_id}`).length,0);
   const missing=await createPitch({question:'ZZZZ unmatched imaginary fixture',privacy_confirmed:true},actor);
   await preparePitch(missing.id,1,actor);assert.equal((await getPitch(missing.id))?.status,'insufficient');
   assert.equal(provider.hits(),3,'insufficient evidence must not spend the second preparation call');

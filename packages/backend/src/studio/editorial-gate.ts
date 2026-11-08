@@ -2,6 +2,7 @@ import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.t
 import { ENTITIES } from '@aihot/industry/taxonomy';
 import sourceConfig from '../../../../industry/sources.json' with { type: 'json' };
 import { pitchDraftFindings } from './studio-company-facts.ts';
+import {assembleFragments,validateFragment} from './studio-pitch-fragments.ts';
 
 export type Finding = {
   ruleId: string; severity: 'BLOCK' | 'WARN'; field: string;
@@ -100,6 +101,24 @@ function report(findings: Finding[]): GateReport {
  * This is a lexical review aid, not semantic completeness, certification validation or legal advice.
  */
 export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext = {}): GateReport {
+  const fragmentPlan=packet.pitch?.fragments_plan;
+  if(fragmentPlan?.fragments){
+    const {paragraphs,edit_plan,fragments,facts}=fragmentPlan;
+    const assembled=assembleFragments(paragraphs,edit_plan,fragments);
+    const errors=fragments.flatMap(f=>validateFragment(edit_plan[f.op_index],f,facts.filter(x=>edit_plan[f.op_index].facts.includes(x.id)),paragraphs));
+    if(assembled.html_en!==draft.body_en)errors.push('全文与已校验的片段拼装结果不一致；请在编辑计划中修改对应片段并重新核验，保留段不可被改写。');
+    // Mask only exact kept blocks; offsets still point to the full draft shown to the operator.
+    let offset=0;const keepRanges:{start:number;end:number}[]=[];
+    for(const row of assembled.diff){
+      if(row.op==='keep')keepRanges.push({start:offset,end:offset+row.after.length});
+      offset+=row.after.length;
+    }
+    const scopedBody=errors.length?draft.body_en:draft.body_en.split('').map((char,i)=>keepRanges.some(r=>i>=r.start&&i<r.end)&&char!=='\n'?' ':char).join('');
+    const scopedPacket={...packet,pitch:{...packet.pitch!,fragments_plan:undefined}};
+    const gate=evaluateDraft(scopedPacket,{...draft,body_en:scopedBody},context);
+    const wholeCompany=pitchDraftFindings(scopedPacket,draft);
+    return report([...gate.findings,...wholeCompany,...errors.map(reason=>({ruleId:'D1',severity:'BLOCK' as const,field:'body_en',start:0,end:Math.min(300,draft.body_en.length),quote:draft.body_en.slice(0,300),reason}))]);
+  }
   const findings: Finding[] = [];
   const article = packet.articles.find(a => a.binding.article_id === draft.source.article_id);
   const source = article?.body_text ?? '';

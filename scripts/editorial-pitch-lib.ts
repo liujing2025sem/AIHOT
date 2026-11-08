@@ -24,11 +24,20 @@ export const pitchPlanSchema=z.preprocess(value=>{
   return value;
 },pitchPlanObject);
 export const pitchKeywordsSchema=z.object({question_en:z.string().min(4).max(500),keywords:z.array(z.string().min(2).max(80)).min(5).max(10),entities:z.array(z.string().max(100)).max(15)});
+export const buyerSubquestionSchema=z.object({id:z.string().min(1).max(30),zh:z.string().min(1).max(300),en:z.string().min(1).max(300),need:z.enum(['page','reference','calc','company','news']),answer_shape:z.enum(['number','table','definition','steps']),terms:z.array(z.string().min(1).max(60)).min(2).max(4),calculation:z.object({fn:z.enum(['pixels','feet_to_meters','aspect_ratio']),inputs:z.record(z.string(),z.number()),basis:z.string().min(1).max(300)}).optional()});
+export const buyerQuestionsSchema=z.object({question_en:z.string().max(500),subquestions:z.array(buyerSubquestionSchema).min(3).max(6)});
+export const pitchFactSchema=z.object({id:z.string(),kind:z.enum(['page','source','calc','engineer']),statement:z.string(),quote:z.string().max(300),article_id:z.string().optional(),revision:z.number().optional(),date:z.string().nullable().optional(),attribution:z.string(),url:z.string().optional(),calculation:z.object({fn:z.string(),inputs:z.record(z.string(),z.number()),result:z.record(z.string(),z.number()),formula:z.string()}).optional()});
+export const pageParagraphSchema=z.object({id:z.string(),html:z.string(),text:z.string()});
+export const editOperationSchema=z.object({op:z.enum(['keep','revise','insert_after']),paragraph:z.string(),subquestion:z.string().optional(),reason:z.string().optional(),heading:z.string().optional(),facts:z.array(z.string()).max(6).default([])});
+export const editPlanSchema=z.object({conclusion:z.enum(['upgrade','no_change']),coverage:z.array(z.object({id:z.string(),status:z.enum(['page_good','page_weak','direct','calc','engineer','missing']),page_paragraphs:z.array(z.string()),reason:z.string().max(500).default('')})),edits:z.array(editOperationSchema).max(12),titles:pitchPlanObject.shape.titles,hooks:pitchPlanObject.shape.hooks,engineer_questions:pitchPlanObject.shape.engineer_questions});
+export const fragmentSchema=z.object({html_en:z.string().min(1),zh_review:z.string().min(1),used_facts:z.array(z.string()).min(1).max(6)});
+export const fragmentPlanSchema=z.object({paragraphs:z.array(pageParagraphSchema),facts:z.array(pitchFactSchema),subquestions:z.array(buyerSubquestionSchema),edit_plan:z.array(editOperationSchema),fragments:z.array(fragmentSchema.extend({op_index:z.number().int()})).optional(),source_html:z.string(),original_title:z.string(),method_rule_ids:z.array(z.string()).default([])});
 export const pitchSchema=z.object({
   question:z.string().max(1000),output_type:z.enum(['update','guide','short']),existing_url:z.string(),selected_title:z.string().max(80),
   primary_article_id:z.string(),outline:z.array(outlineSection).min(1).max(7),
   engineer:z.object({mode:z.enum(['conservative','engineer']),name:z.string().max(100),reply:z.string().max(2000),
     answers:z.array(z.object({question_id:z.string(),choice:z.string(),note:z.string().max(1000),instruction:z.string().max(800)})).max(3)}),
   withheld_numbers:z.array(z.string().max(100)).max(60),
+  fragments_plan:fragmentPlanSchema.optional(),
 }).strict();
 export type Pitch=z.infer<typeof pitchSchema>;

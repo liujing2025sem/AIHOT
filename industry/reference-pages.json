@@ -1,0 +1,14 @@
+[
+  {"topic":"广告牌尺寸","name":"OAAA Media Formats","url":"https://oaaa.org/resources/media-formats/","scope":"行业媒介格式参考，不作为各地许可标准"},
+  {"topic":"英尺与米换算","name":"NIST U.S. Survey Foot","url":"https://www.nist.gov/pml/us-surveyfoot","scope":"国际英尺定义，避免旧测量英尺混用"},
+  {"topic":"像素计算输入","name":"NIST Unit Conversion Factors","url":"https://www.nist.gov/pml/us-surveyfoot/revised-unit-conversion-factors","scope":"仅提供长度换算定义；像素结果由代码算，不是可制造分辨率"},
+  {"topic":"面积与单位","name":"NIST SI Conversion Factors B9","url":"https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors/nist-guide-si-appendix-b9","scope":"按量种换算，精度与适用条件保留"},
+  {"topic":"亮度与照度","name":"NIST Candela","url":"https://www.nist.gov/si-redefinition/candela","scope":"光度量定义，不据此承诺屏幕性能"},
+  {"topic":"功率与电量","name":"Virginia Tech Energy Use","url":"https://www.pubs.ext.vt.edu/2901/2901-9014/2901-9014.html","scope":"能耗计算方法，不套用家电功率到LED屏"},
+  {"topic":"器件与整机效率","name":"US DOE LED Basics","url":"https://www.energy.gov/cmei/ssl/led-basics","scope":"照明器件与灯具边界说明，不能当直显屏实测参数"},
+  {"topic":"户外电气安装","name":"OSHA 1910.303","url":"https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.303","scope":"美国工作场所电气规定，不替代当地工程设计"},
+  {"topic":"招牌许可","name":"OAAA Laws and Regulations","url":"https://oaaa.org/policy-advocacy/general-information/laws-regulations/","scope":"美国户外广告法律概览，按项目辖区核验"},
+  {"topic":"白点与色温","name":"CIE Correlated Colour Temperature","url":"https://www.cie.co.at/eilvterm/17-23-068","scope":"术语定义，不把CCT当色准保证"},
+  {"topic":"广告牌尺寸","name":"OAAA Cause Related Formats","url":"https://oaaa.org/become-an-oaaa-cause-related-campaign-partner/","scope":"创意格式，物理尺寸与画面像素分开"},
+  {"topic":"亮度与照度","name":"IES SI Unit of Luminance","url":"https://www.ies.org/definitions/si-unit-of-luminance/","scope":"亮度计量单位"}
+]

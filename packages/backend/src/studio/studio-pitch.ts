@@ -18,7 +18,8 @@ function invalid(message:string):never {throw Object.assign(new Error(message),{
 const urlSchema=z.string().trim().max(2000).refine(value=>!value||!!normalizeUrl(value)&&!new URL(value).username&&!new URL(value).password,'请填写公开网页链接');
 const inputSchema=z.object({question:z.string().trim().min(4).max(1000),privacy_confirmed:z.literal(true),output_type:pitchType.default('auto'),existing_url:urlSchema.default(''),links:z.array(urlSchema.refine(Boolean)).max(3).default([]),question_id:z.string().optional()}).strict();
 type Material=Awaited<ReturnType<typeof searchPitchMaterials>>[number]&{existing_page?:boolean};
-type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
+export type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
+  workflow_version?:2;
   version:number;status:'preparing'|'ready'|'insufficient'|'failed'|'confirmed';question:string;output_type:z.infer<typeof pitchType>;existing_url:string;links:string[];
   started_at:string;finished_at?:string;question_en?:string;keywords?:string[];entities?:string[];materials?:Material[];
   related_pages?:{title:string;url:string}[];blacklist?:{configured:boolean;blocked:number;pending:number};
@@ -30,7 +31,7 @@ const canonical=(value:string)=>value?normalizeUrl(value)??value:'';
 const ongoing=(state:string)=>!['rejected'].includes(state);
 
 export function previewPitch(input:unknown){return redactPitch(z.object({question:z.string().max(4000)}).parse(input).question);}
-function view(card:Card){return {id:card.id,title:card.document.title,status:card.document.prep?.status??(card.task_id?'confirmed':'unprepared'),version:card.document.prep?.version??0,task_id:card.task_id,task_state:card.task_state??null,prep:card.document.prep??null};}
+function view(card:Card){const fragments=card.document.prep&&'fragments' in card.document.prep?card.document.prep.fragments as {status:string}[]:[];return {id:card.id,title:card.document.title,status:card.document.prep?.status??(card.task_id?'confirmed':'unprepared'),version:card.document.prep?.version??0,task_id:card.task_id,task_state:fragments?.some(f=>f.status==='running')?'writing':fragments?.some(f=>f.status==='unknown')?'unknown':card.task_state??null,prep:card.document.prep??null};}
 export async function listPitches(){
   const rows=await sql<Card[]>`SELECT * FROM studio_recommendations WHERE document ? 'prep' ORDER BY updated_at DESC LIMIT 50`;
   return {rows:rows.map(view)};
@@ -57,7 +58,7 @@ export async function createPitch(input:unknown,actor:string){
       const doc={question:b.question,question_en:'',origin:'pitch',roles:['未知'],scenario:'运营命题',dimension:'场景',existing_url:b.existing_url,existing_url_provenance:'operator_entered',condition_refs:[],source_ids:[],demand_evidence:[],keywords:[],keywords_zh:[],keywords_en:['LED display'],content_type:'explainer',requires_first_party:false,active:true};
       await tx`INSERT INTO studio_questions(id,document,created_by,updated_by) VALUES(${questionId},${tx.json(doc)},${actor},${actor}) ON CONFLICT DO NOTHING`;
     }
-    const prep:Prep={version:1,status:'preparing',question:b.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString()};
+    const prep:Prep={workflow_version:2,version:1,status:'preparing',question:b.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString()};
     const document={key:`pitch:${id}`,trigger:'M',question_id:questionId,article_id:null,article_revision:null,title:b.question,evidence:[],change:'运营命题，正在备料。',reason:'人工选题，先核对资料再成稿。',action:page?'update_page':b.output_type==='short'?'new_brief':'new_explainer',channels:['blog','social'],existing_url:b.existing_url,requires_first_party:false,needs_material:true,demand_mentions:0,priority:2,prep};
     const [row]=await tx<Card[]>`INSERT INTO studio_recommendations(id,input_key,question_id,document,updated_by) VALUES(${id},${`pitch:${id}`},${questionId},${tx.json(document as never)},${actor}) ON CONFLICT DO NOTHING RETURNING *`;
     if(!row){const [current]=await tx<Card[]>`SELECT * FROM studio_recommendations WHERE id=${id}`;return {...view(current),reused:true};}
@@ -79,19 +80,19 @@ export async function revisePitch(id:string,input:unknown,actor:string){
     if(!old||old.version!==b.version)throw new Conflict('备料卡已变化，请刷新。');
     if(card.task_id)invalid('已经建立成稿任务，请在原任务继续。');
     if(old.status==='preparing')invalid('备料正在进行，请等待结果。');
-    const prep:Prep={version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString()};
+    const prep:Prep={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString()};
     await tx`UPDATE studio_recommendations SET document=${tx.json({...card.document,existing_url:b.existing_url,prep} as never)},updated_by=${actor},updated_at=now() WHERE id=${id}`;
     await enqueue(QUEUES.studioPrep,{cardId:id,version:prep.version,actor,phase:'prepare'},{singletonKey:`${id}:${prep.version}`,retryLimit:0},tx);
     return {id,status:prep.status,version:prep.version};
   });
 }
 
-async function importLink(url:string,actor:string){
+export async function importLink(url:string,actor:string,reference=false){
   const rows=await sql`SELECT id,url,title FROM articles`;
   const existing=rows.find(row=>canonical(row.url)===canonical(url));
-  if(existing&&existing.title!==new URL(url).hostname){await extractStudioMaterial(existing.id,actor);return existing.id as string;}
-  const sourceId='studio-operator-links';
-  await sql`INSERT INTO sources(id,name,kind,config,tier,participation_mode,first_party,enabled) VALUES(${sourceId},'运营提供','web_list',${sql.json({detail:{titleSelector:'h1'}})},'T2','isolated',false,false) ON CONFLICT(id) DO UPDATE SET config=sources.config||EXCLUDED.config`;
+  if(existing&&existing.title!==new URL(url).hostname){const material=await studioMaterial(existing.id);if(!material?.body_text)await extractStudioMaterial(existing.id,actor);return existing.id as string;}
+  const sourceId=reference?'studio-reference-pages':'studio-operator-links';
+  await sql`INSERT INTO sources(id,name,kind,config,tier,participation_mode,first_party,enabled) VALUES(${sourceId},${reference?'参考资料':'运营提供'},'web_list',${sql.json({detail:{titleSelector:'h1'}})},'T2','isolated',false,false) ON CONFLICT(id) DO UPDATE SET config=sources.config||EXCLUDED.config`;
   const [source]=await sql<SourceRow[]>`SELECT * FROM sources WHERE id=${sourceId}`;
   const result=await fetchDetail(url,source,{title:true,date:true,body:true,summary:false});
   if(!result.body?.text)throw new Error('当前抽取器没有取得可读正文，请补充可访问的网页版资料。');
@@ -131,6 +132,7 @@ async function pitchModel<S extends z.ZodType>(options:ChatJsonOptions<S>,replay
 export async function preparePitch(id:string,version:number,actor:string,replay=false){
   const [card]=await sql<Card[]>`SELECT * FROM studio_recommendations WHERE id=${id}`;
   const prep=card?.document.prep;
+  if(prep?.workflow_version===2){const {preparePitchV2}=await import('./studio-pitch-v2.ts');return preparePitchV2(id,version,actor,replay);}
   if(!card||!prep||prep.version!==version||prep.status!=='preparing'&&!(replay&&prep.status==='failed'))return {reused:true};
   const receipts:NonNullable<Prep['metrics']>['receipts']=[];
   const start=performance.now();
@@ -186,7 +188,7 @@ export async function preparePitch(id:string,version:number,actor:string,replay=
   }
 }
 
-const confirmSchema=z.object({version:z.number().int(),article_ids:z.array(z.string()).min(1).max(9),selected_title:z.string().min(1).max(60),output_type:z.enum(['update','guide','short']),outline:z.array(z.object({id:z.string(),heading:z.string().min(1).max(200),include:z.boolean()})).min(1).max(7),engineer:z.object({mode:z.enum(['conservative','engineer']),name:z.string().max(100).default(''),reply:z.string().max(2000).default(''),answers:z.array(z.object({question_id:z.string(),choice:z.string().regex(/^[A-D]$/),note:z.string().max(1000).default('')})).max(3).default([])})}).strict();
+const confirmSchema=z.object({version:z.number().int(),article_ids:z.array(z.string()).min(1).max(12),selected_title:z.string().min(1).max(60),output_type:z.enum(['update','guide','short']),outline:z.array(z.object({id:z.string(),heading:z.string().min(1).max(200),include:z.boolean()})).min(1).max(7),engineer:z.object({mode:z.enum(['conservative','engineer']),name:z.string().max(100).default(''),reply:z.string().max(2000).default(''),answers:z.array(z.object({question_id:z.string(),choice:z.string().regex(/^[A-D]$/),note:z.string().max(1000).default('')})).max(3).default([])})}).strict();
 export function confirmedPitch(prep:Prep,input:unknown):Pitch{
   const b=confirmSchema.parse(input);
   if(prep.version!==b.version)throw new Conflict('备料已更新，请刷新后确认。');
@@ -213,7 +215,7 @@ export function confirmedPitch(prep:Prep,input:unknown):Pitch{
     const original=prep.outline?.find(s=>s.id===section.id);if(!original)invalid('大纲编号已变化。');
     const evidence=original.evidence.filter(e=>b.article_ids.includes(e.article_id));
     const related=questions.filter(q=>q.section_ids.includes(section.id));
-    if(!evidence.length&&!related.length)invalid('保留的小节没有所选证据或工程确认，请补资料或删除。');
+    if(!evidence.length&&!related.length&&prep.workflow_version!==2)invalid('保留的小节没有所选证据或工程确认，请补资料或删除。');
     return {...original,heading:section.heading,evidence,action:related.map(q=>answers.find(a=>a.question_id===q.id)!.instruction).join('；')||original.action};
   });
   if(!outline.length)invalid('至少保留一个有依据的小节。');
@@ -228,12 +230,13 @@ export async function confirmPitch(id:string,input:unknown,actor:string){
     if(!card)return null;if(card.task_id)return {id,status:'confirmed',task_id:card.task_id,reused:true};
     if(!card.document.prep)invalid('此卡没有备料结果。');
     const pitch=confirmedPitch(card.document.prep,b);
+    if(card.document.prep.workflow_version===2){const {confirmedFragmentPlan}=await import('./studio-pitch-v2.ts');pitch.fragments_plan=confirmedFragmentPlan(card.document.prep,b,pitch);}
     for(const material of card.document.prep.materials!.filter(m=>b.article_ids.includes(m.id))){
       const [current]=await tx`SELECT revision FROM articles WHERE id=${material.id} FOR SHARE`;
       if(!current||current.revision!==material.revision)throw new Conflict('素材版本已变化，请重新备料。');
     }
     const task=await createStudioTask({article_ids:b.article_ids,pitch,writing:{site:'chipshow.com',target_url:pitch.existing_url||'https://www.chipshow.com/blog/',page_type:pitch.output_type,reader_task:pitch.question},planning_context:{card_id:id,question_id:card.question_id,selection_origin:'operator',action:pitch.output_type==='update'?'update_page':pitch.output_type==='short'?'new_brief':'new_explainer',question:pitch.question,existing_url:pitch.existing_url,requires_first_party:false}},actor,tx);
-    const prep={...card.document.prep,status:'confirmed',metrics:{...card.document.prep.metrics,confirmation_elapsed_ms:Date.now()-Date.parse(card.document.prep.finished_at!)}};
+    const prep={...card.document.prep,status:'confirmed',...(pitch.fragments_plan?{edit_plan:pitch.fragments_plan.edit_plan,outline:pitch.outline}:{}),metrics:{...card.document.prep.metrics,confirmation_elapsed_ms:Date.now()-Date.parse(card.document.prep.finished_at!)}};
     await tx`UPDATE studio_recommendations SET task_id=${task.id},status='adopted',document=${tx.json({...card.document,bound_article_ids:b.article_ids,prep} as never)},updated_at=now(),updated_by=${actor} WHERE id=${id}`;
     await audit(actor,'studio.pitch.confirm',`studio-recommendation:${id}`,null,null,{task_id:task.id,engineer_mode:pitch.engineer.mode,engineer_name:pitch.engineer.name},{db:tx});
     return {id,status:'confirmed',task_id:task.id};
@@ -246,9 +249,12 @@ export async function queuePitchDraft(id:string,actor:string){
   const queued=await enqueue(QUEUES.studioPrep,{cardId:id,version:card.document.prep.version,actor,phase:'draft'},{singletonKey:`draft:${card.task_id}`,retryLimit:0});
   return {id,task_id:card.task_id,queued:!!queued};
 }
-export async function runPitchJob(data:{cardId:string;version:number;actor:string;phase:'prepare'|'draft'}){
+export async function runPitchJob(data:{cardId:string;version:number;actor:string;phase:'prepare'|'draft';fragmentIndex?:number;attemptTag?:string}){
   if(data.phase==='prepare')return preparePitch(data.cardId,data.version,data.actor);
   const [card]=await sql<Card[]>`SELECT * FROM studio_recommendations WHERE id=${data.cardId}`;
-  if(card?.task_id&&card.document.prep?.version===data.version)return generateStudioTask(card.task_id,data.actor);
+  if(card?.task_id&&card.document.prep?.version===data.version){
+    if(card.document.prep.workflow_version===2){const {generatePitchFragments}=await import('./studio-pitch-v2.ts');return generatePitchFragments(data.cardId,data.actor,{fragmentIndex:data.fragmentIndex,attemptTag:data.attemptTag});}
+    return generateStudioTask(card.task_id,data.actor);
+  }
   return {reused:true};
 }

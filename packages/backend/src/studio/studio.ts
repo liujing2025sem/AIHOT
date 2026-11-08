@@ -217,6 +217,7 @@ export async function generateStudioTask(id: string, actor: string) {
   if (!task) return null;
   if (task.state === 'received' || task.state === 'blocked') return { id, state: task.state, reused: true, gate: task.response?.editorial_gate };
   const packet = packetSchema.parse(task.request);
+  if(packet.pitch?.fragments_plan)invalid('此命题按片段成稿，请回到命题采编页查看或启动片段；不会再调用整页模型。');
   if(!packet.articles.length)invalid('该选题尚未绑定完整原文，请先补证据；画像不是事实来源。');
   if (packet.articles.length > (packet.pitch?9:4)) invalid('单次成稿素材超过上限，请减少选择。');
   await checkPlannedEvidence(packet);

@@ -14,7 +14,7 @@ let boss: PgBoss | null = null;
 let starting: Promise<PgBoss> | null = null;
 
 export interface JobData {
-  "studio.prep": { cardId:string; version:number; actor:string; phase:'prepare'|'draft' };
+  "studio.prep": { cardId:string; version:number; actor:string; phase:'prepare'|'draft';fragmentIndex?:number;attemptTag?:string };
   "content.analyze": { articleId: string; attemptTag?: string };
   "content.extract-body": { articleId: string };
   "events.group": { articleId: string; signalOnly?: boolean };

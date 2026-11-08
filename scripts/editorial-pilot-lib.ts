@@ -78,7 +78,7 @@ export function validateResponse(packet: Packet, input: unknown): Response {
     if (decisions.get(id)?.decision !== 'KEEP') throw Error(`Draft requires KEEP decision: ${id}`);
     if(packet.methods?.status==='connected'&&(!draft.camos_rule_ids?.length||draft.camos_rule_ids.some(rule=>!packet.methods!.ruleIds.includes(rule)))) throw Error('CAMOS已接入：每篇稿必须记录实际采用且属于本任务的规则ID');
     for (const evidence of draft.evidence) if (!(packet.pitch ? packet.articles : [article]).some(a=>a.body_text?.includes(evidence.quote)||a.title.includes(evidence.quote))) throw Error(`Evidence quote not found in source: ${id}`);
-    if (!draft.body_en.includes(article.binding.url)) throw Error(`English draft needs original link: ${id}`);
+    if (!draft.body_en.includes(article.binding.url)&&!(packet.pitch?.fragments_plan&&packet.pitch.output_type==='update')) throw Error(`English draft needs original link: ${id}`);
     drafted.add(id);
   }
   for (const id of packet.draft_article_ids) if (decisions.get(id)?.decision === 'KEEP' && !drafted.has(id)) throw Error(`Selected draft missing: ${id}`);
