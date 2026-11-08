@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Packet, Response } from '../scripts/editorial-pilot-lib.ts';
-import { editorialGate, evaluateDraft, type GateContext, type GateReport } from '../packages/backend/src/admin/editorial-gate.ts';
+import { editorialGate, evaluateDraft, type GateContext, type GateReport } from '../packages/backend/src/studio/editorial-gate.ts';
 import { IDENTITY_LEXICON } from '@aihot/industry/taxonomy';
-import { publicDraft } from '../packages/backend/src/admin/studio-publication.ts';
+import { publicDraft } from '../packages/backend/src/studio/studio-publication.ts';
 
 const binding = { article_id: 'source-1', revision: 1, content_sha256: 'a'.repeat(64), url: 'https://maker.example/news', published_at: '2026-10-31T00:00:00Z' };
 const packet: Packet = {

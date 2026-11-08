@@ -6,7 +6,7 @@ import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { audit, Conflict } from '../audit.ts';
 import { config, credential } from '../config.ts';
 import { sql, type Tx } from '../db.ts';
-import { lockStudioPublication } from './studio.ts';
+import { lockStudioPublication } from '../studio/studio.ts';
 
 const shortCategory = 'industry-news';
 const consumerTag = 'consumer-display';

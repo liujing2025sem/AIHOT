@@ -7,9 +7,9 @@ import { config } from '@aihot/backend/config';
 import { passwordLogin, SESSION_COOKIE, sessionPrincipal } from '@aihot/backend/admin/auth';
 import { registerAdminStudioPlanning } from '../apps/api/src/routes/admin-studio-planning.ts';
 import { saveStudioQuestion, importStudioQuestions, studioQuestions } from '@aihot/backend/admin/studio-questions';
-import { importDemandCsv } from '@aihot/backend/admin/studio-demand';
-import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
-import { createStudioTask, exportStudioTask } from '@aihot/backend/admin/studio';
+import { importDemandCsv } from '@aihot/backend/studio/studio-demand';
+import { demandCsvFields } from '@aihot/backend/studio/studio-demand-csv';
+import { createStudioTask, exportStudioTask } from '@aihot/backend/studio/studio';
 
 const actor='test:planning',suffix=tag();
 const doc={question:`户外招牌电费怎么计算-${suffix}？`,roles:['终端业主/广告媒体主'],scenario:'户外招牌',dimension:'费用',keywords:['电费','用电','power']};

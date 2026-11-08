@@ -2,7 +2,7 @@ import { tag } from './setup.ts';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { closeDb, sql } from '@aihot/backend/db';
-import { createStudioTask, exportStudioTask, receiveStudioTask, studioDraft, reviewStudioDraft, saveStudioDraft, exportStudioDraft } from '@aihot/backend/admin/studio';
+import { createStudioTask, exportStudioTask, receiveStudioTask, studioDraft, reviewStudioDraft, saveStudioDraft, exportStudioDraft } from '@aihot/backend/studio/studio';
 import { deriveStudioSocial, listStudioSocial, saveStudioSocial, reviewStudioSocial, exportStudioSocial } from '@aihot/backend/admin/studio-social';
 
 after(closeDb);

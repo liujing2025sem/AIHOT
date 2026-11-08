@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { Route } from './+types/studio-pitch';
 import { adminGet } from '../../lib/admin.server';
+import { copyText } from '../../lib/clipboard';
 import { useAdminAction } from '../../features/admin/action';
 import { AdminPage, Badge, Button, ButtonLink, Card, Field, Input, Select, Textarea, Time } from '../../features/admin/ui';
 
@@ -544,7 +545,7 @@ function EngineerReview({ prep, conservative, setConservative, name, setName, re
 
   async function copyCard() {
     try {
-      await navigator.clipboard.writeText(cardText);
+      await copyText(cardText);
       setCopyStatus('已复制，可以发给工程师。');
     } catch { setCopyStatus('未能复制，请展开下方卡片并手动复制。'); }
   }

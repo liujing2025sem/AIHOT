@@ -2,15 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { readFileSync } from 'node:fs';
 import { actorOf } from '@aihot/backend/admin/auth';
 import { studioQuestions, saveStudioQuestion, importStudioQuestions } from '@aihot/backend/admin/studio-questions';
-import { importDemandCsv, listStudioImports, withdrawStudioImport, demandProfiles, DemandCsvError } from '@aihot/backend/admin/studio-demand';
-import { demandCsvTemplate, demandCsvOptions } from '@aihot/backend/admin/studio-demand-csv';
+import { importDemandCsv, listStudioImports, withdrawStudioImport, demandProfiles, DemandCsvError } from '@aihot/backend/studio/studio-demand';
+import { demandCsvTemplate, demandCsvOptions } from '@aihot/backend/studio/studio-demand-csv';
 import { z } from 'zod';
 import { recommendationOverview, setRecommendationCapacity, refreshRecommendations, decideRecommendation, bindRecommendationEvidence, createManualRecommendation } from '@aihot/backend/admin/studio-recommendations';
 import { studioSearchSignals, importSearchSignals, searchTemplates } from '@aihot/backend/admin/studio-search-signals';
 import { listStudioSocial, deriveStudioSocial, saveStudioSocial, reviewStudioSocial, exportStudioSocial } from '@aihot/backend/admin/studio-social';
 import { adminHandler } from './admin-auth.ts';
 import { body, param, orNotFound } from './admin.ts';
-import { previewPitch,createPitch,listPitches,getPitch,revisePitch,confirmPitch,queuePitchDraft } from '@aihot/backend/admin/studio-pitch';
+import { previewPitch,createPitch,listPitches,getPitch,revisePitch,confirmPitch,queuePitchDraft } from '@aihot/backend/studio/studio-pitch';
 
 /** Planning is internal; a page view never generates cards or calls a model. */
 export function registerAdminStudioPlanning(app: FastifyInstance) {

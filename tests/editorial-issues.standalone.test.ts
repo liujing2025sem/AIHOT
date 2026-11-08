@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Packet } from '../scripts/editorial-pilot-lib.ts';
-import { evaluateDraft, type Finding, type GateReport } from '../packages/backend/src/admin/editorial-gate.ts';
-import { buildEditorialIssues, validateEditorialConfirmations, type EditorialDraft, type EditorialIssues } from '../packages/backend/src/admin/editorial-issues.ts';
+import { evaluateDraft, type Finding, type GateReport } from '../packages/backend/src/studio/editorial-gate.ts';
+import { buildEditorialIssues, validateEditorialConfirmations, type EditorialDraft, type EditorialIssues } from '../packages/backend/src/studio/editorial-issues.ts';
 
 function fixture(body = 'Maker reports 5000 nits.\n\nMaker reports 6000 nits.') {
   const binding = { article_id: 'source-1', revision: 1, content_sha256: 'a'.repeat(64), url: 'https://maker.example/news', published_at: '2026-10-31T00:00:00Z' };

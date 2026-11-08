@@ -5,11 +5,11 @@ import { closeDb,sql } from '@aihot/backend/db';
 import { config } from '@aihot/backend/config';
 import { saveStudioQuestion } from '@aihot/backend/admin/studio-questions';
 import { setRecommendationCapacity,refreshRecommendations,recommendationOverview,decideRecommendation,bindRecommendationEvidence,createManualRecommendation } from '@aihot/backend/admin/studio-recommendations';
-import { createStudioTask,bindStudioTaskMaterials,exportStudioTask,generateStudioTask,receiveStudioTask } from '@aihot/backend/admin/studio';
-import { importDemandCsv } from '@aihot/backend/admin/studio-demand';
-import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
+import { createStudioTask,bindStudioTaskMaterials,exportStudioTask,generateStudioTask,receiveStudioTask } from '@aihot/backend/studio/studio';
+import { importDemandCsv } from '@aihot/backend/studio/studio-demand';
+import { demandCsvFields } from '@aihot/backend/studio/studio-demand-csv';
 import { importSearchSignals } from '@aihot/backend/admin/studio-search-signals';
-import { normalizePitch, pitchMaterialHits, redactPitch, searchPitchMaterials } from '@aihot/backend/admin/studio-pitch-evidence';
+import { normalizePitch, pitchMaterialHits, redactPitch, searchPitchMaterials } from '@aihot/backend/studio/studio-pitch-evidence';
 import preview from './fixtures/editorial-preview-20261103.json' with {type:'json'};
 const suffix=tag(),actor=`test:recommendations:${suffix}`,source='web-macroblock-news';
 after(closeDb);
@@ -20,7 +20,8 @@ beforeEach(async()=>{
 async function material(id:string,body='The manufacturer describes LED power conditions.',external=false){
   const sourceId=external?`${source}-engineering`:source;
   await sql`INSERT INTO sources(id,name,kind,enabled,first_party) VALUES(${sourceId},'Synthetic planning source',${external?'external':'web_list'},false,${external}) ON CONFLICT(id) DO NOTHING`;
-  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,body_text) VALUES(${id},${sourceId},${id},${`https://example.com/${id}`},'LED power supply update',now(),now(),now(),'ok',${body})`;
+  const publishedAt=new Date(Date.now()-60_000); // Avoid a DB/app clock edge making a fixture look future-dated.
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,body_text) VALUES(${id},${sourceId},${id},${`https://example.com/${id}`},'LED power supply update',now(),now(),${publishedAt},'ok',${body})`;
   return id;
 }
 

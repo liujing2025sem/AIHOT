@@ -16,7 +16,7 @@
 
 先停止目标安装的应用，保留数据库和 runtime 私有配置。更新 source 为本 PR 与 PR #17 的合并代码，运行 npm ci 和 web build。将仓库 deployment/portable/local-runtime.mjs 复制为安装目录 tools/local-runtime.mjs；它继续复用已有 studio-common.mjs。
 
-在目标 runtime/studio.env 中设置 STUDIO_WORKER_ENABLED=true；已获模型调用授权时再设 STUDIO_MODEL_CALLS_ENABLED=true。正常 start-studio.cmd 会先运行迁移，再一起启动 API、Web 和专用 Studio worker。专用 worker 只处理手动命题/成稿，不启动旧热榜、定时采集或对外推送队列。
+在目标 runtime/studio.env 中设置 STUDIO_WORKER_ONLY=true；已获模型调用授权时再设 MODEL_CALLS_ENABLED=true。正常 start-studio.cmd 会先运行迁移，再一起启动 API、Web 和专用 Studio worker。专用 worker 只处理手动命题/成稿，不启动旧热榜、定时采集或对外推送队列。
 
 公司事实文件路径可配置 AIHOT_COMPANY_FACTS_FILE，格式参考 site/company-facts.example.json 和 studio-company-facts.ts，最多 30 条；未提供时界面显示未配置，不能声称公司事实已核验。
 

@@ -4,8 +4,8 @@ import { allocateRecommendationCapacity, enrichRecommendation, planRecommendatio
 import preview from './fixtures/editorial-preview-20261103.json' with {type:'json'};
 import { pageOwnership } from '../site/editorial-ownership.ts';
 import { questionSchema, type StudioQuestionRow } from '../packages/backend/src/admin/studio-questions.ts';
-import { summarizeDemandSignals } from '../packages/backend/src/admin/studio-demand.ts';
-import { parseDemandCsv,demandCsvTemplate, type DemandRecord } from '../packages/backend/src/admin/studio-demand-csv.ts';
+import { summarizeDemandSignals } from '../packages/backend/src/studio/studio-demand.ts';
+import { parseDemandCsv,demandCsvTemplate, type DemandRecord } from '../packages/backend/src/studio/studio-demand-csv.ts';
 import { parseSearchSignals, type SearchSignal } from '../packages/backend/src/admin/studio-search-signals.ts';
 
 const now='2026-11-03T12:00:00Z';

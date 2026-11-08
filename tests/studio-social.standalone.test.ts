@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { closeDb } from '../packages/backend/src/db.ts';
 import { deriveStudioSocialDocument, evaluateStudioSocial, studioSocialContent, validateSocialBlogUrl, type StudioSocialDocument } from '../packages/backend/src/admin/studio-social.ts';
-import { validateEditorialConfirmations } from '../packages/backend/src/admin/editorial-issues.ts';
+import { validateEditorialConfirmations } from '../packages/backend/src/studio/editorial-issues.ts';
 import { sha256, type Packet } from '../scripts/editorial-pilot-lib.ts';
 
 after(closeDb);

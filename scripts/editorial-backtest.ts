@@ -4,8 +4,8 @@ import { parseEnv } from 'node:util';
 import path from 'node:path';
 import postgres from 'postgres';
 import { packetSchema, responseSchema } from './editorial-pilot-lib.ts';
-import { evaluateDraft } from '../packages/backend/src/admin/editorial-gate.ts';
-import { buildEditorialIssues } from '../packages/backend/src/admin/editorial-issues.ts';
+import { evaluateDraft } from '../packages/backend/src/studio/editorial-gate.ts';
+import { buildEditorialIssues } from '../packages/backend/src/studio/editorial-issues.ts';
 
 const [input,second,third] = process.argv.slice(2);
 const fileMode=input==='--fixtures', output=fileMode?third:second;

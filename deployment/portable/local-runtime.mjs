@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
-import {root,source,runtime,node,data,settings,appEnv,baseEnv,startDb,pgRunning,pgRun,freePort,workspaceLinks,readJson,writeJson,run} from './studio-common.mjs';
+import {root,source,runtime,node,data,settings,localSecrets,appEnv,baseEnv,startDb,pgRunning,pgRun,freePort,workspaceLinks,readJson,writeJson,run} from './studio-common.mjs';
 const action=process.argv[2]||'start',logs=path.join(runtime,'logs'),record=path.join(logs,'processes.json');
 fs.mkdirSync(logs,{recursive:true});
 const s=settings(),urls=[`http://127.0.0.1:${s.apiPort}/api/health`,`http://${s.webHost}:${s.webPort}/admin/login`];
@@ -16,7 +16,7 @@ function owned(pid){
  const p=JSON.parse(r.stdout);return p.ExecutablePath?.toLowerCase()===node.toLowerCase()&&p.CommandLine?.toLowerCase().includes(source.toLowerCase()+path.sep);
 }
 const jobs=()=>fs.existsSync(record)?readJson(record):[];
-const workerEnabled=appEnv().STUDIO_WORKER_ENABLED==='true';
+const workerEnabled=appEnv().STUDIO_WORKER_ONLY==='true';
 function stopApps(){for(const p of jobs())if(owned(p.pid))process.kill(p.pid);if(fs.existsSync(record))fs.unlinkSync(record);}
 try{
  if(action==='start'){
@@ -29,7 +29,7 @@ try{
    try{
     for(const [name,entry] of [['api','apps/api/src/main.ts'],['web','apps/web/server.ts'],...(workerEnabled?[['studio-worker','apps/worker/src/main.ts']]:[])]){
      const out=fs.openSync(path.join(logs,name+'.log'),'a'),err=fs.openSync(path.join(logs,name+'.error.log'),'a');
-     const childEnv=name==='web'?{...baseEnv(),NODE_ENV:'production',API_BASE_URL:env.API_BASE_URL,WEB_HOST:env.WEB_HOST,WEB_PORT:env.WEB_PORT,SITE_URL:env.SITE_URL,TRUST_PROXY:'false'}:name==='studio-worker'?{...env,STUDIO_WORKER_ONLY:'true',MODEL_CALLS_ENABLED:env.STUDIO_MODEL_CALLS_ENABLED==='true'?'true':'false'}:env;
+     const childEnv=name==='web'?{...baseEnv(),NODE_ENV:'production',API_BASE_URL:env.API_BASE_URL,WEB_HOST:env.WEB_HOST,WEB_PORT:env.WEB_PORT,SITE_URL:env.SITE_URL,TRUST_PROXY:'false'}:name==='studio-worker'?{...env,STUDIO_WORKER_ONLY:'true',MODEL_CALLS_ENABLED:localSecrets().MODEL_CALLS_ENABLED==='true'?'true':'false'}:env;
      const child=spawn(node,[path.join(source,entry)],{cwd:source,env:childEnv,detached:true,windowsHide:true,stdio:['ignore',out,err]});
      await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});
      child.unref();fs.closeSync(out);fs.closeSync(err);started.push({name,pid:child.pid,root,entry});writeJson(record,started);
