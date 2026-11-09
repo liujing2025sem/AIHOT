@@ -45,7 +45,8 @@ test('planning endpoints require login and CSRF, and examples do not auto-import
 });
 
 test('task writing receives aggregate readership only and never another brand profile',async()=>{
-  const source=`planning-source-${suffix}`,article=`planning-article-${suffix}`,privateQuestion=`只保留在聚合界面代表问法里的内容-${suffix}`;
+  // Keep random identifiers out of inquiry text: a numeric run in tag() can correctly trigger PII_PHONE.
+  const source=`planning-source-${suffix}`,article=`planning-article-${suffix}`,privateQuestion='只保留在聚合界面代表问法里的内容';
   await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${source},'Synthetic LED source','web_list',false)`;
   await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,body_status,body_text) VALUES(${article},${source},${article},${`https://example.com/${article}`},'LED display driver update',now(),now(),'ok','The manufacturer announced a display driver update.')`;
   await importDemandCsv({csv:demandCsvFields.join(',')+`\n2026-W45,欧洲,网站,集成商/安装商/招牌制作商,LED显示屏,户外招牌,交付与运输,${privateQuestion},A`},actor);

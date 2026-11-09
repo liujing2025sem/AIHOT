@@ -7,7 +7,7 @@
   "branch": "codex/react-editor-workbench-20261109",
   "base_branch": "codex/autopilot-figures-a-20261108",
   "base_commit": "c883ed74c0d97c347f4c181127257036138e6711",
-  "status": "implemented_pending_browser_acceptance",
+  "status": "implemented_release_candidate",
   "report": "docs/aihot-react-workbench-20261109.md",
   "delivery": {
     "production_deployed": false,
@@ -26,10 +26,21 @@
   "evidence": {
     "full_typecheck": "passed",
     "web_build": "passed",
-    "non_browser_tests": { "passed": 50, "scope": "48 existing/navigation plus 2 SSR cases" },
+    "non_browser_tests": { "passed": 53, "scope": "web/cache/navigation/SSR regression subset; no browser launched" },
+    "package_tests": { "passed": 8, "scope": "source/build bundle, hashes, secret-path exclusions and no-overwrite behavior" },
     "diff_check": "passed",
-    "browser_acceptance": "blocked_before_page_load",
-    "browser_blocker": "System Chromium: socket() failed: Operation not permitted; stopped without bypass",
+    "browser_acceptance": "github_ci_web_tests_passed; operator_visual_acceptance_pending",
+    "local_browser_blocker": "System Chromium: socket() failed: Operation not permitted; stopped without bypass",
+    "first_ci": {
+      "run_id": 42593987217,
+      "commit": "8fabf5c571e0cf7b99ec49b9bd4dff24e8917f07",
+      "web_passed": 91,
+      "backend_passed": 1188,
+      "backend_failed": 2,
+      "docker": "passed",
+      "fixes": ["Use existing radius tokens", "Remove random phone-like suffix from demand fixture"],
+      "final_result": "See delivery verification.json for exact final candidate CI"
+    },
     "new_browser_cases": 8,
     "screenshots": [],
     "production_model_calls": 0,
@@ -44,11 +55,20 @@
   ],
   "next_actions": [
     "Preserve stacked PRs #18, #19 and #20; do not replace them with old main",
-    "Run full browser tests in an authorized environment",
-    "Verify 390 and 1440 layouts, keyboard focus and disabled-action explanations",
+    "Use complete source/build package; preserve existing runtime, private configuration, database and user changes",
+    "Verify target installation and human 390/1440 visual review without bypassing access denials",
     "Open existing 6098 read-only; do not regenerate",
-    "Report actual tests and screenshots before user chooses deployment"
+    "Report actual running version and usability results; no automatic production or public-content changes"
   ],
+  "release": {
+    "type": "complete_source_and_built_web_update",
+    "windows_offline_runtime_included": false,
+    "guide": "docs/releases/react-workbench-20261109/README.zh-CN.md",
+    "deployment": "docs/releases/react-workbench-20261109/DEPLOYMENT.md",
+    "historical_prd_reconciliation": "docs/releases/react-workbench-20261109/PRD-RECONCILIATION.md",
+    "final_version_and_hashes": "RELEASE.json in package",
+    "final_validation": "verification.json alongside package"
+  },
   "project_memory": {
     "user_requirement": "Use real React component libraries and an intuitive AiToEarn-like left sidebar",
     "product_jobs": ["professional SEO/GEO content", "news briefs"],
