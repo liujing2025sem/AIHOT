@@ -116,8 +116,10 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
     const scopedBody=errors.length?draft.body_en:draft.body_en.split('').map((char,i)=>keepRanges.some(r=>i>=r.start&&i<r.end)&&char!=='\n'?' ':char).join('');
     const scopedPacket={...packet,pitch:{...packet.pitch!,fragments_plan:undefined}};
     const gate=evaluateDraft(scopedPacket,{...draft,body_en:scopedBody},context);
+    const findings=gate.findings.map(f=>f.field==='body_en'
+      ? {...f,quote:draft.body_en.slice(f.start,f.end)} : f);
     const wholeCompany=pitchDraftFindings(scopedPacket,draft);
-    return report([...gate.findings,...wholeCompany,...errors.map(reason=>({ruleId:'D1',severity:'BLOCK' as const,field:'body_en',start:0,end:Math.min(300,draft.body_en.length),quote:draft.body_en.slice(0,300),reason}))]);
+    return report([...findings,...wholeCompany,...errors.map(reason=>({ruleId:'D1',severity:'BLOCK' as const,field:'body_en',start:0,end:Math.min(300,draft.body_en.length),quote:draft.body_en.slice(0,300),reason}))]);
   }
   const findings: Finding[] = [];
   const article = packet.articles.find(a => a.binding.article_id === draft.source.article_id);

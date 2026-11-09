@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Packet, Response } from '../scripts/editorial-pilot-lib.ts';
 import { editorialGate, evaluateDraft, type GateContext, type GateReport } from '../packages/backend/src/studio/editorial-gate.ts';
+import { buildEditorialIssues } from '../packages/backend/src/studio/editorial-issues.ts';
 import { IDENTITY_LEXICON } from '@aihot/industry/taxonomy';
 import { publicDraft } from '../packages/backend/src/studio/studio-publication.ts';
 
@@ -373,6 +374,30 @@ test('W1 30-day boundary and missing dates are explicit', () => {
   assert.ok(has(check(draft, old(31)), 'W1', 'WARN'));
   const p = structuredClone(packet); p.articles[0].binding.published_at = null;
   assert.ok(has(check(draft, p), 'W1', 'WARN'));
+});
+
+test('an updated page with kept HTML can enter review when it has a source warning', () => {
+  const p = old(31);
+  const keep = '<p>Original page text. 😀</p>\n';
+  const before = '<p>Read the cabinet installation drawing.</p>';
+  const after = '<p>Check the installation drawing before ordering.</p>';
+  const d = { ...withBody(keep + after), source: p.articles[0].binding };
+  p.pitch = {
+    question: 'Which installation drawing is needed?', output_type: 'update', existing_url: binding.url,
+    selected_title: d.title_en, primary_article_id: binding.article_id, outline: [],
+    engineer: { mode: 'conservative', name: '', reply: '', answers: [] }, withheld_numbers: [],
+    fragments_plan: {
+      paragraphs: [{id:'p1',html:keep,text:'Original page text. 😀'}, {id:'p2',html:before,text:'Read the cabinet installation drawing.'}],
+      subquestions: [], source_html: keep + before, original_title: d.title_en, method_rule_ids: [],
+      facts: [{id:'f1',kind:'page',statement:'Check the installation drawing.',quote:'Read the drawing.',attribution:'Original page'}],
+      edit_plan: [{op:'keep',paragraph:'p1',facts:[]}, {op:'revise',paragraph:'p2',facts:['f1']}],
+      fragments: [{op_index:1,html_en:after,zh_review:'下单前核对安装图。',used_facts:['f1']}],
+    },
+  };
+  const gate = check(d, p);
+  assert.equal(gate.blocked, false);
+  const issues = buildEditorialIssues(p, d, gate);
+  assert.ok(issues.items.some(issue => issue.ruleId === 'W1' && issue.confirmable));
 });
 
 test('W2 counts distinct URLs per draft, never counts unrelated packet sources', () => {
