@@ -3,6 +3,7 @@ import { ENTITIES } from '@aihot/industry/taxonomy';
 import sourceConfig from '../../../../industry/sources.json' with { type: 'json' };
 import { pitchDraftFindings } from './studio-company-facts.ts';
 import {assembleFragments,validateFragment} from './studio-pitch-fragments.ts';
+import {evaluateBriefDraft} from './studio-brief-content.ts';
 
 export type Finding = {
   ruleId: string; severity: 'BLOCK' | 'WARN'; field: string;
@@ -14,6 +15,8 @@ export type GateReport = { version: string; blocked: boolean; findings: Finding[
  */
 export type GateContext = {
   newTopic?: boolean;
+  /** Trusted Studio state: stale internal Chinese is visible history, not the current public copy. */
+  reviewLanguage?: 'en';
   publishedTexts?: string[];
   knownAliases?: Record<string, string | string[]>;
   verifiedEvidence?: {
@@ -101,6 +104,8 @@ function report(findings: Finding[]): GateReport {
  * This is a lexical review aid, not semantic completeness, certification validation or legal advice.
  */
 export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext = {}): GateReport {
+  if(draft.brief)return evaluateBriefDraft(packet,draft,context,evaluateDraft);
+  if(context.reviewLanguage==='en')draft={...draft,title_zh:'',review_zh:''};
   const fragmentPlan=packet.pitch?.fragments_plan;
   if(fragmentPlan?.fragments){
     const {paragraphs,edit_plan,fragments,facts}=fragmentPlan;
@@ -270,7 +275,7 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
   const en = `${draft.title_en}\n${draft.body_en}`;
   const unconfirmedZh = /据传|尚未证实|未经证实|传闻/.test(zh);
   const unconfirmedEn = /\bunconfirmed\b|\breportedly\b|\brumou?red\b/i.test(en);
-  if (unconfirmedZh !== unconfirmedEn) anchor('W7', '中英消息状态限定不一致；尚未证实的资讯须在英文标题、摘要、正文保留限定和信源日期。');
+  if (context.reviewLanguage!=='en'&&unconfirmedZh !== unconfirmedEn) anchor('W7', '中英消息状态限定不一致；尚未证实的资讯须在英文标题、摘要、正文保留限定和信源日期。');
   if (draft.news_status === 'unconfirmed') {
     for (const field of ['title_en','meta_description_en','body_en'] as const) {
       if (!/\bunconfirmed\b|\breportedly\b|\brumou?red\b/i.test(draft[field])) add('W7', 'WARN', field, draft[field], 0, draft[field].length, '稿件标记为尚未证实，该英文出口未识别消息限定。公开导出会附状态、原日期和信源；请同时核对原句语气。');
@@ -279,8 +284,10 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
   // Compare only technical number+unit tokens, not titles' list numbers, dates or evidence arrays.
   const normalizedNumbers = (t: string) => new Set(matches(t, techNumber).map(m => m[0].toLowerCase().replace(/[\s,]/g, '').replace(/nits?$/, 'nit').replace(/[–—~]/g, '-')));
   const z = normalizedNumbers(zh), e = normalizedNumbers(en);
-  if (z.size !== e.size || [...z].some(n => !e.has(n))) anchor('W7', '中英标题+正文的技术数字/单位集合不一致；程序不推断单位换算与事实等价，须逐点核实。');
-  else if (attributed(zh, attributionNames) !== attributed(en, attributionNames)) anchor('W7', '中英文可识别的来源归属线索不一致；须逐点核实事实与归属。');
+  if (context.reviewLanguage!=='en') {
+    if (z.size !== e.size || [...z].some(n => !e.has(n))) anchor('W7', '中英标题+正文的技术数字/单位集合不一致；程序不推断单位换算与事实等价，须逐点核实。');
+    else if (attributed(zh, attributionNames) !== attributed(en, attributionNames)) anchor('W7', '中英文可识别的来源归属线索不一致；须逐点核实事实与归属。');
+  }
 
   if (context.publishedTexts === undefined) anchor('W8', '未提供已发布文字历史，本次无法判断历史重复度。');
   else if (context.publishedTexts.length > 0) {
@@ -293,6 +300,7 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
     };
     const histories = context.publishedTexts.map(grams);
     for (const field of ['review_zh', 'body_en'] as const) {
+      if(field==='review_zh'&&context.reviewLanguage==='en')continue;
       const draftGrams = grams(draft[field]);
       if (draftGrams.size < 20) {
         add('W8', 'WARN', field, draft[field], 0, draft[field].length, '正文不足20个不同5-gram，重复度样本太短，转人工判断。');

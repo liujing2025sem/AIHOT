@@ -7,6 +7,9 @@ import { audit, Conflict } from '../audit.ts';
 import { config, credential } from '../config.ts';
 import { sql, type Tx } from '../db.ts';
 import { lockStudioPublication } from './studio.ts';
+import { publicStudioTitle, studioUpgradeContext } from './studio-upgrade.ts';
+import { wpFigures, wpUpdateTarget, type PublishedFigure } from './studio-publishing-wordpress.ts';
+import type { PublicationIssue } from './studio-publishing-content.ts';
 
 const shortCategory = 'industry-news';
 const consumerTag = 'consumer-display';
@@ -19,7 +22,15 @@ const pushSchema = z.object({
 }).strict();
 type Push = z.infer<typeof pushSchema>;
 type Publication = NonNullable<Awaited<ReturnType<typeof lockStudioPublication>>>;
-type Receipt = { site: string; version: number; kind: Push['kind']; section: Push['section'] } & (
+class DraftPreflightFailure extends Error {
+  readonly error: unknown;
+  constructor(error: unknown) { super('WordPress draft preflight failed before any mutation'); this.error = error; }
+}
+type Receipt = { site: string; version: number; kind: Push['kind']; section: Push['section'];
+  delivery?: 'shadow_draft'; target_post_id?: number; target_existing_url?: string; baseline_sha256?: string | null;
+  changes?: NonNullable<ReturnType<typeof studioUpgradeContext>>['changes']; notice?: string;
+  figures?: PublishedFigure[]; issues?: PublicationIssue[];
+} & (
   { state: 'pending' | 'not_sent' } |
   { state: 'unknown'; postId?: number; httpStatus?: number } |
   { state: 'blocked'; postId: number } |
@@ -164,6 +175,20 @@ async function recoverDraft(request: Request, slug: string) {
   return matches.length === 1 && matches[0]?.status === 'draft' ? matches[0].id : undefined;
 }
 
+/** One safe HTML projection for reviewed export and WP. No theme-wide CSS, scripts or event handlers. */
+export function sanitizeReviewedHtml(html: string) {
+  return sanitizeHtml(html, {
+    allowedTags: [...new Set([...sanitizeHtml.defaults.allowedTags, 'section', 'aside', 'article', 'figure', 'figcaption', 'img'])],
+    allowedAttributes: { ...sanitizeHtml.defaults.allowedAttributes, '*': ['id'],
+      a: ['href', 'title', 'name', 'rel', 'target'],
+      section: ['class', 'id'], div: ['class', 'id'], article: ['class', 'id'], aside: ['class', 'id'], p: ['class', 'id'],
+      figure: ['class'], img: ['src', 'alt', 'width', 'height', 'loading'], th: ['scope', 'colspan'], td: ['colspan'] },
+    allowedClasses: { section: ['cs-brief', 'cs-brief-*'], div: ['cs-brief', 'cs-brief-*'],
+      article: ['cs-brief-*'], aside: ['cs-brief-*'], p: ['cs-brief-*'], figure: ['cs-figure'] },
+    allowedSchemes: ['https', 'http'],
+  });
+}
+
 export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: string) {
   const configured = settings();
   if (!configured.ready) invalid(configured.message);
@@ -176,32 +201,57 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
   const save = (tx: Tx, before: Receipt | undefined, after: Receipt) =>
     audit(actor, auditAction, subjectOf(id), null, before, after, { db: tx });
 
+  async function preflight(request: Request, publication: Publication, postId?: number) {
+    const upgrade = studioUpgradeContext(publication.packet);
+    if ((upgrade && input.kind !== 'guide') || (publication.packet.brief && input.kind !== 'brief')) {
+      throw new Conflict('交付类型由采编任务锁定，请刷新后再推送。');
+    }
+    const existing = upgrade && await wpUpdateTarget(request, target.base, upgrade.target_existing_url);
+    if (upgrade && (!existing || existing.status !== 'publish' || existing.id === postId)) {
+      throw new Conflict('影子稿须独立于原已发布页面；原页绑定或状态无法确认时不会写入。');
+    }
+    const base = { ...receiptBase, ...(upgrade && existing ? { ...upgrade, target_post_id: existing.id } : {}) };
+    const html = sanitizeReviewedHtml(marked.parse(publication.body, { async: false }));
+    const content = input.kind === 'brief' && !/<(?:section|div)\b[^>]*class=["'][^"']*\bcs-brief\b/i.test(html)
+      ? `<section class="cs-brief">${html}</section>` : html;
+    return { base, content };
+  }
   async function write(tx: Tx, before: Receipt, request: Request, publication: Publication, placement: Placement, postId?: number) {
-    const html = sanitizeHtml(marked.parse(publication.body, { async: false }));
-    const content = input.kind === 'brief' ? `<div class="cs-brief">${html}</div>` : html;
-    let receipt: Receipt = { ...receiptBase, state: 'unknown', postId };
+    let ready: Awaited<ReturnType<typeof preflight>>;
+    try { ready = await preflight(request, publication, postId); }
+    catch (error) { throw new DraftPreflightFailure(error); }
+    const { base, content } = ready;
+    let receipt: Receipt = { ...base, state: 'unknown', postId };
     try {
+      // Only requested/approved figure specs enter the human path. No inferred technical picture at push time.
+      const media = publication.draft.figures?.length || publication.packet.brief
+        ? await wpFigures(request, { kind: input.kind, specs: publication.draft.figures ?? [],
+          packet: publication.packet, draft: publication.draft, title: publicStudioTitle(publication.title),
+          content, slug, parent: postId ?? 0, publishedHashes: [], allowFallback: false })
+        : { content, featured: undefined, issues: [], figures: [] };
+      const featured = media.featured ?? placement.media;
+      Object.assign(base, { figures: media.figures, issues: media.issues });
       const response = await request(postId ? `posts/${postId}` : 'posts', { _fields: postFields }, {
-        status: 'draft', title: publication.title, content, ...(postId ? {} : { slug }),
+        status: 'draft', title: publicStudioTitle(publication.title), content: media.content, ...(postId ? {} : { slug }),
         categories: [placement.category], tags: placement.tags,
-        ...(placement.media ? { featured_media: placement.media } : {}),
+        ...(featured ? { featured_media: featured } : {}),
       });
       const saved = postSchema.safeParse(response);
       if (saved.success && (postId ? postId === saved.data.id : saved.data.slug === slug)) {
         const post = saved.data;
-        receipt = { ...receiptBase, state: 'unknown', postId: post.id };
-        if (post.status !== 'draft') receipt = { ...receiptBase, state: 'blocked', postId: post.id };
+        receipt = { ...base, state: 'unknown', postId: post.id };
+        if (post.status !== 'draft') receipt = { ...base, state: 'blocked', postId: post.id };
         else if (post.categories.length === 1 && post.categories[0] === placement.category &&
           post.tags.length === placement.tags.length && placement.tags.every(tag => post.tags.includes(tag))) {
-          receipt = { ...receiptBase, state: 'pushed', postId: post.id,
-            media: !placement.media ? 'not_configured' : post.featured_media === placement.media ? 'set' : 'not_applied',
+          receipt = { ...base, state: 'pushed', postId: post.id,
+            media: !featured ? 'not_configured' : post.featured_media === featured ? 'set' : 'not_applied',
             metaDescription: publication.meta_description.replace(/\s+/g, ' ').trim() };
         }
       }
     } catch (error) {
       if (!(error instanceof WordPressError)) throw error;
       // Even an HTTP error can arrive after WordPress creates the post (for example when setting terms).
-      receipt = { ...receiptBase, state: 'unknown', postId, httpStatus: error.status };
+      receipt = { ...base, state: 'unknown', postId, httpStatus: error.status };
     }
     await save(tx, before, receipt);
     return receiptView(receipt, target, id);
@@ -249,11 +299,19 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
       if (!publication) return { result: null };
       const current = await latest(id, tx);
       if (!current || current.state !== 'pending') return { result: current ? receiptView(current, target, id) : null };
-      return { result: await write(tx, first.reservation, client(target), publication, first.placement) };
+      try { return { result: await write(tx, first.reservation, client(target), publication, first.placement) }; }
+      catch (error) {
+        if (!(error instanceof DraftPreflightFailure)) throw error;
+        // The preflight contains only local checks and authenticated reads. No post/media write was attempted.
+        // Commit this reset before reporting the error; unknown results after any write remain recover-only.
+        await save(tx, current, { ...receiptBase, state: 'not_sent' });
+        return { error: error.error };
+      }
     });
     if (second.error) throw second.error;
     return second.result;
   } catch (error) {
+    if (error instanceof DraftPreflightFailure) error = error.error;
     if (error instanceof WordPressError) invalid(error.message);
     throw error;
   }

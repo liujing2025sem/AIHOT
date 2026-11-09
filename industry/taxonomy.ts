@@ -33,36 +33,40 @@ export const PLAIN_TERMS: readonly string[] = ["led", "ic", "smd", "dip", "cob",
  * 内容理解一步给每篇资料判的“内容类型”（写在 prompts/content-understanding.md 里，改了类型要同步改那份提示词）。
  * 评分提示词（prompts/selection-score.md）按类型给五个维度不同的权重。
  */
-export const ITEM_TYPES = ["model_release", "product_launch", "tool_or_prompt", "research_paper", "industry_event", "opinion_analysis", "tutorial_explainer"] as const;
+export const ITEM_TYPES = ["product_launch", "tool_or_prompt", "research_paper", "industry_event", "opinion_analysis", "tutorial_explainer"] as const;
+/** Old receipts remain replayable; stored rows and their original JSON are never rewritten. */
+export const normalizeItemType = (value: unknown): unknown => value === 'model_release' ? 'product_launch' : value;
 
 // ── 标签词表 ────────────────────────────────────────────────────────────────────────────
 
 /** 每篇资料的第一个标签必须是这些“分类标签”之一。 */
 export const CATEGORY_TAGS = [
-  "产品更新", "模型发布", "论文/研究", "开源/仓库", "教程/实践", "现象/趋势", "大佬观点", "评测/基准", "安全/对齐", "行业动态", "政策/监管",
-  "非AI/通用工具", "其他",
+  "产品更新", "软件/固件", "规格变更", "项目交付", "论文/研究", "开源/仓库", "教程/实践", "现象/趋势", "行业观点", "评测/基准", "安全/可靠性", "行业动态", "政策/监管", "其他",
 ] as const;
 
 /** 可选的主题标签。 */
 export const TOPIC_TAGS = [
-  "LED控制系统", "LED封装", "LED驱动IC", "LED电源", "户外LED显示", "LED采购选型", "LED项目案例", "LED安装维护", "DOOH", "consumer-display", "近眼显示",
-  "Agent", "编码", "推理", "多模态", "语音", "视频", "图像生成", "RAG", "端侧", "数据/训练", "搜索", "部署/工程", "开源生态", "具身智能", "MCP/工具调用",
+  "LED控制系统", "LED封装", "LED驱动IC", "LED电源", "LED箱体", "户外LED显示", "LED采购选型", "LED项目案例", "LED安装维护", "LED可靠性", "LED功耗", "租赁显示", "虚拟拍摄", "DOOH", "consumer-display", "近眼显示",
 ] as const;
 
 /** 可选的实体标签（公司、机构、平台）。 */
-export const ENTITY_TAGS = ["OpenAI", "Anthropic", "DeepSeek", "DeepMind", "Google", "Meta", "Microsoft", "xAI", "Hugging Face", "GitHub", "arXiv"] as const;
+export const ENTITY_TAGS = ["Chipshow", "NovaStar", "Nationstar", "Kinglight", "Macroblock", "MEAN WELL", "Colorlight", "Chipone", "CZCL", "G-energy", "Huidu", "Daktronics", "OAAA", "LEDinside", "AMD", "NVIDIA", "Google", "Meta", "Microsoft"] as const;
+/** Active extraction vocabulary; the full entity registry below also reads historic AI-industry data. */
+export const EDITORIAL_ENTITY_IDS = ['chipshow','novastar','nationstar','kinglight','macroblock','meanwell','colorlight','chipone','czcl','g-energy','huidu','daktronics','oaaa','ledinside','amd','nvidia','google','meta','microsoft'] as const;
 
 /** 模型常写的近义词，统一成词表里的写法。 */
 export const TAG_SYNONYMS: Readonly<Record<string, string>> = {
   "教程/玩法": "教程/实践", "技巧/最佳实践": "教程/实践", "合作/生态": "行业动态", "融资/收购": "行业动态", "公司动态": "行业动态",
   合作: "行业动态", 生态: "行业动态", 融资: "行业动态", 收购: "行业动态", 投资: "行业动态", 并购: "行业动态",
-  政策: "政策/监管", 监管: "政策/监管", 法规: "政策/监管", 安全: "安全/对齐", 对齐: "安全/对齐",
+  政策: "政策/监管", 监管: "政策/监管", 法规: "政策/监管", 安全: "安全/可靠性", 可靠性: "安全/可靠性",
   论文: "论文/研究", 研究: "论文/研究", paper: "论文/研究", papers: "论文/研究",
   "open-source": "开源/仓库", 开源: "开源/仓库", 仓库: "开源/仓库", repo: "开源/仓库",
   教程: "教程/实践", 玩法: "教程/实践", 指南: "教程/实践", 技巧: "教程/实践", 最佳实践: "教程/实践", 实践: "教程/实践",
-  产品: "产品更新", 更新: "产品更新", 发布: "模型发布", 模型: "模型发布", 趋势: "现象/趋势", 现象: "现象/趋势", 观点: "大佬观点",
-  视频生成: "视频", 非ai: "非AI/通用工具", "non-ai": "非AI/通用工具", 通用工具: "非AI/通用工具", 工程工具: "非AI/通用工具",
-  安全扫描: "非AI/通用工具", devops: "非AI/通用工具", 行业: "行业动态", 动态: "行业动态",
+  产品: "产品更新", 更新: "产品更新", 发布: "产品更新", 型号发布: "产品更新", 软件: "软件/固件", 固件: "软件/固件", 规格更新: "规格变更", 项目: "项目交付", 趋势: "现象/趋势", 现象: "现象/趋势", 观点: "行业观点",
+  工程工具: "教程/实践", 行业: "行业动态", 动态: "行业动态",
+  // Compatibility when replaying old structured receipts. New prompts do not offer these labels.
+  模型发布: "产品更新", 大佬观点: "行业观点", "安全/对齐": "安全/可靠性", "非AI/通用工具": "其他", 非ai: "其他", "non-ai": "其他",
+  诺瓦星云: "NovaStar", 国星光电: "Nationstar", 晶台光电: "Kinglight", 聚积科技: "Macroblock", 聚積科技: "Macroblock", 明纬: "MEAN WELL", 明緯: "MEAN WELL", meanwell: "MEAN WELL", 卡莱特: "Colorlight", 集创北方: "Chipone", 灰度科技: "Huidu",
 };
 
 // ── 公司与主体 ──────────────────────────────────────────────────────────────────────────

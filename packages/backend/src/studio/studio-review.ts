@@ -4,7 +4,7 @@ import { sql } from '../db.ts';
 import { audit, Conflict } from '../audit.ts';
 import { sha256 } from '../../../../scripts/editorial-pilot-lib.ts';
 
-export const documentIdentity = (d: Record<string, unknown>) => sha256(JSON.stringify([d.title_zh,d.title_en,d.review_zh,d.body_en,d.meta_description_en,d.keyword_hypothesis,d.news_status??'reported',d.questions_zh??[],d.source]));
+export const documentIdentity = (d: Record<string, unknown>) => sha256(JSON.stringify([d.title_zh,d.title_en,d.review_zh,d.body_en,d.meta_description_en,d.keyword_hypothesis,d.news_status??'reported',d.questions_zh??[],d.source,d.figures??[],d.brief??null]));
 const observation = z.object({ version:z.number().int().positive(),substantive:z.boolean(),categories:z.array(z.enum(['fact','attribution','conclusion','title','format'])),
   minutes:z.number().finite().min(0).max(1440).nullable(),full_review:z.boolean(),missed_block:z.boolean(),major_fact_error:z.boolean(),note:z.string().trim().min(1).max(3000) });
 

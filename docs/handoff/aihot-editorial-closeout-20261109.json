@@ -1,0 +1,84 @@
+{
+  "schema": "aihot.editorial-closeout/1",
+  "date": "2026-11-09",
+  "timezone": "Asia/Shanghai",
+  "TASK": "在同一React工作台源码上完成五项采编收口，保护6098原页，并交回可核验更新包。",
+  "TRUTH": {
+    "repository": "liujing2025sem/AIHOT",
+    "branch": "codex/editorial-closeout-20261109",
+    "base_pr": 21,
+    "base_commit": "3f08ba3ba3b9bc4a1822d9353d540a11cd340abd",
+    "dependency_prs": [18, 19, 20, 21],
+    "already_merged": [11, 14, 15],
+    "source_of_decisions": "docs/LIVE.md + user 2026-11-09 five-step closeout",
+    "production_runtime_accessed_this_round": false,
+    "production_database_included": false,
+    "production_6098_verified_this_round": false,
+    "real_first_brief_generated": false,
+    "paid_calls_this_round": 0,
+    "wordpress_writes_this_round": 0
+  },
+  "SCOPE": [
+    "含BLOCK的私人稿保存，批准/交付继续守门",
+    "任务绑定旧页身份，默认独立影子草稿；原页写入失败不得降级draft",
+    "5至12材料按独立事件合成单篇cs-brief进入in_review",
+    "安全建议作用于英文，旧中文显式标旧，剩余问题全部计数",
+    "推荐与短讯选择共用14/30天窗口，清理旧AI分类输出",
+    "复用配图PNG/ALT/图注、保留短讯HTML语义、导出剥内部UPDATE标签"
+  ],
+  "FORBIDDEN": [
+    "不重做6098拆题、编辑计划或正文",
+    "不把影子草稿直接发布为新文章",
+    "不将已发布原页降为draft，不在未知写入后自动重试覆盖",
+    "不硬截断未处理风险，不伪造工程师确认",
+    "不覆盖env、黑名单、业务库、附件或目标机独有改动",
+    "不新开模型/采集/发布开关，不重试未知付费请求",
+    "不把测试、CI或归档记录计作真实出刊或部署"
+  ],
+  "INPUT": [
+    "原实例当前源码/安装标识与安全备份",
+    "6098现有Studio稿件、原URL、当前WP ID/状态及原始HTML",
+    "MiP现有响应与真实工程确认记录",
+    "经授权的LED采集结果与现有WordPress配置"
+  ],
+  "STEPS": [
+    "读RELEASE.json与最终verification，确认候选CI及依赖链",
+    "原实例只读核对稿件与配置，备份后增量升级",
+    "验证保存/采纳/中文标旧，无模型重调、无WP写入",
+    "复用6098现有单段稿，按审批交付影子草稿，验证原页未变",
+    "在既有授权内采集一轮，选够真实事件生成一期待审，获批后才推WP草稿",
+    "按五行回执和证据JSON回传，独立复核后标PILOT"
+  ],
+  "OUTPUT": [
+    "source-and-web-build-update ZIP + RELEASE.json + SHA256SUMS",
+    "操作/部署说明、最终验证回执、此A2A文件",
+    "原实例接续后补6098影子预览与第一期真实短讯预览，不编造链接"
+  ],
+  "INVARIANTS": [
+    "save/apply只改私稿与审计，清除旧批准，不发布",
+    "当前英文/来源/图片规格/合集身份变化使旧批准失效",
+    "中文标旧后只作可读历史，批准须显式核对当前英文hash",
+    "一个review brief任务最多一篇稿；不足五个独立事件HOLD",
+    "每事件及速览使用对应事件出处，所有来源版本和日期继续核对",
+    "装饰ALT可空；独立信息图ALT描述真实图形；不覆盖共享全局ALT",
+    "原页预览post ID与target post ID必须不同",
+    "原页显式覆盖需绑定基线及片段，其余正文逐字保留"
+  ],
+  "ACCEPTANCE": {
+    "code": ["typecheck", "web build", "standalone", "existing PR CI backend/web/smoke/docker"],
+    "pilot": ["BLOCK保存刷新保留", "6098影子draft与原publish同时存在", "真实五事件一篇待审短讯", "英文采纳与真实余项数", "14/30天边界"],
+    "maturity_before_final_ci": "STATIC_PASS",
+    "pilot_status": "PILOT_NOT_RUN",
+    "final_evidence_location": "delivery verification.json and GitHub PR; do not infer success from this source manifest"
+  },
+  "STOP": ["缺原实例或WP凭据", "目标/基线冲突", "权限或保护流程拒绝", "CI失败", "需要删除既有数据"],
+  "KNOWN_LIMITS": [
+    "采纳建议当前为确定边界的删句，不自动编写缺失参数或条件",
+    "中文自动再翻译未执行，清楚标旧并按英文审稿",
+    "未承诺WP原生原子CAS或必有revision",
+    "本次无真实流量/排名/询盘增益证据",
+    "外部Agent尚未签收，Drive归档不等于部署"
+  ],
+  "BUSINESS_OBJECTIVE": "在不伤害商誉前提下扩大流量与合格询盘；技术可用性与营销效果分开验收。",
+  "ACK": {"status": "AWAITING_EXISTING_RUNTIME_EXECUTOR", "owner": "dot/原实例Codex", "must_return": ["runtime_commit", "preview_urls", "source_metadata_report", "original_page_unchanged_proof", "unresolved_items"]}
+}

@@ -11,6 +11,8 @@ import { createStudioTask, studioGenerationStatus, studioTask } from './studio.t
 import { preparePublicationCopy, type EditorialDraft, type PublicationIssue } from './studio-publishing-content.ts';
 import { equivalentPage, figureSpecSchema, wpFigures, wpMeta, wpPreviousRevision, wpRead, wpReserve, wpRetry,
   wpUpdateTarget, wpVerify, wpWrite, type Visibility, type PublishedFigure } from './studio-publishing-wordpress.ts';
+import { checkedUpdatePatch, publicStudioTitle, studioUpgradeContext, updateBaselineHash } from './studio-upgrade.ts';
+import { sameWordPressHtml } from './studio-publishing-content.ts';
 
 const settingKey = 'studio.publishing';
 const receiptAction = 'studio.publishing.receipt';
@@ -31,6 +33,7 @@ function settingsValue(raw: unknown) {
 const draftInput = z.object({
   version: z.number().int().positive(), kind: kind.default('guide'), section,
   figures: z.array(figureSpecSchema).max(3).optional(),
+  confirm_update: z.object({ target_post_id: z.number().int().positive(), baseline_sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
 }).strict();
 const materialInput = z.object({
   article_ids: z.array(safeId).min(1).max(12),
@@ -57,6 +60,8 @@ type Review = {
   issues: PublicationIssue[]; created_at: string; updated_at: string;
   last_action: Action['action'] | null; reason: z.infer<typeof reasonSchema> | null;
   canRollback: boolean; reviewed: boolean; figures?: PublishedFigure[];
+  delivery?: 'shadow_draft' | 'live'; target_post_id?: number; target_existing_url?: string;
+  baseline_sha256?: string | null; notice?: string;
 };
 type Receipt = Review & { site: string | null; visibility: 'public' | 'private_test'; existing_url?: string; wp_status?: string };
 const subject = (id: string) => 'studio-publication:' + id;
@@ -110,9 +115,9 @@ async function loadDraft(db: Db, id: string) {
   const [row] = await db<{ version: number; document: unknown; request: unknown }[]>`SELECT d.version,d.document,t.request
     FROM studio_drafts d JOIN studio_tasks t ON t.id=d.task_id WHERE d.id=${id} FOR SHARE OF d,t`;
   if (!row) return null;
-  const envelope = z.object({ editorial_gate: z.unknown().optional(), camos: z.unknown().optional(), figures: z.unknown().optional() })
+  const envelope = z.object({ editorial_gate: z.unknown().optional(), camos: z.unknown().optional(), figures: z.unknown().optional(), review_sync: z.unknown().optional() })
     .passthrough().parse(row.document);
-  const { editorial_gate: _gate, camos: _camos, figures, ...document } = envelope;
+  const { editorial_gate: _gate, camos: _camos, review_sync: _reviewSync, figures, ...document } = envelope;
   const draft = responseSchema.shape.drafts.element.parse(document);
   const specs = Array.isArray(figures) ? figures.flatMap(spec => {
     const parsed = figureSpecSchema.safeParse(spec);
@@ -145,29 +150,45 @@ async function publishDraft({ id, input, actor, visibility, reviewId }: {
     if (row.version !== input.version) throw new Conflict('草稿版本已变化，请刷新后再上线。');
     const before = await latest(reviewId, visibility === 'public' ? receiptAction : privateAction, tx);
     if (before?.site && before.site !== target.base.href) throw new Conflict('此稿已绑定另一 WordPress 站点。');
-    if (before?.status === 'published' && before.version === row.version && before.kind === input.kind && before.section === input.section) return view(before);
     const packet = row.packet, draft = row.draft;
-    const existingUrl = input.kind === 'update' ? (packet.pitch?.existing_url || packet.editorial_plan?.existing_url) : undefined;
-    if (input.kind === 'update' && visibility === 'public' && !existingUrl) return invalid('升级稿未绑定要更新的现有页面。');
+    const upgrade = studioUpgradeContext(packet);
+    const deliveryKind = upgrade ? 'update' as const : packet.brief ? 'brief' as const : input.kind;
+    if (before?.status === 'published' && before.version === row.version && before.kind === deliveryKind && before.section === input.section) return view(before);
+    const existingUrl = upgrade?.target_existing_url;
+    if (input.kind === 'update' && !upgrade) return invalid('升级稿未绑定要更新的现有页面。');
+    if (input.confirm_update && !upgrade) return invalid('覆盖确认只能用于已绑定原页的升级任务。');
     const ownPage = existingUrl && packet.articles.find(a => equivalentPage(a.binding.url, existingUrl))?.binding.url;
     if (existingUrl && !ownPage) return invalid('升级稿的原页不在此任务绑定的素材中。');
     const copy = preparePublicationCopy({ draft, packet, existingUrl: ownPage });
-    const status: Visibility = copy.retained < .6 ? 'draft' : visibility === 'public' ? 'publish' : 'private';
-    const receipt: Receipt = { ...fresh(reviewId, input, visibility), created_at: before?.created_at ?? new Date().toISOString(),
-      site: target.base.href, draft_id: id, version: row.version, title: copy.title, content: copy.html, issues: copy.issues, existing_url: existingUrl };
-    if (status === 'draft') receipt.issues.push(issue('low_retention', '清理后正文不足原稿 60%，仅保留为草稿。'));
+    copy.title = publicStudioTitle(copy.title);
+    const shadow = !!upgrade && visibility === 'public' && !input.confirm_update;
+    const status: Visibility = copy.retained < .6 || shadow ? 'draft' : visibility === 'public' ? 'publish' : 'private';
+    const receipt: Receipt = { ...fresh(reviewId, { ...input, kind: deliveryKind }, visibility), created_at: before?.created_at ?? new Date().toISOString(),
+      site: target.base.href, draft_id: id, version: row.version, title: copy.title, content: copy.html, issues: copy.issues, existing_url: existingUrl,
+      ...(upgrade ? { delivery: status === 'draft' ? 'shadow_draft' : 'live',
+        target_existing_url: upgrade.target_existing_url, baseline_sha256: upgrade.baseline_sha256, notice: upgrade.notice } : {}) };
+    if (copy.retained < .6) receipt.issues.push(issue('low_retention', '清理后正文不足原稿 60%，仅保留为草稿。'));
+    if (shadow) receipt.issues.push(issue('shadow_preview', upgrade.notice));
     const slug = visibility === 'private_test' ? studioWordPressSlug(reviewId) :
       existingUrl && status === 'draft' ? studioWordPressSlug('update-copy-' + id) : studioWordPressSlug(id);
     const request = wordpressClient(target, { perRequestTimeout: true });
     let attempted = false;
     try {
       const placement = await resolveWordPressPlacement((...args) => wpRetry(() => request(...args)), {
-        kind: input.kind === 'brief' || input.kind === 'article' ? 'brief' : 'guide', section: input.section,
+        kind: deliveryKind === 'brief' || deliveryKind === 'article' ? 'brief' : 'guide', section: input.section,
       }, false);
       let postId: number;
-      if (existingUrl && visibility === 'public' && status === 'publish') {
-        const existing = await wpUpdateTarget(request, target.base, existingUrl);
-        if (!existing) return invalid('无法从绑定的原页确认唯一 WordPress 文章。');
+      const existing = existingUrl && visibility === 'public' ? await wpUpdateTarget(request, target.base, existingUrl) : null;
+      if (existingUrl && visibility === 'public' && (!existing || existing.status !== 'publish')) {
+        throw new Conflict('无法确认绑定的原页仍是已发布页面，停止本次写入。');
+      }
+      if (existing) receipt.target_post_id = existing.id;
+      const updatePatch = existing && status === 'publish' && input.confirm_update
+        ? checkedUpdatePatch(packet, draft.body_en, existing, input.confirm_update) : null;
+      if (updatePatch && !sameWordPressHtml(copy.html, draft.body_en)) {
+        throw new Conflict('最终安全核查改动了原文，须重新审查影子稿；不会连带覆盖原页其余段落。');
+      }
+      if (existing && updatePatch) {
         postId = existing.id;
         await lock(tx, target.base.href + 'post:' + postId);
       } else if (visibility === 'public' && !existingUrl) {
@@ -176,6 +197,10 @@ async function publishDraft({ id, input, actor, visibility, reviewId }: {
         postId = (old && 'postId' in old ? old.postId : undefined) ?? await wpReserve(request, slug);
       } else {
         postId = await wpReserve(request, slug);
+        if (existing && postId === existing.id) throw new Conflict('影子草稿不得使用原页编号。');
+        if (existing && (await wpRead(request, postId)).status !== 'draft') {
+          throw new Conflict('影子预览已被改为其他状态，请先核对 WordPress，不能自动降级。');
+        }
         if (visibility === 'private_test' && (await wpRead(request, postId)).status === 'publish') {
           throw new Conflict('私密测试只能修改独立测试稿。');
         }
@@ -184,25 +209,31 @@ async function publishDraft({ id, input, actor, visibility, reviewId }: {
       receipt.editUrl = new URL('wp-admin/post.php?post=' + postId + '&action=edit', target.base).href;
       const published=await tx<{after:Receipt}[]>`SELECT after FROM (SELECT DISTINCT ON(subject) after FROM audit_log WHERE action=${receiptAction} ORDER BY subject,id DESC) latest WHERE after->>'status'='published'`;
       const publishedHashes=published.flatMap(r=>(r.after.figures??[]).map(f=>f.hash));
-      const media = status === 'draft' ? { content: copy.html, featured: undefined, issues: [], figures: [] } : await wpFigures(request, {
-        ...input, specs: input.figures ?? row.specs, packet, draft, title: copy.title, content: copy.html, slug, parent: postId,
+      const media = updatePatch ? { content: updatePatch.content, featured: undefined, issues: [], figures: [] } : await wpFigures(request, {
+        ...input, kind: deliveryKind, specs: input.figures ?? row.specs, packet, draft, title: copy.title, content: copy.html, slug, parent: postId,
         publishedHashes,
       });
       receipt.issues.push(...media.issues);
       receipt.figures=media.figures;
-      const payload = { status, title: copy.title || 'Industry update', content: media.content,
+      const payload = updatePatch ? { status, title: updatePatch.title, content: updatePatch.content } : { status, title: copy.title || 'Industry update', content: media.content,
         categories: [placement.category], tags: placement.tags, ...(media.featured ? { featured_media: media.featured } : {}),
         ...wpMeta(copy.description) };
       if (status === 'publish') await requireOneClick(tx);
+      if (updatePatch) {
+        const current = await wpRead(request, postId);
+        if (current.status !== 'publish' || updateBaselineHash(current.title.raw, current.content.raw) !== updatePatch.baseline_sha256) {
+          throw new Conflict('写入前发现原页已被修改，保留影子草稿，停止覆盖。');
+        }
+      }
       attempted = true;
-      await wpWrite(request, postId, payload);
+      await wpWrite(request, postId, payload, !updatePatch);
       const readback = await wpVerify(request, target.base, postId, payload);
       receipt.wp_status = readback.status;
       receipt.status = status === 'draft' ? 'draft' : 'published';
       receipt.title = readback.title.raw;
       receipt.content = readback.content.raw;
       receipt.url = status === 'publish' ? readback.link : null;
-      receipt.canRollback = status !== 'draft' && (input.kind === 'update' || visibility === 'private_test');
+      receipt.canRollback = status !== 'draft' && (deliveryKind === 'update' || visibility === 'private_test');
     } catch (error) {
       if (error instanceof Conflict) throw error;
       receipt.status = 'failed';
@@ -218,6 +249,10 @@ async function publishDraft({ id, input, actor, visibility, reviewId }: {
 
 async function demote(request: ReturnType<typeof wordpressClient>, target: Target, receipt: Receipt) {
   if (!receipt.postId) return;
+  if (receipt.existing_url && receipt.visibility === 'public' && receipt.delivery !== 'shadow_draft') {
+    receipt.issues.push(issue('original_page_protected', '原已发布页面的写入结果待核对；未将原页改成草稿，也未自动重试覆盖。'));
+    return;
+  }
   try {
     await wpWrite(request, receipt.postId, { status: 'draft' });
     await wpVerify(request, target.base, receipt.postId, { status: 'draft' });
@@ -261,6 +296,10 @@ async function actOnReview(id: string, action: Action, actor: string, auditActio
     if (before.existing_url && before.visibility === 'public') await lock(tx, target.base.href + 'post:' + before.postId);
     const request = wordpressClient(target, { perRequestTimeout: true });
     const current = await wpRead(request, before.postId);
+    const original = !!before.existing_url && before.visibility === 'public' && before.delivery !== 'shadow_draft';
+    if (original && (current.title.raw !== before.title || !sameWordPressHtml(current.content.raw, before.content))) {
+      throw new Conflict('原页面已被其他人修改，当前回执已过期；重新核对后再操作。');
+    }
     if (before.visibility === 'private_test' && current.status !== 'private' && current.status !== 'draft') {
       throw new Conflict('私密测试只能修改测试稿。');
     }
@@ -294,7 +333,10 @@ async function actOnReview(id: string, action: Action, actor: string, auditActio
         packet: row.packet, html: true, correction: true,
         existingUrl: existing ? row.packet.articles.find(a => equivalentPage(a.binding.url, existing))?.binding.url : undefined });
       const changedBody = action.content !== undefined || !!action.replace;
-      payload = { status: changedBody && copy.retained < .6 ? 'draft' : current.status, title: copy.title || 'Industry update',
+      if (changedBody && copy.retained < .6 && before.existing_url && before.visibility === 'public' && before.delivery !== 'shadow_draft') {
+        throw new Conflict('纠错后的可保留正文不足，原页面保持现状；请先交付影子稿再核对。');
+      }
+      payload = { status: changedBody && copy.retained < .6 ? 'draft' : current.status, title: publicStudioTitle(copy.title) || 'Industry update',
         ...(changedBody ? { content: copy.html } : {}) };
       after.issues.push(...copy.issues.filter(i => !after.issues.some(old => old.code === i.code)));
       if (payload.status === 'draft' && current.status !== 'draft') {
@@ -302,14 +344,21 @@ async function actOnReview(id: string, action: Action, actor: string, auditActio
       }
     }
     try {
-      await wpWrite(request, before.postId, payload);
+      if (original) {
+        const last = await wpRead(request, before.postId);
+        if (last.status !== current.status || updateBaselineHash(last.title.raw, last.content.raw) !== updateBaselineHash(current.title.raw, current.content.raw)) {
+          throw new Conflict('写入前原页发生变化，本次操作未提交。');
+        }
+      }
+      await wpWrite(request, before.postId, payload, !original);
       const verified = await wpVerify(request, target.base, before.postId, payload);
       after.wp_status = verified.status;
       after.title = verified.title.raw;
       after.content = verified.content.raw;
       after.status = verified.status === 'draft' ? 'draft' : 'published';
       after.url = verified.status === 'publish' ? verified.link : null;
-    } catch {
+    } catch (error) {
+      if (error instanceof Conflict) throw error;
       after.status = 'failed';
       after.reviewed = false;
       after.issues.push(issue('wordpress_readback', 'WordPress 未能确认这次操作。'));

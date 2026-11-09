@@ -4,6 +4,10 @@ import sharp from 'sharp';
 import { buildFigure, validFigureAlt } from '../packages/backend/src/studio/studio-figures.ts';
 import type { FigureSpec } from '../packages/backend/src/studio/studio-figures.ts';
 import { inspectFigure, openFigureBrowser } from '../packages/backend/src/studio/studio-figures-render.ts';
+import { prepareStudioFigures, previewStudioDraftMedia } from '../packages/backend/src/studio/studio-draft-media.ts';
+import { wpFigures } from '../packages/backend/src/studio/studio-publishing-wordpress.ts';
+import { unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 
 const fact = (id: string, quote: string) => ({ id, statement: quote, quote });
 const spec = (template: FigureSpec['template'], params: FigureSpec['params'], overrides: Partial<FigureSpec> = {}): FigureSpec => ({
@@ -139,4 +143,56 @@ test('one to four packaging columns and bounded receiving-card chains remain ill
   const invalid = await buildFigure(spec('signal-flow', { source: 'HDMI', grid: [8, 6], ports: 1, backup: true }), []);
   assert.equal(invalid.usable, false);
   assert.equal(invalid.png.length, 0);
+});
+
+test('reviewed media plumbing reuses its preview metadata and never rewrites a shared attachment', async t => {
+  // Inject the already-inspected renderer result. This verifies plumbing without launching a browser.
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675"><rect width="1200" height="675" fill="#0a6f75"/></svg>';
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
+  const chosen = spec('bar-compare', { unit: 'W', items: [{ label: 'A', value: 100 }, { label: 'B', value: 200 }] },
+    { alt_en: 'Chart comparing power measurements for two display modules under identical conditions', caption_en: 'Example source: A 100 W; B 200 W.', fact_ids: ['e1'] });
+  const packet = { articles: [{ title: 'Test fixture', body_text: 'A 100 W; B 200 W.' }] } as unknown as Parameters<typeof previewStudioDraftMedia>[0];
+  const draft = { body_en: '<p>Reviewed fixture only.</p>', figures: [chosen], evidence: [{ claim: 'Power fixture', quote: 'A 100 W; B 200 W.' }] } as Parameters<typeof previewStudioDraftMedia>[1];
+  const renderer: typeof buildFigure = async (_spec, facts) => {
+    assert.equal(facts[0].id, 'e1');
+    return { svg, png, alt_en: chosen.alt_en, caption_en: chosen.caption_en, hash: 'fixture-hash',
+      score: { total: 100, data: 30, render: 25, text: 25, file: 20 }, usable: true, notes: [] };
+  };
+  const preview = await previewStudioDraftMedia(packet, draft, renderer);
+  assert.match(preview.figures[0].src, /^data:image\/png;base64,/);
+  assert.equal(preview.figures[0].alt_en, chosen.alt_en);
+  assert.equal(preview.figures[0].caption_en, chosen.caption_en);
+  const prepared = await prepareStudioFigures({ kind: 'guide', packet, draft, specs: [chosen], content: draft.body_en }, renderer);
+  let uploads = 0;
+  const items: { id: number; slug: string; source_url: string; alt_text: string; caption: { raw: string } }[] = [];
+  const request = async (endpoint: string, query: Record<string, string>, payload?: object) => {
+    assert.equal(endpoint, 'media', 'no mutation of shared IDs or WordPress posts');
+    if (!payload) return items.filter(item => item.slug === query.slug);
+    assert.ok(payload instanceof FormData);
+    uploads++;
+    const item = { id: 5000 + uploads, slug: String(payload.get('slug')), source_url: 'https://wp.example.test/figures/' + uploads + '.png',
+      alt_text: String(payload.get('alt_text')), caption: { raw: String(payload.get('caption')) } };
+    items.push(item);
+    return item;
+  };
+  const input = { kind: 'guide' as const, specs: [chosen], packet, draft, title: 'Reviewed guide', content: draft.body_en,
+    slug: 'test-reviewed-media-' + randomUUID(), parent: 8000, publishedHashes: [], allowFallback: false, prepared };
+  const delivered = await wpFigures(request, input);
+  t.after(async () => { for (const receipt of delivered.figures) await unlink(receipt.svgPath); });
+  assert.equal(delivered.figures[0].alt_en, preview.figures[0].alt_en);
+  assert.equal(delivered.figures[0].caption_en, preview.figures[0].caption_en);
+  assert.match(delivered.content, /<figure class="cs-figure"><img[^>]+alt="Chart comparing/);
+  assert.match(delivered.content, /<figcaption>Example source: A 100 W; B 200 W\.<\/figcaption>/);
+  const repeated = await wpFigures(request, input);
+  assert.equal(repeated.featured, delivered.featured);
+  assert.equal(uploads, 1, 'repeated draft pushes reuse this article-owned image rather than duplicating it');
+
+  const brand = await prepareStudioFigures({ ...input, kind: 'brief', specs: [] }, renderer);
+  assert.equal(brand.figures[0].role, 'decorative');
+  assert.equal(brand.figures[0].alt_en, '', 'decorative brand art does not claim to depict each news story');
+  const noGuess = await prepareStudioFigures({ ...input, specs: [], content: 'MiP and COB', allowFallback: false }, async () => {
+    assert.fail('the approved draft did not request an informative image');
+  });
+  assert.equal(noGuess.figures.length, 0);
+  assert.equal(noGuess.issues[0].code, 'figure_missing');
 });

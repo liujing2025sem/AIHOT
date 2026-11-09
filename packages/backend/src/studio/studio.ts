@@ -3,7 +3,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { marked } from 'marked';
-import sanitizeHtml from 'sanitize-html';
 import { sql, type Db } from '../db.ts';
 import { audit, auditHistory, Conflict } from '../audit.ts';
 import { collectSource } from '../sources/collect.ts';
@@ -19,18 +18,22 @@ import { camosMethods } from './camos-methods.ts';
 import { documentIdentity } from './studio-review.ts';
 import { aggregateWritingProfile } from './studio-demand.ts';
 import { pitchMaterialHits } from './studio-pitch-evidence.ts';
-import { editorialDirection, editorialTopic, assertPublicEnglish } from '../../../../site/editorial.ts';
+import { editorialDirection, editorialTopic } from '../../../../site/editorial.ts';
 import { publicDraft } from './studio-publication.ts';
+import { applyReviewEdit, englishReviewHash, reviewEditSuggestions } from './studio-review-edits.ts';
+import { publicStudioTitle, studioUpgradeContext } from './studio-upgrade.ts';
+import { sanitizeReviewedHtml } from './studio-wordpress.ts';
+import { previewStudioDraftMedia } from './studio-draft-media.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialIssues, type EditorialConfirmation } from './editorial-issues.ts';
 import { packetSchema, responseSchema, validateResponse, writingHandoffFiles, responseFormat, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
 
 const invalid = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 const draftSchema = responseSchema.shape.drafts.element;
 function storedDraft(value: Record<string, unknown>) {
-  const {camos: _methods,editorial_gate: _gate,...draft}=value;
+  const {camos: _methods,editorial_gate: _gate,review_sync: _sync,...draft}=value;
   return draftSchema.parse(draft);
 }
-interface DraftRow { id: string; task_id: string; article_id: string; document: z.infer<typeof draftSchema> & { editorial_gate?: GateReport; camos?: unknown }; status: string; version: number; updated_by: string; updated_at: Date; reviewed_by: string | null; reviewed_at: Date | null }
+interface DraftRow { id: string; task_id: string; article_id: string; document: z.infer<typeof draftSchema> & { editorial_gate?: GateReport; camos?: unknown; review_sync?: { status: 'stale'; english_hash: string } }; status: string; version: number; updated_by: string; updated_at: Date; reviewed_by: string | null; reviewed_at: Date | null }
 
 export async function studioOverview(f: { q?: string; source?: string; quality?: string; page?: string } = {}) {
   f = { ...f, quality: f.quality ?? 'ready' };
@@ -66,7 +69,7 @@ export async function studioOverview(f: { q?: string; source?: string; quality?:
       (SELECT count(*)::int FROM articles a WHERE a.source_id=s.id) AS materials
       FROM sources s LEFT JOIN LATERAL (SELECT started_at,status,error FROM fetch_runs
         WHERE source_id=s.id ORDER BY started_at DESC,id DESC LIMIT 1) f ON true ORDER BY s.name`,
-    sql`SELECT id,state,created_at,received_at,request->'editorial_plan' AS editorial_plan,jsonb_array_length(request->'articles') AS materials,
+    sql`SELECT id,state,created_at,received_at,request->'brief' AS brief,request->'editorial_plan' AS editorial_plan,jsonb_array_length(request->'articles') AS materials,
       response->'decisions' AS decisions,response->'editorial_gate' AS editorial_gate,jsonb_array_length(coalesce(response->'drafts','[]'::jsonb)) AS drafts,
       (SELECT jsonb_agg(jsonb_build_object('id',a->'binding'->>'article_id','title',a->>'title'))
         FROM jsonb_array_elements(request->'articles') a) AS articles
@@ -115,11 +118,20 @@ async function checkPlannedEvidence(packet:Packet,db:Db=sql){
   const engineering=ids.length?await db`SELECT a.id FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id IN ${db(ids)} AND s.kind='external' AND s.first_party=true`:[];
   if(!engineering.length)invalid('教程缺少工程实机来源，保持HOLD；请先绑定人工上传的实机版本、截图、步骤和报错资料，模型不得补写。');
 }
-async function currentDraftGate(packet: Packet, draft: z.infer<typeof draftSchema>, id: string, db: Db = sql) {
+async function currentDraftGate(packet: Packet, draft: z.infer<typeof draftSchema>, id: string, db: Db = sql, chineseStale = false) {
   const history=await db`SELECT document->>'body_en' AS en,document->>'review_zh' AS zh FROM studio_drafts WHERE status='approved' AND id<>${id}`;
   const article=packet.articles.find(a=>a.binding.article_id===draft.source.article_id);
   const topic=editorialTopic(`${article?.title ?? ''}\n${article?.body_text ?? ''}`);
-  return evaluateDraft(packet,draft,{publishedTexts:history.flatMap(r=>[r.en,r.zh]).filter(Boolean),newTopic:!!topic&&!history.some(r=>editorialTopic(`${r.en}\n${r.zh}`)===topic)});
+  const gate=evaluateDraft(packet,draft,{reviewLanguage:chineseStale?'en':undefined,publishedTexts:history.flatMap(r=>[r.en,r.zh]).filter(Boolean),newTopic:!!topic&&!history.some(r=>editorialTopic(`${r.en}\n${r.zh}`)===topic)});
+  // Persist work in progress; enforce these content contracts at approval/delivery instead.
+  const findings=[...gate.findings];
+  if(!draft.brief&&!draft.body_en.includes(draft.source.url)&&!(packet.pitch?.fragments_plan&&packet.pitch.output_type==='update'))findings.push({ruleId:'D1',severity:'BLOCK',field:'body_en',start:0,end:Math.min(300,draft.body_en.length),quote:draft.body_en.slice(0,300),reason:'英文稿缺少绑定原文链接；可以继续保存，交付前须补回出处。'});
+  for(const field of ['title_en','body_en','meta_description_en'] as const){
+    const text=draft[field].replace(/https?:\/\/[^\s<>]+/g,url=>' '.repeat(url.length));
+    const hit=/[\u3400-\u9fff]+/u.exec(text);
+    if(hit)findings.push({ruleId:'D1',severity:'BLOCK',field,start:hit.index,end:hit.index+hit[0].length,quote:hit[0],reason:'对外英文稿含中文；可以继续保存，交付前须改成英文。'});
+  }
+  return {...gate,findings,blocked:findings.some(f=>f.severity==='BLOCK')};
 }
 function matchingConfirmations(issues: EditorialIssues, records: unknown): EditorialConfirmation[] {
   if (!Array.isArray(records)) return [];
@@ -198,14 +210,14 @@ export async function receiveStudioTask(id: string, input: unknown, actor: strin
     const published=await tx`SELECT document->>'body_en' AS en,document->>'review_zh' AS zh FROM studio_drafts WHERE status='approved'`;
     const context={publishedTexts:published.flatMap(a=>[a.en,a.zh]).filter(Boolean)};
     const gate=editorialGate(packet,response,context);
-    if(gate.blocked){
+    if(gate.blocked&&!packet.brief){
       await tx`UPDATE studio_tasks SET response=${tx.json({...response,editorial_gate:gate} as never)},response_hash=${hash},state='blocked',received_at=now() WHERE id=${id}`;
       await audit(actor,'studio.task.blocked',`studio-task:${id}`,'内容否决项命中，不建立稿件',null,gate,{db:tx});
       return {id,state:'blocked',drafts:0,gate};
     }
     for (const draft of response.drafts) {
-      await tx`INSERT INTO studio_drafts (id,task_id,article_id,document,updated_by)
-        VALUES (${randomUUID()},${id},${draft.source.article_id},${tx.json({...draft,editorial_gate:evaluateDraft(packet,draft,context),camos:packet.methods?{status:packet.methods.status,ruleIds:draft.camos_rule_ids??[],suppliedRuleIds:packet.methods.ruleIds,usageEvidence: 'DECLARED_BY_WRITER_NOT_SEMANTICALLY_VERIFIED',provenance:packet.methods.provenance}:null} as never)},${actor})`;
+      await tx`INSERT INTO studio_drafts (id,task_id,article_id,document,updated_by,status)
+        VALUES (${randomUUID()},${id},${draft.source.article_id},${tx.json({...draft,editorial_gate:evaluateDraft(packet,draft,context),camos:packet.methods?{status:packet.methods.status,ruleIds:draft.camos_rule_ids??[],suppliedRuleIds:packet.methods.ruleIds,usageEvidence: 'DECLARED_BY_WRITER_NOT_SEMANTICALLY_VERIFIED',provenance:packet.methods.provenance}:null} as never)},${actor},${packet.brief?'in_review':'draft'})`;
     }
     await tx`UPDATE studio_tasks SET response=${tx.json({...response,editorial_gate:gate} as never)},response_hash=${hash},state='received',received_at=now() WHERE id=${id}`;
     await audit(actor, 'studio.task.receive', `studio-task:${id}`, null, null, { run_id: response.run_id, drafts: response.drafts.length }, { db: tx });
@@ -217,6 +229,7 @@ export async function generateStudioTask(id: string, actor: string) {
   if (!task) return null;
   if (task.state === 'received' || task.state === 'blocked') return { id, state: task.state, reused: true, gate: task.response?.editorial_gate };
   const packet = packetSchema.parse(task.request);
+  if(packet.brief)invalid('短讯合集使用专用合成任务，请回到今日选稿查看进度；不会再逐条生成散稿。');
   if(packet.pitch?.fragments_plan)invalid('此命题按片段成稿，请回到命题采编页查看或启动片段；不会再调用整页模型。');
   if(!packet.articles.length)invalid('该选题尚未绑定完整原文，请先补证据；画像不是事实来源。');
   if (packet.articles.length > (packet.pitch?9:4)) invalid('单次成稿素材超过上限，请减少选择。');
@@ -235,7 +248,7 @@ export async function generateStudioTask(id: string, actor: string) {
   return { ...received, receiptId: result.receiptId };
 }
 async function draftReviewState(row: DraftRow, packet: Packet, db: Db = sql) {
-  const gate=await currentDraftGate(packet,storedDraft(row.document),row.id,db);
+  const gate=await currentDraftGate(packet,storedDraft(row.document),row.id,db,row.document.review_sync?.status==='stale');
   const issues=buildEditorialIssues(packet,storedDraft(row.document),gate);
   return { gate, issues, confirmed_issues:await priorConfirmations(row.id,issues,db) };
 }
@@ -244,7 +257,17 @@ export async function studioDraft(id: string) {
   if (!row) return null;
   const task=await studioTask(row.task_id);
   const packet=packetSchema.parse(task.request);
-  return { ...row, ...await draftReviewState(row,packet), source_snapshot:packet.articles.find(a=>a.binding.article_id===row.article_id)!, material: await studioMaterial(row.article_id), history: await auditHistory(`studio-draft:${id}`) };
+  const state=await draftReviewState(row,packet);
+  return { ...row, ...state, suggestions:reviewEditSuggestions(packet,storedDraft(row.document),state.issues),
+    review_sync:row.document.review_sync??null, upgrade_context:studioUpgradeContext(packet),
+    engineer_review:packet.pitch?.engineer??null,
+    source_snapshots:packet.articles, source_snapshot:packet.articles.find(a=>a.binding.article_id===row.article_id)!, material: await studioMaterial(row.article_id), history: await auditHistory(`studio-draft:${id}`) };
+}
+export async function studioDraftFigures(id:string){
+  const [row]=await sql<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id}`;
+  if(!row)return null;
+  const task=await studioTask(row.task_id);
+  return previewStudioDraftMedia(packetSchema.parse(task.request),storedDraft(row.document));
 }
 const editSchema = z.object({ version: z.number().int().positive(), title_zh: z.string().trim().min(1).max(300), title_en: z.string().trim().min(1).max(300),
   news_status: draftSchema.shape.news_status,
@@ -258,19 +281,42 @@ export async function saveStudioDraft(id: string, input: unknown, actor: string)
     if (row.version !== b.version) throw new Conflict('这篇稿件已被修改，请刷新查看最新版本后再保存。');
     const { version: _, ...fields } = b;
     const draft = storedDraft({ ...row.document, ...fields });
-    assertPublicEnglish(draft);
     const [task]=await tx`SELECT request FROM studio_tasks WHERE id=${row.task_id}`;
-    const gate=await currentDraftGate(packetSchema.parse(task.request),draft,id,tx);
-    if(gate.blocked)invalid('否决项须修改后再保存：'+gate.findings.filter(f=>f.severity==='BLOCK').map(f=>f.ruleId+' '+f.field+' '+f.quote).join('；'));
-    const document = {...draft,editorial_gate:gate,camos:row.document.camos};
-    if (!document.body_en.includes(document.source.url)) invalid('英文稿须保留原文链接。');
+    const changed=englishReviewHash(draft)!==englishReviewHash(row.document)||draft.title_zh!==row.document.title_zh||draft.review_zh!==row.document.review_zh;
+    const gate=await currentDraftGate(packetSchema.parse(task.request),draft,id,tx,changed||!!row.document.review_sync);
+    const document = {...draft,editorial_gate:gate,camos:row.document.camos,
+      ...(changed||row.document.review_sync?{review_sync:{status:'stale' as const,english_hash:englishReviewHash(draft)}}:{})};
     await tx`UPDATE studio_drafts SET document=${tx.json(document as never)},status='draft',version=version+1,updated_by=${actor},updated_at=now(),reviewed_by=NULL,reviewed_at=NULL WHERE id=${id}`;
     await audit(actor, 'studio.draft.save', `studio-draft:${id}`, null, row.document, document, { db: tx });
     return { id, version: row.version + 1, status: 'draft' };
   });
 }
+export async function applyStudioReviewEdit(id:string,input:unknown,actor:string){
+  const b=z.object({version:z.number().int().positive(),issueId:z.string(),fingerprint:z.string(),suggestionId:z.string()}).strict().parse(input);
+  return sql.begin(async tx=>{
+    const [row]=await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR UPDATE`;
+    if(!row)return null;
+    if(row.version!==b.version)throw new Conflict('稿件版本已更新，请刷新后再采纳修改。');
+    const [task]=await tx`SELECT request FROM studio_tasks WHERE id=${row.task_id} FOR UPDATE`;
+    const packet=packetSchema.parse(task.request),current=storedDraft(row.document);
+    const gate=await currentDraftGate(packet,current,id,tx,row.document.review_sync?.status==='stale');
+    const issues=buildEditorialIssues(packet,current,gate);
+    let changed:ReturnType<typeof applyReviewEdit>;
+    try{changed=applyReviewEdit(packet,current,issues,b);}catch(error){throw new Conflict(error instanceof Error?error.message:'建议已失效。');}
+    const nextGate=await currentDraftGate(changed.packet,changed.draft,id,tx,true);
+    const document={...changed.draft,camos:row.document.camos,editorial_gate:nextGate,
+      review_sync:{status:'stale' as const,english_hash:englishReviewHash(changed.draft)}};
+    if(changed.packet!==packet)await tx`UPDATE studio_tasks SET request=${tx.json(changed.packet as never)} WHERE id=${row.task_id}`;
+    await tx`UPDATE studio_drafts SET document=${tx.json(document as never)},status='draft',version=version+1,
+      updated_by=${actor},updated_at=now(),reviewed_by=NULL,reviewed_at=NULL WHERE id=${id}`;
+    await audit(actor,'studio.draft.apply-edit',`studio-draft:${id}`,'采纳已展示的英文修改；其余问题仍需审核',
+      {document:row.document,...(changed.packet!==packet?{request:packet}:{})},
+      {document,edit:changed.edit,version:row.version+1,remaining_blocks:nextGate.findings.filter(f=>f.severity==='BLOCK').length},{db:tx});
+    return {id,version:row.version+1,status:'draft',gate:nextGate};
+  });
+}
 export async function reviewStudioDraft(id: string, input: unknown, actor: string) {
-  const b = z.object({ version: z.number().int().positive(), action: z.enum(['submit','approve','return','confirm']), note: z.string().max(3000).default(''), confirmations:z.array(z.object({issueId:z.string(),fingerprint:z.string()}).strict()).default([]) }).strict().parse(input);
+  const b = z.object({ version: z.number().int().positive(), action: z.enum(['submit','approve','return','confirm']), note: z.string().max(3000).default(''), english_reviewed:z.boolean().optional(), confirmations:z.array(z.object({issueId:z.string(),fingerprint:z.string()}).strict()).default([]) }).strict().parse(input);
   return sql.begin(async tx => {
     const [row] = await tx`SELECT * FROM studio_drafts WHERE id=${id} FOR UPDATE`;
     if (!row) return null;
@@ -281,36 +327,47 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
     let confirmations: EditorialConfirmation[] = [];
     let fullyConfirmed = false;
     let sourceDate: { publicationTime: string | null; utcOffset: string } | undefined;
+    let briefDates: Awaited<ReturnType<typeof checkBriefDates>>|undefined;
     if (b.action !== 'return') {
       const [task] = await tx`SELECT request FROM studio_tasks WHERE id=${row.task_id}`;
       const packet = packetSchema.parse(task.request);
       const article = packet.articles.find(a => a.binding.article_id === row.article_id)!;
-      await checkSources({ ...packet, articles: [article] }, tx);
+      await checkSources(packet.brief||packet.pitch?packet:{ ...packet, articles: [article] }, tx);
       const doc = storedDraft(row.document);
-      assertPublicEnglish(doc);
-      const gate=await currentDraftGate(packet,doc,id,tx);
-      if(gate.blocked)invalid('存在否决项，必须修改内容后重新审核：'+gate.findings.filter(f=>f.severity==='BLOCK').map(f=>f.ruleId+' '+f.quote).join('；'));
+      const gate=await currentDraftGate(packet,doc,id,tx,row.document.review_sync?.status==='stale');
+      if(b.action==='approve'&&gate.blocked)invalid('存在否决项，必须修改内容后重新审核：'+gate.findings.filter(f=>f.severity==='BLOCK').map(f=>f.ruleId+' '+f.quote).join('；'));
       const issues=buildEditorialIssues(packet,doc,gate);
       const checked=validateEditorialConfirmations(issues,{confirmations:b.confirmations},b.action==='confirm'?[]:await priorConfirmations(id,issues,tx));
       if (checked.errors.length) invalid('逐项确认已失效或对象不符，请刷新后核对。');
       if (b.action==='approve'&&!checked.canApprove) invalid(`请逐项确认风险提示及逐字检查后再审核通过；尚缺${checked.missingIssueIds.length}项。`);
       if (b.action==='approve') {
+        if(row.document.review_sync?.status==='stale'&&!b.english_reviewed)invalid('中文对照已标为旧版，请按当前英文主稿核对并确认；不会把中文修改自动视为英文已批准。');
         const material=await studioMaterial(row.article_id,tx,true);
         if (!material) throw new Conflict('原文已不存在，请重新建立采编任务。');
         sourceDate={publicationTime:material.publication_time,utcOffset:material.source_utc_offset};
+        if(packet.brief)briefDates=await checkBriefDates(packet,tx);
         try { publicDraft(doc,packet.writing?.site,sourceDate); }
         catch(error) { invalid('来源日期无法确认，请先修复素材再审稿：'+(error instanceof Error?error.message:String(error))); }
       }
       confirmations=checked.confirmed;
       fullyConfirmed=checked.canApprove;
-      for (const e of doc.evidence) if (!article.body_text?.includes(e.quote) && !article.title.includes(e.quote)) invalid('证据引用不在原文中，请重新核对。');
+      for (const e of doc.evidence) if (!(packet.brief||packet.pitch?packet.articles:[article]).some(a=>a.body_text?.includes(e.quote)||a.title.includes(e.quote))) invalid('证据引用不在原文中，请重新核对。');
     }
     const status = b.action === 'confirm' ? row.status==='approved'&&!fullyConfirmed?'in_review':row.status : b.action === 'submit' ? 'in_review' : b.action === 'approve' ? 'approved' : 'draft';
     await tx`UPDATE studio_drafts SET status=${status},version=version+1,updated_by=${actor},updated_at=now(),
       reviewed_by=${b.action === 'approve' ? actor : b.action === 'confirm'&&status==='approved' ? row.reviewed_by : null},reviewed_at=${b.action === 'approve' ? new Date() : b.action === 'confirm'&&status==='approved' ? row.reviewed_at : null} WHERE id=${id}`;
-    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: row.version + 1, document_hash:documentIdentity(row.document),confirmations,...(sourceDate?{source_date:sourceDate}:{}) }, { db: tx });
+    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: row.version + 1, document_hash:documentIdentity(row.document),confirmations,...(b.english_reviewed?{english_reviewed_hash:englishReviewHash(row.document)}:{}),...(sourceDate?{source_date:sourceDate}:{}),...(briefDates?{brief_source_dates:briefDates}:{}) }, { db: tx });
     return { id, status, version: row.version + 1 };
   });
+}
+async function checkBriefDates(packet:Packet,db:Db){
+  const result:{articleId:string;publicationTime:string|null;utcOffset:string}[]=[];
+  for(const selected of packet.brief?.events??[]){
+    const material=await studioMaterial(selected.article_id,db,true);
+    if(!material||material.publication_time!==selected.publication_time||material.source_utc_offset!==selected.source_utc_offset)throw new Conflict('短讯来源日期精度或时区已变更，请重新核对本期材料。');
+    result.push({articleId:selected.article_id,publicationTime:material.publication_time,utcOffset:material.source_utc_offset});
+  }
+  return result;
 }
 async function approvedDraft(row: DraftRow, tx: Db) {
     const id = row.id;
@@ -319,7 +376,7 @@ async function approvedDraft(row: DraftRow, tx: Db) {
     const packet=packetSchema.parse(task.request);
     const source=packet.articles.find(a=>a.binding.article_id===row.article_id);
     if (!source) throw new Conflict('稿件无法匹配已审核的原文，请重新建立采编任务。');
-    await checkSources({...packet,articles:[source]},tx);
+    await checkSources(packet.brief||packet.pitch?packet:{...packet,articles:[source]},tx);
     const material=await studioMaterial(row.article_id,tx,true);
     if (!material) throw new Conflict('原文已不存在，请重新建立采编任务。');
     const review=await draftReviewState(row,packet,tx);
@@ -329,17 +386,20 @@ async function approvedDraft(row: DraftRow, tx: Db) {
     if(!approved||approved.after?.document_hash!==documentIdentity(row.document)||!Number.isInteger(approved.after?.version)||approved.after.version<1||approved.after.version>row.version||!validateEditorialConfirmations(review.issues,{confirmations:review.confirmed_issues}).canApprove)invalid('当前规则需要补充逐项人工风险确认，请重新审稿。');
     const sourceDate=approved.after.source_date;
     if(!sourceDate||sourceDate.publicationTime!==material.publication_time||sourceDate.utcOffset!==material.source_utc_offset)throw new Conflict('来源日期精度或时区与批准记录不一致，请重新审稿。');
-    return { d, site: packet.writing?.site, sourceDate, gate: review.gate };
+    if(packet.brief&&JSON.stringify(approved.after.brief_source_dates)!==JSON.stringify(await checkBriefDates(packet,tx)))throw new Conflict('短讯各来源日期与批准记录不一致，请重新审稿。');
+    if(row.document.review_sync?.status==='stale'&&approved.after.english_reviewed_hash!==englishReviewHash(row.document))invalid('当前英文改稿尚未被人工核对，请重新审稿。');
+    return { d, packet, site: packet.writing?.site, sourceDate, gate: review.gate };
 }
 function approvedPublication({ d, site, sourceDate }: Awaited<ReturnType<typeof approvedDraft>>) {
-    try { return publicDraft(d,site,sourceDate); }
+    try { const publication=publicDraft(d,site,sourceDate);return {...publication,title:publicStudioTitle(publication.title)}; }
     catch(error) { throw new Conflict('来源日期无法确认，请重新审稿：'+(error instanceof Error?error.message:String(error))); }
 }
 export async function lockStudioPublication(id: string, version: number, tx: Db) {
   const [row] = await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR UPDATE`;
   if (!row) return null;
   if (row.version !== version) throw new Conflict('稿件版本已更新，请刷新并核对后再推送。');
-  return approvedPublication(await approvedDraft(row,tx));
+  const approved=await approvedDraft(row,tx);
+  return {...approvedPublication(approved),packet:approved.packet,draft:approved.d};
 }
 export async function exportStudioDraft(id: string, format: string) {
   return sql.begin(async tx => {
@@ -350,7 +410,7 @@ export async function exportStudioDraft(id: string, format: string) {
     const publication = approvedPublication(approved);
     const markdown = `# ${publication.title}\n\n${publication.body}\n\nMeta description: ${publication.meta_description}\n`;
     if (format === 'json') return { type: 'application/json', extension: 'json', body: JSON.stringify({ id, version: row.version, publication }, null, 2) };
-    if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };
+    if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeReviewedHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };
     return { type: 'text/markdown; charset=utf-8', extension: 'md', body: markdown };
   });
 }

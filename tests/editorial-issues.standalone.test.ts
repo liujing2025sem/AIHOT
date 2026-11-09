@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import type { Packet } from '../scripts/editorial-pilot-lib.ts';
 import { evaluateDraft, type Finding, type GateReport } from '../packages/backend/src/studio/editorial-gate.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialDraft, type EditorialIssues } from '../packages/backend/src/studio/editorial-issues.ts';
+import {applyReviewEdit,englishReviewHash,reviewEditSuggestions} from '../packages/backend/src/studio/studio-review-edits.ts';
+import {assembleFragments} from '../packages/backend/src/studio/studio-pitch-fragments.ts';
 
 function fixture(body = 'Maker reports 5000 nits.\n\nMaker reports 6000 nits.') {
   const binding = { article_id: 'source-1', revision: 1, content_sha256: 'a'.repeat(64), url: 'https://maker.example/news', published_at: '2026-10-31T00:00:00Z' };
@@ -21,6 +23,76 @@ function fixture(body = 'Maker reports 5000 nits.\n\nMaker reports 6000 nits.') 
 const report = (findings: Finding[], mandatoryReview: string[] = []): GateReport => ({ version: 'editorial-gate/1', blocked: findings.some(f => f.severity === 'BLOCK'), findings, mandatoryReview });
 const receipts = (issues: EditorialIssues) => issues.items.filter(i => i.confirmable).map(i => ({ issueId: i.id, fingerprint: i.fingerprint }));
 const approve = (issues: EditorialIssues) => validateEditorialConfirmations(issues, { confirmations: receipts(issues) });
+
+test('a proposed English edit targets one sentence, keeps other BLOCKs and rejects stale fingerprints',()=>{
+  const f=fixture('Our screen reaches 9000 nits.\n\nOur product is the best.\n\nThe installation guide explains the cabinet layout and service access.\n\nSource: https://maker.example/news');
+  const gate=evaluateDraft(f.packet,f.draft,{publishedTexts:[]}),issues=buildEditorialIssues(f.packet,f.draft,gate);
+  const suggestion=reviewEditSuggestions(f.packet,f.draft,issues).find(s=>issues.items.find(i=>i.id===s.issueId)?.ruleId==='D1')!;
+  assert.ok(suggestion);
+  assert.match(suggestion.before,/9000 nits/);
+  const edited=applyReviewEdit(f.packet,f.draft,issues,{issueId:suggestion.issueId,fingerprint:suggestion.fingerprint,suggestionId:suggestion.id});
+  assert.doesNotMatch(edited.draft.body_en,/9000 nits/);
+  assert.match(edited.draft.body_en,/Our product is the best/);
+  assert.equal(edited.draft.review_zh,f.draft.review_zh,'no invented Chinese translation');
+  assert.notEqual(englishReviewHash(edited.draft),englishReviewHash(f.draft));
+  assert.ok(evaluateDraft(f.packet,edited.draft,{publishedTexts:[]}).findings.some(i=>i.ruleId==='D2'&&i.severity==='BLOCK'));
+  assert.throws(()=>applyReviewEdit(f.packet,f.draft,issues,{issueId:suggestion.issueId,fingerprint:'stale',suggestionId:suggestion.id}),/版本不一致/);
+  const nextIssues=buildEditorialIssues(f.packet,edited.draft,evaluateDraft(f.packet,edited.draft,{publishedTexts:[]}));
+  assert.throws(()=>applyReviewEdit(f.packet,edited.draft,nextIssues,{issueId:suggestion.issueId,fingerprint:suggestion.fingerprint,suggestionId:suggestion.id}),/版本不一致/);
+});
+
+test('review suggestions preserve HTML structure, evidence links and noneditable table cells',()=>{
+  const f=fixture('<p>Our screen reaches 9000 nits.</p><p>The guide explains cabinet layout and maintenance clearance for buyers.</p><p>Source: <a href="https://maker.example/news">original</a></p>');
+  const issues=buildEditorialIssues(f.packet,f.draft,evaluateDraft(f.packet,f.draft));
+  const s=reviewEditSuggestions(f.packet,f.draft,issues)[0]!;
+  assert.ok(s);
+  const changed=applyReviewEdit(f.packet,f.draft,issues,{issueId:s.issueId,fingerprint:s.fingerprint,suggestionId:s.id}).draft;
+  assert.match(changed.body_en,/<p><\/p><p>The guide/);
+  assert.match(changed.body_en,/<a href="https:\/\/maker.example\/news">original<\/a>/);
+  f.draft.body_en='<table><tr><td>Our screen reaches 9000 nits.</td></tr></table><p>Source: https://maker.example/news</p>';
+  assert.equal(reviewEditSuggestions(f.packet,f.draft,buildEditorialIssues(f.packet,f.draft,evaluateDraft(f.packet,f.draft))).length,0);
+  for(const tag of ['strong','span','em']){
+    f.draft.body_en=`<p>Our screen reaches <${tag}>9000 nits</${tag}> at maximum.</p><p>The installation guide explains cabinet layout and service access for buyers.</p><p>Source: https://maker.example/news</p>`;
+    assert.equal(reviewEditSuggestions(f.packet,f.draft,buildEditorialIssues(f.packet,f.draft,evaluateDraft(f.packet,f.draft))).length,0,'do not remove a number from inside an inline span and leave a broken sentence');
+  }
+});
+
+for(const original of [
+  '<div class="wp-block-group"><p>Original paragraph.</p></div>\n',
+  '\n  <section data-layout="guide">\n<p>Original paragraph.</p>\n</section>\n\n',
+  '\n\t<p>Original paragraph.</p>  \n',
+])test(`an accepted fragment edit preserves wrappers and edge whitespace: ${JSON.stringify(original.slice(0,35))}`,()=>{
+  const before='<h2 id="existing-anchor">Existing&nbsp;heading</h2>\n';
+  const after='<p>Source: <a href="https://maker.example/news">Original source</a></p>\n';
+  const paragraphs=[{id:'p1',html:before,text:'Existing heading'},{id:'p2',html:original,text:'Original paragraph.'},{id:'p3',html:after,text:'Original source'}];
+  const edit_plan=[{op:'keep' as const,paragraph:'p1',facts:[]},{op:'revise' as const,paragraph:'p2',facts:[]},{op:'keep' as const,paragraph:'p3',facts:[]}];
+  const raw='<p>Our screen reaches 9000 nits. The remaining technical explanation is long enough for a human to review.</p>';
+  const fragments=[{op_index:1,html_en:raw,zh_review:'旧中文审校稿',used_facts:[]}];
+  const body=assembleFragments(paragraphs,edit_plan,fragments).html_en;
+  const f=fixture(body),packet={...f.packet,pitch:{fragments_plan:{paragraphs,edit_plan,fragments}}} as unknown as Packet;
+  const issues=buildEditorialIssues(packet,f.draft,report([f.hit('D1','9000 nits','body_en','BLOCK')]));
+  const suggestion=reviewEditSuggestions(packet,f.draft,issues)[0];assert.ok(suggestion);
+  const edited=applyReviewEdit(packet,f.draft,issues,{issueId:suggestion.issueId,fingerprint:suggestion.fingerprint,suggestionId:suggestion.id});
+  const plan=edited.packet.pitch!.fragments_plan!;
+  assert.equal(plan.fragments![0].html_en,raw.replace('Our screen reaches 9000 nits. ',''),'only raw fragment copy changes');
+  assert.equal(assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en,edited.draft.body_en,'reassembly exactly equals the saved English');
+  assert.ok(edited.draft.body_en.startsWith(before));assert.ok(edited.draft.body_en.endsWith(after));
+  assert.deepEqual(plan.paragraphs,paragraphs,'all original paragraphs remain byte-for-byte in the source plan');
+  assert.equal(f.draft.body_en,body,'the original input was not mutated');
+});
+
+test('a kept paragraph and a deletion that empties a plain fragment do not offer unsafe auto edits',()=>{
+  const source='\n\nThe existing installation guide has detailed service and cable access information.\nSource: https://maker.example/news';
+  for(const op of ['keep','revise'] as const){
+    const paragraphs=[{id:'p1',html:'Our screen reaches 9000 nits. ',text:'Our screen reaches 9000 nits.'},{id:'p2',html:source,text:source}];
+    const edit_plan=[{op,paragraph:'p1',facts:[]},{op:'keep' as const,paragraph:'p2',facts:[]}];
+    const fragments=op==='revise'?[{op_index:0,html_en:paragraphs[0].html,zh_review:'旧中文',used_facts:[]}]:[];
+    const f=fixture(assembleFragments(paragraphs,edit_plan,fragments).html_en);
+    const packet={...f.packet,pitch:{fragments_plan:{paragraphs,edit_plan,fragments}}} as unknown as Packet;
+    const issues=buildEditorialIssues(packet,f.draft,report([f.hit('D1','9000 nits','body_en','BLOCK')]));
+    assert.deepEqual(reviewEditSuggestions(packet,f.draft,issues),[]);
+  }
+});
 
 test('numbers, units, terms and names keep different objects; unknown rules do not guess identity', () => {
   const f = fixture('Maker reports 5000 nits and 6000 nits. MiP and COB. 5 mW and 5 MW. 星光大学与星河大学。 mystery mystery');

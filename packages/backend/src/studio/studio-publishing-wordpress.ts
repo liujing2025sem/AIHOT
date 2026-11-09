@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import sharp from 'sharp';
 import { z } from 'zod';
 import type { Packet } from '../../../../scripts/editorial-pilot-lib.ts';
 import { WordPressError, wordpressClient } from './studio-wordpress.ts';
 import { config } from '../config.ts';
-import { buildFigure, type FigureSpec } from './studio-figures.ts';
+import type { FigureSpec } from './studio-figures.ts';
 import { sameWordPressHtml, type EditorialDraft, type PublicationIssue } from './studio-publishing-content.ts';
+import { prepareStudioFigures, type DraftFigure } from './studio-draft-media.ts';
+import { samePage } from './studio-upgrade.ts';
 
 type Request = ReturnType<typeof wordpressClient>;
 export const postId = z.number().int().positive();
@@ -49,10 +50,7 @@ async function wpLookup(request: Request, slug: string, schema: typeof identity,
   return matching[0];
 }
 export function equivalentPage(first: string, second: string) {
-  const a = new URL(first), b = new URL(second);
-  if ([a, b].some(u => u.protocol !== 'https:' || u.username || u.password || u.hash)) return false;
-  if (a.hostname.replace(/^www\./, '') !== b.hostname.replace(/^www\./, '') || a.port !== b.port) return false;
-  return a.pathname.replace(/\/+$/, '') === b.pathname.replace(/\/+$/, '') && a.search === b.search;
+  return samePage(first, second);
 }
 export async function wpUpdateTarget(request: Request, base: URL, target: string) {
   const url = new URL(target);
@@ -96,8 +94,10 @@ type Write = {
   status?: Visibility; title?: string; content?: string; excerpt?: string;
   categories?: number[]; tags?: number[]; featured_media?: number; meta?: Record<string, string>;
 };
-export async function wpWrite(request: Request, id: number, payload: Write) {
-  await wpRetry(() => request('posts/' + id, { _fields: 'id' }, payload));
+export async function wpWrite(request: Request, id: number, payload: Write, retry = true) {
+  const write = () => request('posts/' + id, { _fields: 'id' }, payload);
+  if (retry) await wpRetry(write);
+  else await write(); // Never blindly repeat an in-place update of an already published page.
 }
 export async function wpVerify(request: Request, base: URL, id: number, payload: Write & { status: Visibility }) {
   const actual = await wpRead(request, id);
@@ -143,18 +143,18 @@ export const figureSpecSchema = z.object({
   fact_ids: z.array(z.string()).max(30).optional(),
 });
 const media = z.object({ id: postId, slug: z.string(), source_url: z.url(), alt_text: z.string(), caption: raw });
-type FigureScore = Awaited<ReturnType<typeof buildFigure>>['score'];
 export type PublishedFigure = {
-  mediaId: number; hash: string; svgPath: string; score: FigureScore | null; alt_en: string; caption_en: string;
+  mediaId: number; hash: string; svgPath: string; score: DraftFigure['score']; alt_en: string; caption_en: string;
 };
 const mediaQuery = { context: 'edit', _fields: 'id,slug,source_url,alt_text,caption' };
 const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
-const briefSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675"><defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="2.5" fill="#2ce2e8" opacity=".45"/></pattern></defs><rect width="1200" height="675" fill="#13191c"/><path d="M340 0h860v675H160Z" fill="#0a6f75"/><path d="M640 0h560v675H350Z" fill="url(#dots)"/><path d="M850 0h35L590 675h-35Z" fill="#2ce2e8"/><path d="M975 0h18L698 675h-18Z" fill="#2ce2e8" opacity=".65"/></svg>';
-function fallbackFigure(html: string): FigureSpec[] {
-  const columns = ['MiP', 'SMD', 'COB', 'GOB'].filter(name => new RegExp('\\b' + name + '\\b', 'i').test(html));
-  return columns.includes('MiP') ? [{ template: 'layer-stack', params: { columns }, alt_en: '', caption_en: '' }] : [];
-}
 async function wpMedia(request: Request, args: { slug: string; png: Buffer; alt: string; caption: string; parent: number }) {
+  const lookup = async () => {
+    const matches = checked(z.array(media), await wpRetry(() => request('media', { ...mediaQuery, slug: args.slug })))
+      .filter(item => item.slug === args.slug);
+    if (matches.length > 1) throw new WordPressError();
+    return matches[0];
+  };
   const upload = async () => {
     const form = new FormData();
     form.set('file', new Blob([new Uint8Array(args.png)], { type: 'image/png' }), args.slug + '.png');
@@ -165,11 +165,10 @@ async function wpMedia(request: Request, args: { slug: string; png: Buffer; alt:
     return checked(media, await request('media', mediaQuery, form));
   };
   let item: z.infer<typeof media>;
-  try { item = await upload(); }
+  try { item = await lookup() ?? await upload(); }
   catch (error) {
     if (!retryable(error)) throw error;
-    const recovered = checked(z.array(media), await wpRetry(() => request('media', { ...mediaQuery, slug: args.slug })));
-    item = recovered.find(m => m.slug === args.slug) ?? await upload();
+    item = await lookup() ?? await upload();
   }
   if (item.alt_text !== args.alt || !sameWordPressHtml(item.caption.raw, args.caption)) {
     const id = item.id;
@@ -185,19 +184,14 @@ async function wpMedia(request: Request, args: { slug: string; png: Buffer; alt:
 
 export async function wpFigures(request: Request, input: {
   kind: 'brief' | 'article' | 'guide' | 'update'; specs: FigureSpec[]; packet: Packet; draft: EditorialDraft;
-  title: string; content: string; slug: string; parent: number; publishedHashes: string[];
+  title: string; content: string; slug: string; parent: number; publishedHashes: string[]; allowFallback?: boolean;
+  prepared?: Awaited<ReturnType<typeof prepareStudioFigures>>;
 }) {
-  const issues: PublicationIssue[] = [];
+  const prepared = input.prepared ?? await prepareStudioFigures({ ...input, allowFallback: input.allowFallback ?? true });
+  const issues: PublicationIssue[] = [...prepared.issues];
   const figures: string[] = [];
   const receipts: PublishedFigure[] = [];
   let featured: number | undefined;
-  const usedHashes = [...input.publishedHashes];
-  const plan = input.packet.pitch?.fragments_plan;
-  const evidence = input.draft.evidence.flatMap((e, i) =>
-    input.packet.articles.some(a => a.body_text?.includes(e.quote) || a.title.includes(e.quote))
-      ? [{ id: 'e' + (i + 1), statement: e.quote, quote: e.quote }] : []);
-  const facts = [...(plan?.facts ?? []), ...evidence];
-  const specs = (input.specs.length ? input.specs : fallbackFigure(input.content)).slice(0, input.kind === 'article' ? 1 : 3);
   async function attach(svg: string, png: Buffer, alt: string, caption: string, index: number) {
     const hash = createHash('sha256').update(svg).digest('hex').slice(0, 12);
     const name = input.slug + '-figure-' + (index + 1) + '-' + hash;
@@ -208,31 +202,19 @@ export async function wpFigures(request: Request, input: {
     const item = await wpMedia(request, { slug: name, png, alt, caption, parent: input.parent });
     return { item, svgPath };
   }
-  if (input.kind === 'brief') {
+  for (const [index, figure] of prepared.figures.entries()) {
     try {
-      const png = await sharp(Buffer.from(briefSvg)).png().toBuffer();
-      const alt = ('LED Display Brief: ' + input.title).slice(0, 240);
-      const { item, svgPath } = await attach(briefSvg, png, alt, '', 0);
-      featured = item.id;
-      receipts.push({ mediaId: item.id, svgPath, score: null, hash: createHash('sha256').update(png).digest('hex'), alt_en: alt, caption_en: '' });
-    } catch { issues.push({ code: 'figure_missing', message: '本期特色图未能上传。' }); }
-  } else {
-    let missed = !specs.length;
-    for (const [index, spec] of specs.entries()) {
-      try {
-        const figure = await buildFigure(spec, facts, usedHashes);
-        if (!figure.usable || figure.score.total < 60) { missed = true; continue; }
-        const { item, svgPath } = await attach(figure.svg, figure.png, figure.alt_en, figure.caption_en, index);
-        usedHashes.push(figure.hash);
-        featured ??= item.id;
-        receipts.push({ mediaId: item.id, svgPath, score: figure.score, hash: figure.hash, alt_en: figure.alt_en, caption_en: figure.caption_en });
+      const { item, svgPath } = await attach(figure.svg, figure.png, figure.alt_en, figure.caption_en, index);
+      featured ??= item.id;
+      receipts.push({ mediaId: item.id, svgPath, score: figure.score, hash: figure.hash, alt_en: figure.alt_en, caption_en: figure.caption_en });
+      if (figure.role === 'informative') {
         figures.push('<figure class="cs-figure"><img src="' + escape(item.source_url) +
           '" width="1200" height="675" alt="' + escape(figure.alt_en) + '" loading="lazy"><figcaption>' +
           escape(figure.caption_en) + '</figcaption></figure>');
-      } catch { missed = true; }
-    }
-    if (missed) issues.push({ code: 'figure_missing', message: '至少一张正文图缺失、未过质检或未能上传。' });
+      }
+    } catch { issues.push({ code: 'figure_missing', message: '配图未能上传，文字已保留。' }); }
   }
   const body = [input.content, ...figures].filter(Boolean).join('\n');
-  return { content: input.kind === 'brief' ? '<div class="cs-brief">' + body + '</div>' : body, featured, issues, figures: receipts };
+  return { content: input.kind === 'brief' && !/<(?:section|div)\b[^>]*class=["'][^"']*\bcs-brief\b/i.test(body)
+    ? '<section class="cs-brief">' + body + '</section>' : body, featured, issues, figures: receipts };
 }

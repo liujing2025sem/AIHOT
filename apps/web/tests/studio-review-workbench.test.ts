@@ -132,3 +132,42 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   } finally { await browser?.close(); await web.stop(); }
 });
+
+test('a BLOCK draft can save progress and adopt an exact English suggestion without any publishing call',async()=>{
+  const fixture=reviewFixture();
+  const issue=fixture.draft.issues.items[0];
+  issue.severity='BLOCK';issue.confirmable=false;fixture.draft.gate.blocked=true;
+  Object.assign(fixture.draft,{suggestions:[{id:'current-edit',issueId:issue.id,fingerprint:issue.fingerprint,field:'body_en',before:fixture.draft.document.body_en,after:'',label:'采纳修改：删去这句待核实表述',explanation:'只修改英文主稿；其余问题保留。'}]});
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:1440,height:900}});
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    await expect(page.getByRole('button',{name:'保存逐项确认',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeDisabled();
+    await page.getByRole('button',{name:'采纳修改：删去这句待核实表述',exact:true}).click();
+    await expect.poll(()=>fixture.writes.length).toBe(1);
+    assert.deepEqual(fixture.writes[0],{path:'/api/admin/studio/drafts/review-fixture/apply-edit',body:{version:7,issueId:issue.id,fingerprint:issue.fingerprint,suggestionId:'current-edit'}});
+    assert.equal(fixture.writes.some(w=>/\/(publish|wordpress)$/.test(w.path)),false);
+  }finally{await browser?.close();await web.stop();}
+});
+
+test('a stale Chinese review requires current English acknowledgement and a bound upgrade has no publish button',async()=>{
+  const fixture=reviewFixture();
+  Object.assign(fixture.draft,{review_sync:{status:'stale',english_hash:'test-current-hash'},upgrade_context:{target_existing_url:'https://example.test/original-6098',target_post_id:6098,baseline_sha256:'original-hash',changes:[{operation:'revise',paragraph:'p3',reason:'像素取整'}],notice:'独立影子预览，不修改原页面。'}});
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    await expect(page.getByRole('tab',{name:'英文交付',exact:true})).toHaveAttribute('aria-selected','true');
+    await page.getByRole('checkbox',{name:'确认 正文尺寸数字需与原文一致',exact:true}).check();
+    await page.getByRole('checkbox',{name:'确认 搜索摘要数字需与原文一致',exact:true}).check();
+    const approve=page.getByRole('button',{name:'确认审核通过',exact:true});await expect(approve).toBeDisabled();
+    await page.getByRole('checkbox',{name:'已按当前英文主稿核对',exact:true}).check();await expect(approve).toBeEnabled();
+    assert.equal(await page.getByRole('button',{name:'直接上线',exact:true}).count(),0);
+    await expect(page.getByRole('button',{name:'推送原页影子预览稿',exact:true})).toBeDisabled();
+    await approve.click();await expect.poll(()=>fixture.writes.length).toBe(1);
+    assert.equal(fixture.writes[0].body.english_reviewed,true);
+    assert.equal(fixture.writes.some(w=>/\/(publish|wordpress)$/.test(w.path)),false);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  }finally{await browser?.close();await web.stop();}
+});

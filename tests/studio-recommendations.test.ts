@@ -96,7 +96,7 @@ test('pitch evidence masks customer contact details and signoffs while keeping L
 async function importVersionHistory(){
   const entries=preview.previews.filter(p=>['web-huidu-hdplayer','web-colorlight-software','web-colorlight-ledvision','web-colorlight-firmware'].includes(p.id)).flatMap(p=>p.output.items.map((entry,i)=>({...entry,source_id:p.id,id:`history-${suffix}-${p.id}-${i}`})));
   assert.equal(entries.length,22);
-  for(const sourceId of new Set(entries.map(entry=>entry.source_id)))await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${sourceId},${sourceId},'web_list',false)`;
+  for(const sourceId of new Set(entries.map(entry=>entry.source_id)))await sql`INSERT INTO sources(id,name,kind,enabled,cursor) VALUES(${sourceId},${sourceId},'web_list',false,${sql.json({initializedAt:new Date(Date.now()-86400_000).toISOString()})})`;
   for(const entry of entries)await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status,backfill_reason) VALUES(${entry.id},${entry.source_id},${entry.id},${entry.url},${entry.title},now(),now(),${entry.publishedAt},'pending','first-import')`;
   return entries;
 }
@@ -175,12 +175,14 @@ test('source revisions create a new card, old cards cannot be adopted, and the p
   await refreshRecommendations(actor);assert.equal((await recommendationOverview()).activeCount,5);assert.ok((await recommendationOverview()).capacityFullCount>0);
 });
 
-test('undated title-only versions are discovered once and body completion refreshes the pending card',async()=>{
+test('undated title-only versions require a prior source baseline and body completion refreshes the same card',async()=>{
   await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
   const id=`ledvision-${suffix}`,versionSource='web-colorlight-ledvision',discovered=new Date(Date.now()-3600000);
   await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${versionSource},'LEDVISION','web_list',false)`;
   await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,published_at,body_status) VALUES(${id},${versionSource},${id},'https://example.com/ledvision','LEDVISION V9.7',${discovered},${discovered},NULL,'pending')`;
   await saveStudioQuestion({document:{question:'LEDVISION 升级前需要检查什么？',roles:['集成商/安装商/招牌制作商'],scenario:'控制系统',dimension:'控制软件',keywords:['LEDVISION'],content_type:'tutorial',requires_first_party:true}},actor);
+  assert.equal((await refreshRecommendations(actor)).created,0,'unknown publication date and no baseline remain reference');
+  await sql`UPDATE sources SET cursor=${sql.json({initializedAt:new Date(discovered.getTime()-3600000).toISOString()})} WHERE id=${versionSource}`;
   assert.equal((await refreshRecommendations(actor)).created,1);
   const first=(await recommendationOverview()).rows.find(c=>c.article_id===id)!;
   assert.equal(first.document.trigger,'E');assert.equal(first.document.evidence[0].date,null);assert.equal(first.document.evidence[0].discovered_at,discovered.toISOString());
@@ -253,7 +255,7 @@ test('R1-0 refresh suppresses same-version historical body completion but allows
 test('news ages out on overview and adoption without needing another refresh, and stays readable',async()=>{
   await setRecommendationCapacity({weekly_limit:5,lookback_days:30},actor);
   // The planner uses the app clock and excludes future dates; keep fixtures inside the intended window.
-  const now=Date.now(),recentAt=new Date(now-60_000).toISOString(),expiredAt=new Date(now-8*86400_000).toISOString();
+  const now=Date.now(),recentAt=new Date(now-60_000).toISOString(),expiredAt=new Date(now-31*86400_000).toISOString();
   for(let n=0;n<5;n++)await material(`aging-${suffix}-${n}`);
   await sql`UPDATE articles SET published_at=${recentAt}`;
   assert.equal((await refreshRecommendations(actor)).created,5);
@@ -261,12 +263,24 @@ test('news ages out on overview and adoption without needing another refresh, an
   await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{evidence,0,date}',to_jsonb(${expiredAt}::text))`;
   await sql`UPDATE articles SET published_at=${expiredAt}`;
   const aged=await recommendationOverview();assert.equal(aged.activeCount,0);assert.equal(aged.pendingCount,0);assert.equal(aged.rows.length,5);assert.ok(aged.rows.every(c=>c.expired&&!c.capacity_full));
-  await assert.rejects(decideRecommendation(old.id,{action:'adopt'},actor),/超过7天/);
+  await assert.rejects(decideRecommendation(old.id,{action:'adopt'},actor),/14\/30天新闻窗口/);
   const fresh=await material(`current-${suffix}`);
   await sql`UPDATE articles SET published_at=${recentAt} WHERE id=${fresh}`;
   await refreshRecommendations(actor);
   const current=await recommendationOverview();assert.equal(current.activeCount,1);assert.equal(current.pendingCount,1);assert.equal(current.rows.length,6);
   assert.equal(current.rows.find(c=>c.article_id===fresh)!.expired,false);
+});
+
+test('an old seven-day scan setting still loads eligible twenty-day upstream releases without admitting market news',async()=>{
+  await setRecommendationCapacity({weekly_limit:5,lookback_days:7},actor);
+  await material(`upstream-20days-${suffix}`);await material(`market-20days-${suffix}`);
+  const date=new Date(Date.now()-20*86400_000);
+  await sql`UPDATE articles SET published_at=${date},updated_at=${date}`;
+  await sql`UPDATE articles SET title='Macroblock quarterly revenue results',body_text='Quarterly revenue was announced.' WHERE id=${`market-20days-${suffix}`}`;
+  await sql`INSERT INTO settings(key,value,updated_by) VALUES('studio.recommendations.last_refresh',${sql.json(new Date(Date.now()-3600000).toISOString())},${actor})`;
+  assert.equal((await refreshRecommendations(actor)).created,1);
+  const rows=(await recommendationOverview()).rows;
+  assert.equal(rows[0].article_id,`upstream-20days-${suffix}`);assert.equal(rows[0].expired,false);
 });
 test('repeated demand creates an evidence-pending task; binding continues it without using inquiry rows as facts',async()=>{
   await setRecommendationCapacity({weekly_limit:15,lookback_days:30},actor);

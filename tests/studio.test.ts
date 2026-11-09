@@ -10,7 +10,7 @@ import { sql, closeDb } from '@aihot/backend/db';
 import { config } from '@aihot/backend/config';
 import { passwordLogin, SESSION_COOKIE, sessionPrincipal } from '@aihot/backend/admin/auth';
 import { registerAdminStudio } from '../apps/api/src/routes/admin-studio.ts';
-import { createStudioTask, exportStudioTask, receiveStudioTask, generateStudioTask, studioGenerationStatus, studioDraft, saveStudioDraft, reviewStudioDraft, exportStudioDraft, extractStudioMaterial, studioMaterial, studioOverview } from '@aihot/backend/studio/studio';
+import { createStudioTask, exportStudioTask, receiveStudioTask, generateStudioTask, studioGenerationStatus, studioDraft, saveStudioDraft, applyStudioReviewEdit, reviewStudioDraft, exportStudioDraft, extractStudioMaterial, studioMaterial, studioOverview } from '@aihot/backend/studio/studio';
 import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/studio/studio-review';
 import { updateChannel } from '@aihot/backend/providers/channel';
 import { upsertMaterial } from '@aihot/backend/content/materials';
@@ -59,13 +59,58 @@ test('receive, edit, review and export persist; duplicate receives do not overwr
  await assert.rejects(saveStudioDraft(d.id,edit,actor),/已被修改/);
  await assert.rejects(reviewStudioDraft(d.id,{version:d.version,action:'approve'},actor),/先提交/);
  await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(row.id))!;
- await reviewStudioDraft(d.id,{version:d.version,action:'approve',note:'已核对原文',confirmations:d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);d=(await studioDraft(row.id))!;
+ await reviewStudioDraft(d.id,{version:d.version,action:'approve',english_reviewed:true,note:'已核对原文',confirmations:d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);d=(await studioDraft(row.id))!;
  assert.equal(d.status,'approved');assert.match((await exportStudioDraft(d.id,'html'))!.body,/LED driver sample plan/);assert.doesNotMatch((await exportStudioDraft(d.id,'html'))!.body,/人工改过/);assert.match((await exportStudioDraft(d.id,'review'))!.body,/人工改过/);
  await saveStudioDraft(d.id,{...edit,version:d.version,title_zh:'再次修改'},actor);assert.equal((await studioDraft(d.id))!.status,'draft');await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
 });
 test('source revision drift rejects imported results; no partial drafts are inserted',async()=>{
  const {task,response}=await input();await sql`UPDATE articles SET revision=revision+1 WHERE id=${article}`;
  await assert.rejects(receiveStudioTask(task.id,response,actor),/原文已更新/);assert.equal((await sql`SELECT count(*)::int AS n FROM studio_drafts WHERE task_id=${task.id}`)[0].n,0);
+});
+test('private draft progress and partial confirmations persist with BLOCKs; adopt edits never approve or publish',async()=>{
+ const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ let d=(await studioDraft(row.id))!;
+ const body=`Our screen reaches 9000 nits.\n\nOur product is the best.\n\nThe installation guide explains cabinet layout and service access for buyers.\n\nSource: ${d.document.source.url}`;
+ await saveStudioDraft(d.id,{...response.drafts[0],version:d.version,body_en:body,review_zh:'我们的屏幕达到9000 nits。'},actor);
+ d=(await studioDraft(d.id))!;
+ assert.equal(d.document.body_en,body);assert.equal(d.gate.blocked,true);assert.equal(d.status,'draft');
+ assert.equal(d.review_sync?.status,'stale');
+ const confirmations=d.issues.items.filter(i=>i.confirmable).slice(0,1).map(i=>({issueId:i.id,fingerprint:i.fingerprint}));
+ await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations},actor);
+ d=(await studioDraft(d.id))!;assert.equal(d.confirmed_issues.length,confirmations.length);
+ await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(d.id))!;
+ await assert.rejects(reviewStudioDraft(d.id,{version:d.version,action:'approve',english_reviewed:true},actor),/否决项/);
+ const suggestion=d.suggestions.find(s=>d.issues.items.find(i=>i.id===s.issueId)?.ruleId==='D1')!;
+ assert.ok(suggestion);
+ await assert.rejects(applyStudioReviewEdit(d.id,{version:d.version,issueId:suggestion.issueId,fingerprint:'changed',suggestionId:suggestion.id},actor),/版本不一致/);
+ await applyStudioReviewEdit(d.id,{version:d.version,issueId:suggestion.issueId,fingerprint:suggestion.fingerprint,suggestionId:suggestion.id},actor);
+ const before=d;d=(await studioDraft(d.id))!;
+ assert.doesNotMatch(d.document.body_en,/9000 nits/);assert.match(d.document.body_en,/Our product is the best/);
+ assert.equal(d.document.review_zh,before.document.review_zh);assert.equal(d.review_sync?.status,'stale');
+ assert.equal(d.status,'draft');assert.equal(d.gate.blocked,true);assert.equal(d.confirmed_issues.length,0);
+ await assert.rejects(exportStudioDraft(d.id,'html'),/审稿/);
+ await assert.rejects(applyStudioReviewEdit(d.id,{version:before.version,issueId:suggestion.issueId,fingerprint:suggestion.fingerprint,suggestionId:suggestion.id},actor),/版本已更新/);
+ assert.equal((await sql`SELECT count(*)::int AS n FROM audit_log WHERE subject=${`studio-draft:${d.id}`} AND action IN ('studio.draft.wordpress','studio.draft.publish')`)[0].n,0);
+ await saveStudioDraft(d.id,{...response.drafts[0],version:d.version,review_zh:d.document.review_zh},actor);
+ d=(await studioDraft(d.id))!;await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(d.id))!;
+ const all=d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}));
+ await assert.rejects(reviewStudioDraft(d.id,{version:d.version,action:'approve',confirmations:all},actor),/当前英文主稿/);
+ await reviewStudioDraft(d.id,{version:d.version,action:'approve',english_reviewed:true,confirmations:all},actor);
+ assert.match((await exportStudioDraft(d.id,'md'))!.body,/Samples are expected/);
+});
+test('incomplete source links and English edits can be saved privately but cannot be approved',async()=>{
+ const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ let d=(await studioDraft(row.id))!;
+ await saveStudioDraft(d.id,{...response.drafts[0],version:d.version,body_en:'The cabinet layout still needs a source link. 待翻译'},actor);
+ d=(await studioDraft(d.id))!;
+ assert.equal(d.document.body_en,'The cabinet layout still needs a source link. 待翻译');
+ assert.ok(d.gate.findings.some(f=>f.severity==='BLOCK'&&f.reason.includes('原文链接')));
+ assert.ok(d.gate.findings.some(f=>f.severity==='BLOCK'&&f.reason.includes('含中文')));
+ await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(d.id))!;
+ await assert.rejects(reviewStudioDraft(d.id,{version:d.version,action:'approve',english_reviewed:true},actor),/否决项/);
+ await assert.rejects(exportStudioDraft(d.id,'html'),/审稿/);
 });
 test('WordPress push only writes approved English to one draft, with safe recovery',async t=>{
  const env=process.env;
@@ -86,7 +131,7 @@ test('WordPress push only writes approved English to one draft, with safe recove
  async function approve(id:string,version:number){
    await reviewStudioDraft(id,{version,action:'submit'},actor);
    const current=(await studioDraft(id))!;
-   const result=await reviewStudioDraft(id,{version:current.version,action:'approve',confirmations:current.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);
+   const result=await reviewStudioDraft(id,{version:current.version,action:'approve',english_reviewed:true,confirmations:current.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);
    return result!.version;
  }
  const push=(id:string,version:number,kind='guide',section='components-ics',withCsrf=true)=>

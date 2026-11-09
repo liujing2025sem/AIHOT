@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { enforceIdentity, finalizeCopy, looksZh } from "@aihot/backend/editorial/writing";
 import { isChineseBody, exportTranslation } from "@aihot/backend/publication/items";
 import { stripTags } from "@aihot/backend/lib/text";
+import { normalizeTags, entityIdentity } from "@aihot/backend/editorial/vocabulary";
+import { CATEGORY_TAGS, ENTITY_TAGS, ITEM_TYPES, normalizeItemType } from "@aihot/industry/taxonomy";
 
 // 合成回归样例，借用公开材料中“性能在前、样品阶段与配置条件在后”的结构，非新闻摘录。
 // https://www.mblock.com.tw/en/news/detail/LED_Display_Symposium_LED_Driver_IC
@@ -116,4 +118,18 @@ test("LED official brand aliases are recognized in both source and copy", () => 
     const chineseInput = { title: `${chinese}发布更新`, text: `${chinese}公布相关详情。`, sourceKind: "web_list" };
     assert.equal(enforceIdentity(chineseInput, { titleZh: `${english} 发布更新`, summaryZh: `${english} 公布相关详情。` }).identityGuard.outcome, "pass", `${chinese} to ${english}`);
   }
+});
+
+test('LED generation vocabulary is display-specific while historic receipts and identities remain readable',()=>{
+  assert.deepEqual(normalizeTags(['发布','LED驱动IC','聚积科技']),['产品更新','LED驱动IC','Macroblock']);
+  assert.deepEqual(normalizeTags(['软件/固件','LED控制系统','NovaStar']),['软件/固件','LED控制系统','NovaStar']);
+  assert.deepEqual(normalizeTags(['项目交付','LED项目案例','consumer-display']),['项目交付','LED项目案例','consumer-display']);
+  assert.equal((CATEGORY_TAGS as readonly string[]).includes('模型发布'),false);
+  assert.equal((CATEGORY_TAGS as readonly string[]).includes('非AI/通用工具'),false);
+  assert.equal((ITEM_TYPES as readonly string[]).includes('model_release'),false);
+  assert.ok(ENTITY_TAGS.includes('Macroblock'));
+  assert.equal(normalizeItemType('model_release'),'product_launch','old understanding receipts have a compatible product type');
+  assert.deepEqual(normalizeTags(['模型发布','大佬观点','OpenAI']),['产品更新','行业观点']);
+  assert.equal(entityIdentity('OpenAI'),'openai','history keeps its original entity identity');
+  assert.equal(entityIdentity('资料的聚积'),null,'legacy tag cleanup does not restore the ambiguous brand alias');
 });
