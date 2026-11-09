@@ -161,6 +161,8 @@ export interface ReceiptRequest {
   identity: unknown;
   /** Stored for diagnosis; must not contain secrets. */
   requestSummary?: Record<string, unknown>;
+  /** Updated by the transport while this attempt is running; no body or headers are stored. */
+  transport?: { headersMs: number | null; bodyMs: number | null; requestId: string | null };
   /** Distinguishes an explicit re-run (e.g. admin "re-evaluate") from recovery of the same request. */
   attemptTag?: string;
   /** A backup request continues this logical request without resending its unknown primary (marked on the primary). */
@@ -301,6 +303,9 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
 
   const { id: receiptId, attemptId } = claimed;
   const started = performance.now();
+  const transportSummary = () => sql.json(req.transport ? { transport: {
+    headersMs: req.transport.headersMs, bodyMs: req.transport.bodyMs,
+  } } : {});
   let outcome: CallOutcome;
   try {
     outcome = await call();
@@ -312,8 +317,10 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     // "unknown": the request may have reached the provider (timeout, reset): do not re-send automatically.
     const message = (error instanceof ProviderRejectedError ? error.message : String(error)).slice(0, 2000);
     await sql.begin(async (tx) => {
-      await tx`UPDATE receipts SET status = ${status}, error = ${message}, updated_at = now() WHERE id = ${receiptId}`;
-      await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, latency_ms = ${Math.round(performance.now() - started)}, finished_at = now() WHERE id = ${attemptId}`;
+      await tx`UPDATE receipts SET status = ${status}, error = ${message}, request_id = ${req.transport?.requestId ?? null},
+        request = request || ${transportSummary()}, updated_at = now() WHERE id = ${receiptId}`;
+      await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, request_id = ${req.transport?.requestId ?? null},
+        latency_ms = ${Math.round(performance.now() - started)}, finished_at = now() WHERE id = ${attemptId}`;
       if (spendingRefused) await stopForRefusal(tx, providerStopKey(req.service, req.model));
     });
     // The first transport failure needs the same durable identity as a later unknown-result retry.
@@ -327,6 +334,7 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
         status = 'received',
         response = ${tx.json((outcome.response ?? null) as never)},
         request_id = ${outcome.requestId ?? null},
+        request = request || ${transportSummary()},
         usage = ${outcome.usage ? tx.json(outcome.usage as never) : null},
         cost = ${outcome.cost?.amount ?? null},
         currency = ${outcome.cost?.currency ?? null},

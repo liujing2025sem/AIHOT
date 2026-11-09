@@ -12,7 +12,7 @@ import {searchPitchMaterials} from './studio-pitch-evidence.ts';
 import {importLink,type Prep} from './studio-pitch.ts';
 import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from './studio.ts';
 import {companyFactRules} from './studio-company-facts.ts';
-import {buyerQuestionsSchema,editPlanSchema,fragmentPlanSchema,fragmentSchema,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
+import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
 import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
@@ -130,19 +130,32 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     prep={...prep,question_en:first.data.question_en,keywords:[...new Set(questions.flatMap(q=>q.terms))],entities:[],materials,related_pages:[],subquestions,facts,weak_material_ids:evidence.weak_material_ids,blacklist:{configured:rules.configured,blocked:0,pending:0}};
     await savePrep(id,prep);
     if(!page&&facts.filter(f=>f.kind!=='calc').length<2){await complete('insufficient','未找到足够的答案句，请按子问题补参考资料。');return {status:'insufficient'};}
-    const system2=prompt('studio-pitch-edit-plan');
+    const oldPage=(prep.output_type==='auto'||prep.output_type==='update')?page:undefined;
+    const system2=prompt(oldPage?'studio-pitch-update-plan':'studio-pitch-edit-plan');
     const excerptLength=Math.max(90,Math.min(240,Math.floor(10500/Math.max(1,paragraphs.length))));
-    const user=JSON.stringify({question:prep.question,output_type:prep.output_type,subquestions,facts,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,excerptLength)})),company_rules:rules.rules.map(r=>({id:r.id,match:r.match,action:r.action,conservative:r.conservative}))});
+    const company_rules=rules.rules.map(r=>({id:r.id,match:r.match,action:r.action,conservative:r.conservative}));
+    const user=JSON.stringify(oldPage?{
+      subquestions:subquestions.map(q=>({id:q.id,en:q.en,need:q.need,coverage:q.coverage.status,evidence:q.coverage.evidence,
+        demand:{queries:q.demand.queries.slice(0,3).map(r=>({query:r.query,impressions:r.impressions,position:r.position})),inquiries:q.demand.inquiries}})),
+      facts:facts.map(f=>({id:f.id,kind:f.kind,statement:f.statement,attribution:f.attribution})),
+      paragraphs:paragraphs.map(p=>[p.id,p.text.replace(/\s+/g,' ').slice(0,Math.min(excerptLength,100))]),company_rules,
+    }:{question:prep.question,output_type:prep.output_type,subquestions,facts,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,excerptLength)})),company_rules});
     const remainingMs=90000-Math.round(performance.now()-start);
     if(!replay&&remainingMs<1000)invalid('本轮备料已用完90秒，已保存拆题与检索结果，未发送第二段。');
-    const result=await call({model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,schema:editPlanSchema,maxTokens:3500,timeoutMs:replay?90000:remainingMs,sessionId:id,...(retry?{attemptTag:`edit-plan-after-${retry.retryEditPlanReceiptId}`}:{})},replay);
+    const options={model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,maxTokens:3500,timeoutMs:replay?90000:remainingMs,sessionId:id,...(retry?{attemptTag:`edit-plan-after-${retry.retryEditPlanReceiptId}`}:{})};
+    const result=oldPage
+      ?await call({...options,schema:pageUpdatePlanSchema,maxTokens:1800,maxTotalTokens:4096},replay).then(r=>({
+        ...r,data:{...r.data,titles:[{title:oldPage.title.slice(0,60),anchor:'沿用旧页标题',article_id:oldPage.id,quote:oldPage.title.slice(0,60)}],hooks:[]},
+      }))
+      :await call({...options,schema:editPlanSchema},replay);
     receipts.push({id:result.receiptId,usage:result.usage,model:result.model});
     const plan=result.data;
     if(Number(result.usage?.prompt_tokens)>6000)invalid('第二段备料输入超过6000 token；已保存回答，停止新增调用。');
     const editPlan:EditOperation[]=paragraphs.map(p=>plan.edits.find(e=>e.op==='revise'&&e.paragraph===p.id)??{op:'keep',paragraph:p.id,facts:[]});
     editPlan.push(...plan.edits.filter(e=>e.op==='insert_after'));
     const errors=validateEditPlan(paragraphs,editPlan,questions,facts);if(errors.length)invalid(errors.join('；'));
-    for(const t of [...plan.titles,...plan.hooks])if(!materials.some(m=>m.id===t.article_id&&(m.body_text?.includes(t.quote)||m.title.includes(t.quote))))invalid('标题/钩子的逐字出处未匹配。');
+    const {titles,hooks}=plan;
+    for(const t of [...titles,...hooks])if(!materials.some(m=>m.id===t.article_id&&(m.body_text?.includes(t.quote)||m.title.includes(t.quote))))invalid('标题/钩子的逐字出处未匹配。');
     for(const q of plan.engineer_questions)if(!q.options[0]?.conservative||q.options[0].id!=='A'||/\d/.test(q.options[0].label+q.options[0].instruction))invalid('工程题A须为无数字的保守写法。');
     for(const q of subquestions){
       const c=plan.coverage.find(c=>c.id===q.id);if(!c)invalid(`缺少子问题 ${q.id} 的覆盖判断。`);
@@ -155,7 +168,7 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     if(plan.conclusion==='no_change'&&changes.length)invalid('无需升级与改动计划冲突。');
     const outline=changes.map((e,i)=>({id:`change-${i}`,heading:e.heading??subquestions.find(q=>q.id===e.subquestion)?.zh??e.reason!,evidence:(e.facts??[]).flatMap(id=>{const f=facts.find(f=>f.id===id)!;return f.article_id&&f.quote?[{article_id:f.article_id,quote:f.quote}]:[]}),gap:'',action:e.reason??''}));
     const engineer=plan.engineer_questions.map(q=>({...q,section_ids:q.section_ids.flatMap(id=>changes.map((e,i)=>e.subquestion===id?`change-${i}`:'').filter(Boolean))}));
-    prep={...prep,subquestions,edit_plan:editPlan,conclusion:changes.length?'upgrade':'no_change',outline,titles:plan.titles,hooks:plan.hooks,engineer_questions:engineer,output_type:prep.output_type==='auto'?(page?'update':'guide'):prep.output_type};
+    prep={...prep,subquestions,edit_plan:editPlan,conclusion:changes.length?'upgrade':'no_change',outline,titles,hooks,engineer_questions:engineer,output_type:prep.output_type==='auto'?(page?'update':'guide'):prep.output_type};
     delete prep.model_outcome;delete prep.pending_receipt_id;
     await complete('ready');return {status:'ready',subquestions:subquestions.length,changes:changes.length};
   }catch(error){

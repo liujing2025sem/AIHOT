@@ -3,6 +3,7 @@
 // answer cut off at the output limit says so, and the valve stops calls before they are sent.
 import { gate, stub, tag } from "./setup.ts";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { after, test } from "node:test";
 import { z } from "zod";
 import { config } from "@aihot/backend/config";
@@ -20,6 +21,37 @@ process.env.DEEPSEEK_API_KEY = "test-key";
 
 const ask = (subject: string) =>
   chatJson({ model: "deepseek-flash", purpose: "invariant_test", subject, promptVersion: "t1", system: "s", user: `input ${subject}`, schema: z.object({ ok: z.boolean() }) });
+
+test("Studio receipt distinguishes a stalled response body from a request without headers", async () => {
+  const server = createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { "x-request-id": "stub-stalled-body", "content-type": "application/json" });
+    res.flushHeaders();
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const old = process.env.DEEPSEEK_BASE_URL;
+  process.env.DEEPSEEK_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
+  const subject = `studio-pitch:stalled-${tag()}:1`;
+  try {
+    await assert.rejects(chatJson({ model:"deepseek-flash", purpose:"studio_prep_edit_plan", subject, promptVersion:"t1",
+      system:"s", user:"u", schema:z.object({ok:z.boolean()}), timeoutMs:400 }), ReceiptUnknownError);
+    const [r] = await sql`SELECT id,status,request,request_id,attempts FROM receipts WHERE subject=${subject}`;
+    assert.equal(r.status, "unknown");
+    assert.equal(r.request_id, "stub-stalled-body");
+    assert(Number.isFinite(r.request.transport.headersMs));
+    assert.equal(r.request.transport.bodyMs, null);
+    await sql`UPDATE receipts SET updated_at = now() - interval '31 minutes' WHERE id=${r.id}`;
+    await autoReleaseUnknownReceipts();
+    const [preserved] = await sql`SELECT status,attempts FROM receipts WHERE id=${r.id}`;
+    assert.deepEqual({...preserved}, {status:"unknown", attempts:1});
+  } finally {
+    if (old === undefined) delete process.env.DEEPSEEK_BASE_URL; else process.env.DEEPSEEK_BASE_URL = old;
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
 
 after(async () => {
   await provider.close();

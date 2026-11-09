@@ -65,6 +65,8 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   schema: S;
   temperature?: number;
   maxTokens?: number;
+  /** Ceiling for completion plus any reasoning reserved by the selected model. */
+  maxTotalTokens?: number;
   attemptTag?: string;
   timeoutMs?: number;
   /** Persisted conversation/task identity, stable across continuation of the same task. */
@@ -138,7 +140,7 @@ function transportHeaders<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: M
 
 function requestFor<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec) {
   const temperature = opts.temperature ?? 0.2;
-  const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.reasoningTokens ?? 0);
+  const maxTokens = Math.min(opts.maxTotalTokens ?? Infinity, Math.max(opts.maxTokens ?? 1500, 512) + (spec.reasoningTokens ?? 0));
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
   const request: ReceiptRequest = {
     service: spec.service, model: spec.model, purpose: opts.purpose, subject: opts.subject,
@@ -209,6 +211,9 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
 
   const { request, temperature, maxTokens, userText } = requestFor(opts, spec);
   const timeoutMs = opts.timeoutMs ?? (circuit ? FAILOVER_TIMEOUT_MS : TIMEOUT_MS);
+  const transport: NonNullable<ReceiptRequest["transport"]> | undefined =
+    opts.purpose === "studio_prep_edit_plan" || opts.purpose === "studio_fragment"
+      ? { headersMs: null, bodyMs: null, requestId: null } : undefined;
   let permit: CircuitPermit;
   const body: Record<string, unknown> = {
     model: spec.model,
@@ -225,7 +230,7 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
   };
 
   const receipt = await paidRequest(
-    { ...request, fallbackFor },
+    { ...request, fallbackFor, transport },
     async () => {
       const started = performance.now();
       let res: Response;
@@ -238,7 +243,12 @@ async function chatOnce<S extends z.ZodType>(opts: ChatJsonOptions<S>, circuit =
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(timeoutMs),
         });
+        if (transport) {
+          transport.headersMs = Math.round(performance.now() - started);
+          transport.requestId = res.headers.get("x-request-id");
+        }
         text = await res.text();
+        if (transport) transport.bodyMs = Math.round(performance.now() - started);
         if (spec.channel) text = redactChannelText(text, apiKey);
         assertAccepted(spec.service, res.status, text);
       } catch (error) {

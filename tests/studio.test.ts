@@ -505,7 +505,7 @@ test('bound source snapshot remains the review target when live material changes
 
 test('pitch preparation uses redacted questions and exact source quotes, resumes duplicates, and permits only evidenced conservative drafting',async t=>{
  const dir=await mkdtemp(path.join(tmpdir(),'studio-pitch-'));
- const oldDir=config.credentialsDir, oldEnabled=config.modelCallsEnabled;
+ const oldDir=config.credentialsDir, oldEnabled=config.modelCallsEnabled,oldReasoning=process.env.LLM_REASONING_TOKENS;
  config.credentialsDir=dir;config.modelCallsEnabled=true;
  const ids=[`pitch-one-${suffix}`,`pitch-two-${suffix}`,`pitch-old-${suffix}`];
  const body='Cabinet dimensions are the measurements stated in the installation drawing. Check service access against the selected cabinet.';
@@ -513,9 +513,13 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
  const submitted:string[]=[];
  const provider=await stub((_hit,req)=>{
   const request=JSON.parse(req.body),data=JSON.parse(request.messages.at(-1).content);submitted.push(req.body);
-  const empty=data.question.includes('ZZZZ');
+  const empty=data.question?.includes('ZZZZ')??false;
+  const compact=Array.isArray(data.paragraphs?.[0]);
   const materialId=data.facts?.[0]?.article_id??ids[0];
-  const answer=data.facts?{
+  const answer=compact?{
+   conclusion:'no_change',coverage:data.subquestions.map((q:{id:string;need:string})=>({id:q.id,status:q.need==='company'?'engineer':'page_good',page_paragraphs:q.need==='company'?[]:['p1'],reason:''})),
+   edits:[],engineer_questions:[],
+  }:data.facts?{
    conclusion:'upgrade',coverage:data.subquestions.map((q:{id:string},i:number)=>({id:q.id,status:i<2?'direct':'engineer',page_paragraphs:[],reason:''})),
    edits:[{op:'insert_after',paragraph:'start',subquestion:'q1',reason:'解释图纸尺寸',heading:'Cabinet dimensions',facts:[data.facts[0].id]},{op:'insert_after',paragraph:'start',subquestion:'q2',reason:'核对维护空间',heading:'Service access',facts:[data.facts.at(-1).id]}],
    titles:['Cabinet Dimensions and Installation','Plan LED Cabinet Access','Cabinet Drawings for Buyers'].map(title=>({title,anchor:'图纸决定尺寸',article_id:materialId,quote:'Cabinet dimensions are the measurements stated in the installation drawing.'})),hooks:[],
@@ -573,17 +577,24 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
   const [prior]=await sql`SELECT id FROM receipts WHERE subject=${`studio-pitch:${retryCard.id}:1`} AND purpose='studio_prep_edit_plan'`;
   await sql`UPDATE receipts SET status='unknown',response=NULL WHERE id=${prior.id}`;
   const readyPrep=(await getPitch(retryCard.id))!.prep!;
-  await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json({...readyPrep,status:'failed',model_outcome:'unknown',pending_receipt_id:Number(prior.id)} as never)}) WHERE id=${retryCard.id}`;
+  const oldPage=readyPrep.materials!.find(m=>m.id===ids[2])!;
+  await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json({...readyPrep,output_type:'update',
+    existing_url:oldPage.url,source_html:`<p>${body}</p>`,status:'failed',model_outcome:'unknown',pending_receipt_id:Number(prior.id)} as never)}) WHERE id=${retryCard.id}`;
   const beforeRetry=provider.hits();
   await assert.rejects(preparePitchV2(retryCard.id,1,actor,true),/未重复调用/);
   assert.equal(provider.hits(),beforeRetry);
+  process.env.LLM_REASONING_TOKENS='8000';
   await preparePitchV2(retryCard.id,1,actor,{retryEditPlanReceiptId:Number(prior.id)});
   assert.equal(provider.hits(),beforeRetry+1,'authorized retry reuses questions and sends only the edit plan');
   const restored=(await getPitch(retryCard.id))!;
   assert.equal(restored.status,'ready');assert.equal(restored.prep!.model_outcome,undefined);
+  assert.deepEqual(restored.prep!.titles?.map(t=>t.title),[oldPage.title],'existing title needs no model output');
+  assert.deepEqual(restored.prep!.hooks,[]);
+  const updateRequest=JSON.parse(submitted.at(-1)!);
+  assert.equal(updateRequest.max_tokens,4096,'the whole completion budget includes reasoning');
   await preparePitchV2(retryCard.id,1,actor,{retryEditPlanReceiptId:Number(prior.id)});
   await preparePitchV2(retryCard.id,1,actor,true);
   assert.equal(provider.hits(),beforeRetry+1,'the same authorization cannot buy another plan');
   assert.equal((await sql`SELECT status FROM receipts WHERE id=${prior.id}`)[0].status,'unknown','old unknown receipt remains intact');
- }finally{config.credentialsDir=oldDir;config.modelCallsEnabled=oldEnabled;await provider.close();await rm(dir,{recursive:true,force:true});}
+ }finally{config.credentialsDir=oldDir;config.modelCallsEnabled=oldEnabled;if(oldReasoning===undefined)delete process.env.LLM_REASONING_TOKENS;else process.env.LLM_REASONING_TOKENS=oldReasoning;await provider.close();await rm(dir,{recursive:true,force:true});}
 });
