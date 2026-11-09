@@ -27,8 +27,10 @@ const savePrep=async(id:string,prep:V2)=>sql`UPDATE studio_recommendations SET d
 
 /** A saved answer is always replayed; a missing answer is never silently repurchased. */
 async function call<S extends z.ZodType>(options:ChatJsonOptions<S>,replay=false){
-  const [old]=await sql`SELECT * FROM receipts WHERE subject=${options.subject} AND purpose=${options.purpose} ORDER BY id DESC LIMIT 1`;
-  if(old&&!options.attemptTag){
+  const tag=options.attemptTag??'';
+  const [old]=await sql`SELECT * FROM receipts WHERE subject=${options.subject} AND purpose=${options.purpose}
+    AND (${!tag} OR right(logical_key,length(${tag})+1)=${`:${tag}`}) ORDER BY id DESC LIMIT 1`;
+  if(old){
     if(!old.response){if(old.status==='unknown')throw new ReceiptUnknownError(Number(old.id),'已有调用结果待核对，未重复调用');invalid(`调用 ${old.id} 没有可重放结果，未重复调用。`);}
     const content=old.response.choices?.[0]?.message?.content??'';
     return {data:options.schema.parse(JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g,''))),receiptId:Number(old.id),usage:old.usage,model:old.model,reused:true};
@@ -57,15 +59,22 @@ async function demandFor(questions:Question[],url:string){
   return Object.fromEntries(questions.map(q=>[q.id,{queries:signals.filter(r=>canonical(r.record.page)===canonical(url)&&q.terms.some(t=>String(r.record.query).toLowerCase().includes(t.toLowerCase()))).map(r=>r.record),inquiries:inquiries.filter(r=>q.terms.some(t=>String(r.record.question_rewrite).toLowerCase().includes(t.toLowerCase()))).length}]));
 }
 
-export async function preparePitchV2(id:string,version:number,actor:string,replay=false){
+export async function preparePitchV2(id:string,version:number,actor:string,mode:boolean|{retryEditPlanReceiptId:number}=false){
+  const replay=mode===true,retry=typeof mode==='object'?mode:null,reuseInputs=replay||!!retry;
   const card=await cardFor(id);let prep=card?.document.prep as V2;
-  if(!prep||prep.version!==version||prep.status!=='preparing'&&!replay)return {reused:true};
+  if(!prep||prep.version!==version||prep.status!=='preparing'&&!reuseInputs||retry&&prep.status==='ready')return {reused:true};
+  if(retry){
+    const [previous]=await sql`SELECT id,status FROM receipts WHERE id=${retry.retryEditPlanReceiptId}
+      AND subject=${`studio-pitch:${id}:${version}`} AND purpose='studio_prep_edit_plan'`;
+    if(!previous||previous.status!=='unknown'||prep.pending_receipt_id!==Number(previous.id))invalid('请核对待确认的编辑计划回执，本次未发送请求。');
+    await audit(actor,'studio.pitch.edit-plan-retry',`studio-recommendation:${id}`,'用户授权复用现有拆题，只补调一次编辑计划',null,{previous_receipt:previous.id,attempt_tag:`edit-plan-after-${previous.id}`});
+  }
   const start=performance.now(),receipts:NonNullable<Prep['metrics']>['receipts']=[];
   const complete=async(status:Prep['status'],error?:string)=>{prep={...prep,status,error,finished_at:new Date().toISOString(),metrics:{preparation_ms:replay?(prep.metrics?.preparation_ms??null):Math.round(performance.now()-start),receipts,...(replay?{replayed:true}: {})}};await savePrep(id,prep);};
   try{
     const linked:NonNullable<Prep['materials']>=[];const link_errors=[];
     for(const url of [...new Set([prep.existing_url,...prep.links].filter(Boolean))]){
-      if(replay){
+      if(reuseInputs){
         const saved=prep.materials?.find(m=>canonical(m.url)===canonical(url));
         if(saved)linked.push({...saved,existing_page:canonical(url)===canonical(prep.existing_url)});
         else link_errors.push({url,reason:'未保存该链接的素材，本次免费重放未重新抓取。'});
@@ -76,16 +85,16 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     }
     const page=linked.find(m=>m.existing_page);
     const [htmlRow]=page?await sql`SELECT body_html FROM articles WHERE id=${page.id}`:[];
-    const sourceHtml=replay?(prep.source_html??''):htmlRow?.body_html??'';
+    const sourceHtml=reuseInputs?(prep.source_html??''):htmlRow?.body_html??'';
     if(prep.existing_url&&!sourceHtml)invalid('旧页正文 HTML 未取得，无法逐段保留；请补正文。');
     const paragraphs=splitPage(sourceHtml);
     prep={...prep,paragraphs,source_html:sourceHtml,original_title:page?.title??'',link_errors};
     const system=prompt('studio-pitch-subquestions');
-    const first=await call({model:'default',purpose:'studio_prep_subquestions',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system),system,user:JSON.stringify({question:prep.question,existing_page:page?{title:page.title,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,110)}))}:null}),schema:buyerQuestionsSchema,maxTokens:2400,timeoutMs:45000,sessionId:id},replay);
+    const first=await call({model:'default',purpose:'studio_prep_subquestions',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system),system,user:JSON.stringify({question:prep.question,existing_page:page?{title:page.title,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,110)}))}:null}),schema:buyerQuestionsSchema,maxTokens:2400,timeoutMs:45000,sessionId:id},reuseInputs);
     receipts.push({id:first.receiptId,usage:first.usage,model:first.model});
     const questions=first.data.subquestions;
     if(new Set(questions.map(q=>q.id)).size!==questions.length)invalid('子问题编号重复，需检查保存的回答。');
-    const candidates=replay?(prep.materials??[]):await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
+    const candidates=reuseInputs?(prep.materials??[]):await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
     const materials:NonNullable<Prep['materials']>=[...linked,...candidates.filter(m=>!linked.some(l=>l.id===m.id))];
     const htmls=await sql`SELECT id,body_html,revision FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
     const evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:m.existing_page?sourceHtml:
@@ -126,7 +135,7 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     const user=JSON.stringify({question:prep.question,output_type:prep.output_type,subquestions,facts,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,excerptLength)})),company_rules:rules.rules.map(r=>({id:r.id,match:r.match,action:r.action,conservative:r.conservative}))});
     const remainingMs=90000-Math.round(performance.now()-start);
     if(!replay&&remainingMs<1000)invalid('本轮备料已用完90秒，已保存拆题与检索结果，未发送第二段。');
-    const result=await call({model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,schema:editPlanSchema,maxTokens:3500,timeoutMs:replay?90000:remainingMs,sessionId:id},replay);
+    const result=await call({model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,schema:editPlanSchema,maxTokens:3500,timeoutMs:replay?90000:remainingMs,sessionId:id,...(retry?{attemptTag:`edit-plan-after-${retry.retryEditPlanReceiptId}`}:{})},replay);
     receipts.push({id:result.receiptId,usage:result.usage,model:result.model});
     const plan=result.data;
     if(Number(result.usage?.prompt_tokens)>6000)invalid('第二段备料输入超过6000 token；已保存回答，停止新增调用。');
@@ -147,6 +156,7 @@ export async function preparePitchV2(id:string,version:number,actor:string,repla
     const outline=changes.map((e,i)=>({id:`change-${i}`,heading:e.heading??subquestions.find(q=>q.id===e.subquestion)?.zh??e.reason!,evidence:(e.facts??[]).flatMap(id=>{const f=facts.find(f=>f.id===id)!;return f.article_id&&f.quote?[{article_id:f.article_id,quote:f.quote}]:[]}),gap:'',action:e.reason??''}));
     const engineer=plan.engineer_questions.map(q=>({...q,section_ids:q.section_ids.flatMap(id=>changes.map((e,i)=>e.subquestion===id?`change-${i}`:'').filter(Boolean))}));
     prep={...prep,subquestions,edit_plan:editPlan,conclusion:changes.length?'upgrade':'no_change',outline,titles:plan.titles,hooks:plan.hooks,engineer_questions:engineer,output_type:prep.output_type==='auto'?(page?'update':'guide'):prep.output_type};
+    delete prep.model_outcome;delete prep.pending_receipt_id;
     await complete('ready');return {status:'ready',subquestions:subquestions.length,changes:changes.length};
   }catch(error){
     const receiptId=failedReceiptId(error);
