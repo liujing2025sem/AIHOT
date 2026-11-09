@@ -59,6 +59,8 @@ test('authenticated compose API produces one review-only draft, double clicks re
   assert.equal(first.statusCode, 202, first.body); assert.equal(second.statusCode, 202, second.body);
   const taskId = first.json().task_id;
   assert.equal(second.json().task_id, taskId); assert.equal(modelCalls, 0, 'enqueueing never calls a model in the API process');
+  assert.equal((await app.inject({ method: 'GET', url: '/api/admin/studio/briefs/' + taskId })).statusCode, 401, 'private task progress is not a public read route');
+  assert.equal((await app.inject({ method: 'GET', url: '/api/admin/studio/briefs/' + taskId, headers: { cookie } })).statusCode, 200);
   await runStudioBriefJob({ taskId, actor });
   await runStudioBriefJob({ taskId, actor });
   assert.equal(modelCalls, 1, 'a completed worker invocation cannot buy another answer');
