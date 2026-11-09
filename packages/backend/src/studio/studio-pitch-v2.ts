@@ -14,7 +14,7 @@ import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from
 import {companyFactRules} from './studio-company-facts.ts';
 import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
-import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
+import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,revisionCharacterLimit,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
 function invalid(s:string):never{throw Object.assign(new Error(s),{statusCode:400});}
 const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/${name}.md`,import.meta.url),'utf8');
@@ -255,7 +255,15 @@ export async function generatePitchFragments(id:string,actor:string,options:{fra
     const facts=plan.facts.filter(f=>op.facts.includes(f.id));
     const question=plan.subquestions.find(q=>q.id===op.subquestion);
     const before=plan.paragraphs[pidx-1]?.text.slice(0,600)??'',after=plan.paragraphs[pidx+1]?.text.slice(0,600)??'';
-    const user=JSON.stringify({operation:op.op,heading:op.heading,question:question?.en,target:op.op==='revise'?target?.text.slice(0,600):undefined,context:{before,after},facts,engineer:packet.pitch!.engineer,withheld_numbers:packet.pitch!.withheld_numbers,method:methodExcerpt?{id:methodId,text:methodExcerpt}:null,output_format:{html_en:'HTML fragment only',zh_review:'仅本片段中文审校',used_facts:op.facts}});
+    const revision=op.op==='revise'&&target?{
+      target:target.text.slice(0,600), target_tag:target.html.match(/^\s*<([a-z][a-z0-9]*)\b/i)?.[1]?.toLowerCase(),
+      max_visible_chars_per_language:revisionCharacterLimit(target),
+    }:{};
+    const user=JSON.stringify({operation:op.op,heading:op.op==='insert_after'?op.heading:undefined,
+      editorial_reason:op.reason,question:question?.en,...revision,context:{before,after},facts,
+      engineer:packet.pitch!.engineer,withheld_numbers:packet.pitch!.withheld_numbers,
+      method:methodExcerpt?{id:methodId,text:methodExcerpt}:null,
+      output_format:{html_en:'HTML fragment only',zh_review:'仅本片段中文审校',used_facts:op.facts}});
     const saveFragment=()=>sql`UPDATE studio_recommendations SET document=jsonb_set(document,${['prep','fragments',String(fragments.indexOf(fragment))]}::text[],${sql.json(fragment as never)}),updated_at=now() WHERE id=${id} AND (document->'prep'->>'version')::int=${prep.version}`;
     const began=performance.now();fragment.status='running';delete fragment.error;await saveFragment();
     try{

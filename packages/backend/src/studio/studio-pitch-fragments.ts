@@ -525,6 +525,9 @@ function unsupported(text: string, allowed: readonly Quantity[]): string[] {
     .filter(claim => !allowed.some(basis => matchesQuantity(claim, basis))).map(claim => claim.raw))];
 }
 
+const visibleLength = (text: string) => [...text.replace(/\s+/gu, ' ')].length;
+export const revisionCharacterLimit = (original: Paragraph) => 2 * visibleLength(original.text);
+
 export function validateFragment(op: EditOperation, fragment: FragmentContent, facts: readonly Fact[], paragraphs: readonly Paragraph[]): string[] {
   const errors: string[] = [];
   const label = op.paragraph || '新增节';
@@ -542,9 +545,8 @@ export function validateFragment(op: EditOperation, fragment: FragmentContent, f
     const original = paragraphs.find(paragraph => paragraph.id === op.paragraph);
     if (!original) errors.push(label + '：找不到要改写的原段落。');
     else {
-      const length = (text: string) => [...text.replace(/\s+/gu, ' ')].length;
       for (const [language, text] of [['英文', english], ['中文', chinese]]) {
-        if (length(text) > 2 * length(original.text)) errors.push(label + '：改写的' + language + '正文超过原段长度的 2 倍。');
+        if (visibleLength(text) > revisionCharacterLimit(original)) errors.push(label + '：改写的' + language + '正文超过原段长度的 2 倍。');
       }
     }
   }
