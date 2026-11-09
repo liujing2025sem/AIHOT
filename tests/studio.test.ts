@@ -522,11 +522,17 @@ test('export waits for an in-flight revocation and cannot return the previously 
  const result=await output;assert.ok(result.error);assert.match(result.error.message,/审稿/);
 });
 
-test('Chinese text in public English fields is rejected at receive and save',async()=>{
+test('Chinese text is rejected at receive; private English edits persist but approval and export stay blocked',async()=>{
  const {task,response}=await input();response.drafts[0].body_en=`这是仅供内部审稿的中文正文。 ${response.drafts[0].source.url}`;
  await assert.rejects(receiveStudioTask(task.id,response,actor),/公开英文稿 body_en.*字符/);
- const clean=await input();await receiveStudioTask(clean.task.id,clean.response,actor);const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${clean.task.id}`;const d=(await studioDraft(row.id))!;
- await assert.rejects(saveStudioDraft(d.id,{...clean.response.drafts[0],version:d.version,title_en:'不应公开的中文标题'},actor),/公开英文稿 title_en/);
+ const clean=await input();await receiveStudioTask(clean.task.id,clean.response,actor);const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${clean.task.id}`;let d=(await studioDraft(row.id))!;
+ await saveStudioDraft(d.id,{...clean.response.drafts[0],version:d.version,title_en:'不应公开的中文标题'},actor);
+ d=(await studioDraft(d.id))!;
+ assert.equal(d.document.title_en,'不应公开的中文标题');assert.equal(d.status,'draft');
+ assert.ok(d.gate.findings.some(f=>f.ruleId==='D1'&&f.severity==='BLOCK'&&f.field==='title_en'&&f.reason.includes('含中文')));
+ await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(d.id))!;
+ await assert.rejects(reviewStudioDraft(d.id,{version:d.version,action:'approve',english_reviewed:true},actor),/否决项/);
+ await assert.rejects(exportStudioDraft(d.id,'html'),/审稿/);
 });
 
 test('withdrawing one confirmation from an approved draft revokes approval and export',async()=>{

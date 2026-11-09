@@ -243,7 +243,7 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
 });
 
 function operatorDeskFixture() {
-  const writes: { method: string | undefined; path: string }[] = [];
+  const writes: { method: string | undefined; path: string; body: unknown }[] = [];
   const generation = { ready: true, reason: '模拟写作接口已就绪。' };
   const rows = Array.from({ length: 6 }, (_, index) => ({
     id: `material-${index + 1}`, title: index === 5 ? '缺正文的公告' : `LED announcement ${index + 1}`,
@@ -252,16 +252,33 @@ function operatorDeskFixture() {
     body_status: index === 5 ? 'unconfirmed' : 'ok', body_length: index === 5 ? 0 : 200, last_extraction: null,
   }));
   const draft = { id: 'real-review-fixture', title_zh: '户外屏尺寸指南', title_en: 'Outdoor LED dimensions', status: 'in_review', version: 4, updated_at: '2026-11-08T10:00:00Z' };
+  // Synthetic API contract only: a selected batch yields one pending issue, never business news or a publication receipt.
+  const briefTaskId = 'brief-task-fixture';
+  const briefDraft = { id: 'brief-draft-fixture', title_zh: '模拟短讯合集', title_en: 'Synthetic LED brief', status: 'in_review', version: 1, updated_at: '2026-11-08T10:05:00Z' };
+  let briefCreated = false;
   const api = fakeApi(async (url, _res, req) => {
-    if (!['GET', 'HEAD'].includes(req.method ?? 'GET') && url.pathname !== '/api/site/track') writes.push({ method: req.method, path: url.pathname });
+    if (!['GET', 'HEAD'].includes(req.method ?? 'GET') && url.pathname !== '/api/site/track') {
+      let input = ''; for await (const chunk of req) input += chunk;
+      writes.push({ method: req.method, path: url.pathname, body: input ? JSON.parse(input) : undefined });
+    }
     if (url.pathname === '/api/admin/me') return { name: 'Synthetic operator', csrf: 'fixture', dev: false };
     if (url.pathname === '/api/admin/nav-counts') return {};
     if (url.pathname === '/api/admin/studio/review-metrics') return { tier: 30, backtestConfirmed: false, totalDrafts: 1, observedDrafts: 0, unobservedDrafts: 1, interventionRate: null, zeroMissStreak: 0, eligible20: false, eligible10: false, note: '模拟审稿情况', trend: [] };
     if (url.pathname === '/api/admin/studio/publishing/settings') return { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
     if (url.pathname === '/api/admin/studio/publishing/reviews') return { rows: [], weekly: { reasons: [] } };
-    if (url.pathname === '/api/admin/studio') return { rows, total: rows.length, page: 1, stats: { materials: rows.length, body_ready: 5, undated: 0, review: 1, approved: 0 }, generation, sources: [], tasks: [], drafts: [draft] };
+    if (url.pathname === '/api/admin/studio/briefs' && req.method === 'POST') {
+      briefCreated = true;
+      return { task_id: briefTaskId, state: 'queued' };
+    }
+    if (url.pathname === '/api/admin/studio/briefs/' + briefTaskId && req.method === 'GET' && briefCreated) return {
+      state: 'in_review', message: '模拟结果：1 篇短讯待审稿，尚未发布。', drafts: [{ id: briefDraft.id, status: briefDraft.status }],
+    };
+    if (url.pathname === '/api/admin/studio') return { rows, total: rows.length, page: 1, stats: { materials: rows.length, body_ready: 5, undated: 0, review: briefCreated ? 2 : 1, approved: 0 }, generation, sources: [],
+      tasks: briefCreated ? [{ id: briefTaskId, state: 'received', materials: 5, created_at: '2026-11-08T10:04:00Z', drafts: 1, articles: rows.slice(0, 5).map(({ id, title }) => ({ id, title })), decisions: null, brief: { schema: 'aihot-brief-selection/1' } }] : [],
+      drafts: briefCreated ? [draft, briefDraft] : [draft],
+    };
   });
-  return { api, writes, generation, draft };
+  return { api, writes, generation, draft, briefTaskId, briefDraft };
 }
 
 for (const width of [1440, 390]) test(`operator sidebar has one current destination and a safe review shortcut at ${width}`, async () => {
@@ -309,7 +326,7 @@ for (const width of [1440, 390]) test(`operator sidebar has one current destinat
   } finally { await browser?.close(); await web.stop(); }
 });
 
-for (const width of [1440, 390]) test(`selected material actions explain generation limits and unavailable inputs at ${width}`, async () => {
+for (const width of [1440, 390]) test(`selected material actions keep single-draft limits and compose five ready sources into one review issue at ${width}`, async () => {
   const fixture = operatorDeskFixture();
   const web = await startWebServer(fixture.api); let browser;
   try {
@@ -319,21 +336,47 @@ for (const width of [1440, 390]) test(`selected material actions explain generat
     await visit(page, web.origin + '/admin/studio');
     const selected = page.getByRole('region', { name: '已选素材操作', exact: true });
     const generate = selected.getByRole('button', { name: '一键评估并成稿', exact: true });
-    for (let number = 1; number <= 4; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
-    await expect(selected).toBeVisible(); await expect(selected).toContainText(/已选\s*4\s*条/); await expect(generate).toBeEnabled();
+    const compose = selected.getByRole('button', { name: '合成一期短讯', exact: true });
+    for (let number = 1; number <= 4; number++) {
+      await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
+      await expect(generate).toBeEnabled(); await expect(compose).toHaveCount(0);
+    }
+    await expect(selected).toBeVisible(); await expect(selected).toContainText(/已选\s*4\s*条/);
     await page.getByRole('checkbox', { name: '选择 LED announcement 5', exact: true }).check();
-    await expect(selected).toContainText(/已选\s*5\s*条/); await expect(generate).toBeDisabled();
-    await expect(selected).toContainText(/最多\s*4\s*条/);
-    for (let number = 2; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).uncheck();
+    await expect(selected).toContainText(/已选\s*5\s*条/); await expect(generate).toHaveCount(0); await expect(compose).toBeEnabled();
+    await expect(selected).toContainText(/5 个独立事件，合成 1 篇短讯待审稿/);
     await page.getByRole('checkbox', { name: '选择 缺正文的公告', exact: true }).check();
+    await expect(selected).toContainText(/已选\s*6\s*条/); await expect(compose).toBeDisabled();
+    await expect(selected).toContainText(/缺.*正文|正文.*缺|先补齐/);
+    for (let number = 2; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).uncheck();
     await expect(selected).toContainText(/已选\s*2\s*条/); await expect(generate).toBeDisabled();
+    await expect(compose).toHaveCount(0);
     await expect(selected).toContainText(/缺.*正文|正文.*缺|先补齐/);
 
     fixture.generation.ready = false; fixture.generation.reason = '模型调用未开启，请先配置写作渠道。';
     await page.reload();
     await page.getByRole('checkbox', { name: '选择 LED announcement 1', exact: true }).check();
     await expect(generate).toBeDisabled(); await expect(selected).toContainText(fixture.generation.reason);
+    for (let number = 2; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
+    await expect(generate).toHaveCount(0); await expect(compose).toBeDisabled(); await expect(selected).toContainText(fixture.generation.reason);
     assert.deepEqual(fixture.writes, [], 'selection and disabled-action explanations do not create tasks, call models or publish');
+
+    fixture.generation.ready = true; fixture.generation.reason = '模拟写作接口已就绪。';
+    await page.reload();
+    for (let number = 1; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
+    await expect(compose).toBeEnabled(); await compose.click();
+    await page.waitForURL(url => url.pathname === '/admin/studio' && url.searchParams.get('tab') === 'tasks' && url.searchParams.get('brief_task') === fixture.briefTaskId);
+    const task = page.locator('#task-' + fixture.briefTaskId);
+    await expect(task).toHaveCount(1); await expect(task).toContainText('一期短讯 · 5 条选材');
+    await expect(task.getByRole('button', { name: '评估并成稿', exact: true })).toHaveCount(0);
+    const review = task.getByRole('link', { name: '打开本期短讯审稿 →', exact: true });
+    await expect(review).toHaveCount(1); await expect(review).toHaveAttribute('href', '/admin/studio/drafts/' + fixture.briefDraft.id);
+    await expect(task).toContainText('1 篇短讯待审稿，尚未发布。');
+    assert.deepEqual(fixture.writes, [{ method: 'POST', path: '/api/admin/studio/briefs', body: { article_ids: [1, 2, 3, 4, 5].map(number => `material-${number}`) } }], 'five-source selection issues one composition command, never the per-material generation or publication command');
+    await visit(page, web.origin + '/admin/studio?tab=drafts&status=in_review');
+    await expect(page.getByRole('heading', { name: fixture.briefDraft.title_zh, exact: true })).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: fixture.draft.title_zh, exact: true })).toHaveCount(1);
+    assert.equal(fixture.writes.length, 1, 'opening the draft list does not repeat composition');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);
   } finally { await browser?.close(); await web.stop(); }
