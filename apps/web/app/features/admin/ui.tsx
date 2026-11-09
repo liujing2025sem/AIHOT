@@ -1,8 +1,11 @@
 // Shared admin building blocks: page frame, cards, stats, badges, tables, buttons, fields and a
 // reason dialog (manual changes always carry a reason for the audit log).
-import { AnimatePresence, motion } from "motion/react";
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { cloneElement, createContext, isValidElement, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
+import { LoaderCircle } from "lucide-react";
+import { Button as LibraryButton } from "../../components/ui/primitives/button";
+import { Input as LibraryInput, Textarea as LibraryTextarea, fieldClasses } from "../../components/ui/primitives/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "../../components/ui/primitives/dialog";
 import { ago, bj } from "./format";
 
 export function AdminPage({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode }) {
@@ -139,12 +142,12 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 type ButtonTone = "primary" | "secondary" | "danger" | "ghost";
-const BTN: Record<ButtonTone, string> = {
-  primary: "bg-ink text-bg hover:opacity-85",
-  secondary: "bg-surface text-ink ring-1 ring-line-strong hover:bg-bg-sunk",
-  danger: "bg-hot text-white hover:opacity-90",
-  ghost: "text-ink-2 hover:bg-bg-sunk",
-};
+const buttonVariant = {
+  primary: "default",
+  secondary: "secondary",
+  danger: "destructive",
+  ghost: "ghost",
+} as const;
 
 export function Button({
   tone = "secondary",
@@ -153,59 +156,58 @@ export function Button({
   children,
   className = "",
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: ButtonTone; size?: "sm" | "md"; busy?: boolean }) {
+}: React.ComponentProps<"button"> & { tone?: ButtonTone; size?: "sm" | "md"; busy?: boolean }) {
   return (
-    <button
-      type="button"
+    <LibraryButton
       {...rest}
       disabled={rest.disabled || busy}
-      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-[opacity,background-color,transform] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 ${
-        size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-9 px-3.5 text-[13.5px]"
-      } ${BTN[tone]} ${className}`}
+      aria-busy={busy || undefined}
+      variant={buttonVariant[tone]}
+      size={size === "sm" ? "sm" : "default"}
+      className={className}
     >
-      {busy && <span className="size-3 animate-spin rounded-full border-[1.5px] border-current border-r-transparent" />}
+      {busy && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
       {children}
-    </button>
+    </LibraryButton>
   );
 }
 
 export function ButtonLink({ to, children, tone = "secondary", size = "md" }: { to: string; children: ReactNode; tone?: ButtonTone; size?: "sm" | "md" }) {
   return (
-    <Link
-      to={to}
-      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-[opacity,background-color] ${
-        size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-9 px-3.5 text-[13.5px]"
-      } ${BTN[tone]}`}
-    >
-      {children}
-    </Link>
+    <LibraryButton asChild variant={buttonVariant[tone]} size={size === "sm" ? "sm" : "default"}>
+      <Link to={to}>{children}</Link>
+    </LibraryButton>
   );
 }
 
-const INPUT = "w-full rounded-control bg-surface px-3 py-2 text-[13.5px] text-ink ring-1 ring-line-strong outline-none transition-shadow placeholder:text-ink-4 focus:ring-2 focus:ring-accent";
-
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
-  const id = useId();
+  const generatedId = useId();
+  const control = isValidElement<{ id?: string; "aria-describedby"?: string }>(children) ? children : null;
+  const id = control?.props.id ?? generatedId;
+  const hintId = `${id}-hint`;
   return (
-    <label htmlFor={id} className="block">
-      <span className="mb-1 block text-[12.5px] font-medium text-ink-2">{label}</span>
-      <span className="[&>*]:w-full" id={id}>{children}</span>
-      {hint && <span className="mt-1 block text-[12px] text-ink-4">{hint}</span>}
-    </label>
+    <div className="block">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink-2">{label}</label>
+      <div className="[&>*]:w-full">{control ? cloneElement(control, {
+        id,
+        "aria-describedby": [control.props["aria-describedby"], hint ? hintId : undefined].filter(Boolean).join(" ") || undefined,
+      }) : children}</div>
+      {hint && <p id={hintId} className="mt-1.5 text-xs leading-relaxed text-ink-3">{hint}</p>}
+    </div>
   );
 }
 
 export function Input(props: React.ComponentProps<"input">) {
-  return <input {...props} className={`${INPUT} ${props.className ?? ""}`} />;
+  return <LibraryInput {...props} />;
 }
 
 export function Textarea(props: React.ComponentProps<"textarea">) {
-  return <textarea {...props} className={`${INPUT} min-h-[84px] resize-y leading-relaxed ${props.className ?? ""}`} />;
+  return <LibraryTextarea {...props} />;
 }
 
 export function Select({ children, ...props }: React.ComponentProps<"select">) {
   return (
-    <select {...props} className={`${INPUT} appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-8 ${props.className ?? ""}`} style={{ backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M3 4.5l3 3 3-3' fill='none' stroke='%2366757a' stroke-width='1.4'/></svg>\")" }}>
+    <select {...props} className={`${fieldClasses} min-h-10 appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-8 ${props.className ?? ""}`} style={{ backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M3 4.5l3 3 3-3' fill='none' stroke='%2366757a' stroke-width='1.4'/></svg>\")", ...props.style }}>
       {children}
     </select>
   );
@@ -295,57 +297,46 @@ export function ReasonDialog({
   busy?: boolean;
 }) {
   const [reason, setReason] = useState("");
+  const descriptionId = useId();
   const ref = useRef<HTMLTextAreaElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!open) return;
     setReason("");
-    const t = setTimeout(() => ref.current?.focus(), 60);
-    return () => clearTimeout(t);
   }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div className="fixed inset-0 z-[75] flex items-end justify-center p-3 sm:items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-ink/30 backdrop-blur-[2px]" onClick={onClose} />
-          <motion.form
-            role="dialog"
-            aria-modal="true"
-            initial={{ y: 16, scale: 0.98, opacity: 0 }}
-            animate={{ y: 0, scale: 1, opacity: 1 }}
-            exit={{ y: 10, scale: 0.98, opacity: 0 }}
-            transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-            className="relative w-full max-w-lg rounded-sheet bg-raised p-5 shadow-2xl ring-1 ring-line-strong"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (requireReason && !reason.trim()) return;
-              const closed = await onSubmit(reason.trim());
-              if (closed !== false) onClose();
-            }}
-          >
-            <h2 className="text-[16px] font-semibold text-ink">{title}</h2>
-            {description && <div className="mt-1.5 text-[13px] leading-relaxed text-ink-3">{description}</div>}
-            {children && <div className="mt-4 space-y-3">{children}</div>}
-            <div className="mt-4">
-              <Field label={requireReason ? "原因（写进审计记录）" : "备注（可选）"}>
-                <Textarea ref={ref} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={requireReason ? "为什么做这个改动" : ""} rows={2} />
-              </Field>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button tone="ghost" onClick={onClose}>取消</Button>
-              <Button type="submit" tone={danger ? "danger" : "primary"} busy={busy} disabled={requireReason && !reason.trim()}>
-                {confirmLabel}
-              </Button>
-            </div>
-          </motion.form>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
+      <DialogContent
+        aria-describedby={description ? descriptionId : undefined}
+        onOpenAutoFocus={(event) => {
+          returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          if (ref.current) { event.preventDefault(); ref.current.focus(); }
+        }}
+        onCloseAutoFocus={(event) => {
+          if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus(); }
+        }}
+      >
+        <form onSubmit={async (event) => {
+          event.preventDefault();
+          if (busy || requireReason && !reason.trim()) return;
+          const closed = await onSubmit(reason.trim());
+          if (closed !== false) onClose();
+        }}>
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription id={descriptionId} asChild><div>{description}</div></DialogDescription>}
+          {children && <div className="mt-5 space-y-3">{children}</div>}
+          <div className="mt-5">
+            <Field label={requireReason ? "原因（写进审计记录）" : "备注（可选）"}>
+              <Textarea ref={ref} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={requireReason ? "为什么做这个改动" : ""} rows={2} />
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button tone="ghost" onClick={onClose}>取消</Button>
+            <Button type="submit" tone={danger ? "danger" : "primary"} busy={busy} disabled={requireReason && !reason.trim()}>{confirmLabel}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

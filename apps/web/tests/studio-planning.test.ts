@@ -162,7 +162,7 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
     const page=await browser.newPage({viewport:{width:390,height:844}});
     const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
     await visit(page,web.origin+'/admin/studio');
-    await expect(page.getByRole('link',{name:'+ 命题',exact:true})).toHaveAttribute('href','/admin/studio/pitch');
+    await expect(page.getByRole('link',{name:'写专业文章',exact:true})).toHaveAttribute('href','/admin/studio/pitch');
     await visit(page,web.origin+'/admin/studio/pitch?question_id='+questionId);
     const question=page.getByRole('textbox',{name:'问题或命题',exact:true});
     const preview=page.getByRole('button',{name:'预览脱敏',exact:true}),save=page.getByRole('button',{name:'保存并开始备料',exact:true});
@@ -240,6 +240,103 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
     assert.ok(requestedUrls.every(url=>!decodeURIComponent(url).includes('fixture@example.test')));
     assert.deepEqual(errors,[]);
   }finally{await browser?.close();await web.stop();}
+});
+
+function operatorDeskFixture() {
+  const writes: { method: string | undefined; path: string }[] = [];
+  const generation = { ready: true, reason: '模拟写作接口已就绪。' };
+  const rows = Array.from({ length: 6 }, (_, index) => ({
+    id: `material-${index + 1}`, title: index === 5 ? '缺正文的公告' : `LED announcement ${index + 1}`,
+    url: `https://maker.example.test/announcement-${index + 1}`, source_name: 'Official fixture',
+    published_at: '2026-11-08T08:00:00Z', publication_time: '2026-11-08', discovered_at: '2026-11-08T09:00:00Z',
+    body_status: index === 5 ? 'unconfirmed' : 'ok', body_length: index === 5 ? 0 : 200, last_extraction: null,
+  }));
+  const draft = { id: 'real-review-fixture', title_zh: '户外屏尺寸指南', title_en: 'Outdoor LED dimensions', status: 'in_review', version: 4, updated_at: '2026-11-08T10:00:00Z' };
+  const api = fakeApi(async (url, _res, req) => {
+    if (!['GET', 'HEAD'].includes(req.method ?? 'GET') && url.pathname !== '/api/site/track') writes.push({ method: req.method, path: url.pathname });
+    if (url.pathname === '/api/admin/me') return { name: 'Synthetic operator', csrf: 'fixture', dev: false };
+    if (url.pathname === '/api/admin/nav-counts') return {};
+    if (url.pathname === '/api/admin/studio/review-metrics') return { tier: 30, backtestConfirmed: false, totalDrafts: 1, observedDrafts: 0, unobservedDrafts: 1, interventionRate: null, zeroMissStreak: 0, eligible20: false, eligible10: false, note: '模拟审稿情况', trend: [] };
+    if (url.pathname === '/api/admin/studio/publishing/settings') return { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
+    if (url.pathname === '/api/admin/studio/publishing/reviews') return { rows: [], weekly: { reasons: [] } };
+    if (url.pathname === '/api/admin/studio') return { rows, total: rows.length, page: 1, stats: { materials: rows.length, body_ready: 5, undated: 0, review: 1, approved: 0 }, generation, sources: [], tasks: [], drafts: [draft] };
+  });
+  return { api, writes, generation, draft };
+}
+
+for (const width of [1440, 390]) test(`operator sidebar has one current destination and a safe review shortcut at ${width}`, async () => {
+  const fixture = operatorDeskFixture();
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    await visit(page, web.origin + '/admin/studio');
+    await expect(page.getByRole('heading', { name: '今日选稿', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: '继续审稿', exact: true })).toHaveAttribute('href', '/admin/studio/drafts/' + fixture.draft.id);
+    const trigger = page.getByRole('button', { name: '打开工作台导航', exact: true });
+    const dialog = page.getByRole('dialog');
+    if (width === 390) {
+      await trigger.click(); await expect(dialog).toBeVisible();
+    }
+    for (const name of ['今日选稿', '专业内容', '我的稿件', '发布记录']) await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: '今日选稿', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
+    await expect(page.getByRole('link', { name: '专业内容', exact: true })).toHaveAttribute('href', '/admin/studio/pitch');
+    await expect(page.getByRole('link', { name: '发布记录', exact: true })).toHaveAttribute('href', '/admin/studio/published');
+    if (width === 390) {
+      await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
+      await trigger.click();
+    }
+    await page.getByRole('link', { name: '我的稿件', exact: true }).click();
+    await page.waitForURL(url => url.pathname === '/admin/studio' && url.searchParams.get('tab') === 'drafts');
+    if (width === 390) { await expect(dialog).toHaveCount(0); await trigger.click(); }
+    await expect(page.getByRole('link', { name: '我的稿件', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('link', { name: '今日选稿', exact: true })).not.toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
+    if (width === 390) await page.keyboard.press('Escape');
+
+    await visit(page, web.origin + '/admin/studio?tab=drafts&status=in_review');
+    if (width === 390) await trigger.click();
+    await expect(page.getByRole('link', { name: '我的稿件', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
+    if (width === 390) await page.keyboard.press('Escape');
+    await visit(page, web.origin + '/admin/studio');
+    await page.getByRole('checkbox', { name: '选择 LED announcement 1', exact: true }).check();
+    assert.deepEqual(fixture.writes, [], 'navigation, existing-draft discovery and selecting material never start a model or publication command');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser?.close(); await web.stop(); }
+});
+
+for (const width of [1440, 390]) test(`selected material actions explain generation limits and unavailable inputs at ${width}`, async () => {
+  const fixture = operatorDeskFixture();
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    await visit(page, web.origin + '/admin/studio');
+    const selected = page.getByRole('region', { name: '已选素材操作', exact: true });
+    const generate = selected.getByRole('button', { name: '一键评估并成稿', exact: true });
+    for (let number = 1; number <= 4; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
+    await expect(selected).toBeVisible(); await expect(selected).toContainText(/已选\s*4\s*条/); await expect(generate).toBeEnabled();
+    await page.getByRole('checkbox', { name: '选择 LED announcement 5', exact: true }).check();
+    await expect(selected).toContainText(/已选\s*5\s*条/); await expect(generate).toBeDisabled();
+    await expect(selected).toContainText(/最多\s*4\s*条/);
+    for (let number = 2; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).uncheck();
+    await page.getByRole('checkbox', { name: '选择 缺正文的公告', exact: true }).check();
+    await expect(selected).toContainText(/已选\s*2\s*条/); await expect(generate).toBeDisabled();
+    await expect(selected).toContainText(/缺.*正文|正文.*缺|先补齐/);
+
+    fixture.generation.ready = false; fixture.generation.reason = '模型调用未开启，请先配置写作渠道。';
+    await page.reload();
+    await page.getByRole('checkbox', { name: '选择 LED announcement 1', exact: true }).check();
+    await expect(generate).toBeDisabled(); await expect(selected).toContainText(fixture.generation.reason);
+    assert.deepEqual(fixture.writes, [], 'selection and disabled-action explanations do not create tasks, call models or publish');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser?.close(); await web.stop(); }
 });
 
 test('pitch v2 explains the plan and only retries the chosen fragment after consent on a narrow screen',async()=>{
