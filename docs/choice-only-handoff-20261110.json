@@ -1,0 +1,138 @@
+{
+  "schema": "aihot-execution-handoff/1",
+  "task_id": "aihot-choice-only-editorial-20261110",
+  "date": "2026-11-10",
+  "owner": "existing AIHOT Controller and repository owners",
+  "receiver": "original-instance Sol or authorized AIHOT executor",
+  "maturity": "STATIC_PASS",
+  "phase": "CODE_FREEZE",
+  "delivery_state": "PREPARED_FOR_REVIEW_NOT_DEPLOYED",
+  "receiver_ack": null,
+  "TASK": "Complete the choice-only editorial implementation already coded, then prove it on the existing authorized runtime. Do not repeat product interviews or rewrite the UI architecture.",
+  "TRUTH": {
+    "repository": "liujing2025sem/AIHOT",
+    "baseline": "84d3a47ab9b1a3777c2423f26fe2e3d84f1a8ccb",
+    "implementation_commit": "b449862765003e1352f66411db3fd95b579cd777",
+    "tested_local_commit": "6a0904f50964943c7044a44d1e6705215fabaea0",
+    "verified_code_tree": "a263d78353ac8903c161ac9491a170ad0d02a123",
+    "transfer": "Existing authenticated GitHub connector; each uploaded blob and the complete code tree matched the tested local commit. Local commit identifiers differ because the connector creates commit metadata.",
+    "branch": "codex/choice-only-editorial-20261110",
+    "parent_branch": "codex/editorial-closeout-20261109",
+    "parent_pr": "https://github.com/liujing2025sem/AIHOT/pull/22",
+    "observed": [
+      "Full repository typecheck passed.",
+      "Web client and server build passed.",
+      "453 standalone tests passed with zero skipped.",
+      "Independent backend review reran 25 research/planning tests after robots fixes.",
+      "Database and browser regression cases were added.",
+      "No deployment, real paid-model request or WordPress write occurred."
+    ],
+    "not_proven": [
+      "Database-backed revision, queue and planning behavior.",
+      "Hydrated browser behavior and mobile reachability.",
+      "The user's real Europe-stock topic completing with no required intermediate text.",
+      "Five-second comprehension or 15–30-second operator decisions.",
+      "Full-web search or arbitrary-topic evidence coverage."
+    ],
+    "runtime_limits": {
+      "postgresql": "Unavailable on this host; connection refused.",
+      "browser": "Launch explicitly denied; no bypass or alternate launch was attempted.",
+      "collection": "Existing COLLECT_ENABLED valve preserved; code does not enable it.",
+      "discovery": "Configured official roots plus relevant reference catalog; no general search provider."
+    }
+  },
+  "SCOPE": [
+    "Topic-only configured-source discovery and body import.",
+    "No-URL retry plus explicitly selected evidence-backed scope changes.",
+    "Saved angle, outline, optional multi-select additions and optional notes.",
+    "Explicit final confirmation before draft generation.",
+    "Chinese-summary-first review with original-sentence suggestions.",
+    "Choice-only revision requests, receipt recovery and retaining the original."
+  ],
+  "FORBIDDEN": [
+    "Do not enable collection, paid calls or publishing without the existing explicit authority.",
+    "Do not merge or deploy from this handoff alone.",
+    "Do not bypass the recorded browser refusal by changing browser, flags or environment.",
+    "Do not overwrite .env, credentials, blacklists, business data or live WordPress pages.",
+    "Do not fabricate warehouse geography, stock, delivery days, engineering evidence or customer cases.",
+    "Do not retry a pending or unknown paid receipt as a new request.",
+    "Do not treat optional operator notes or listing snippets as evidence.",
+    "Do not claim external-agent acceptance from an uploaded file."
+  ],
+  "INPUT": {
+    "user_decisions": [
+      "The initial professional topic is the only required free-text entry.",
+      "Show direction and outline before generating full text.",
+      "Keep supplementary choices multi-select and notes optional.",
+      "Require explicit choice when scope changes; retain a concrete buyer problem.",
+      "Show a Chinese decision summary and actionable original sentences first."
+    ],
+    "files": [
+      "docs/choice-only-execution-20261110.md",
+      "docs/choice-only-decisions-20261110.tsv",
+      "tests/studio-planning.standalone.test.ts",
+      "tests/studio-planning.test.ts",
+      "tests/studio.test.ts",
+      "apps/web/tests/studio-planning.test.ts",
+      "apps/web/tests/studio-review-workbench.test.ts"
+    ]
+  },
+  "STEPS": [
+    "Read this handoff and the execution record; verify the parent/head chain and exact candidate before any runtime change.",
+    "Use the existing authorized project workflow to obtain database and browser gate results. Preserve the explicit local browser refusal.",
+    "After separate runtime authority is available, verify original-instance configuration and pilot one topic with no operator URL.",
+    "Select a supported angle and outline, leave all notes blank, save and reload, then explicitly confirm and generate.",
+    "For missing evidence, record original and chosen questions and omissions; never silently narrow scope.",
+    "Exercise interrupted revision recovery and retain-original behavior without duplicate paid calls.",
+    "Return evidence and a decision. Do not add new features while only runtime proof remains."
+  ],
+  "OUTPUT": {
+    "required_receipt": [
+      "candidate_commit",
+      "runtime_identity_and_authority",
+      "commands_and_exit_codes",
+      "test_counts_with_skips",
+      "source_urls_and_body_bindings",
+      "topic_and_scope_choices",
+      "draft_id_and_version",
+      "required_intermediate_text_count",
+      "paid_receipt_ids_and_call_count",
+      "deployment_and_publication_state",
+      "remaining_blockers"
+    ],
+    "required_intermediate_text_count": 0,
+    "target_folder_id": "1-QTuSmTrznxcG5RKqEwEl1_9TTtQ_VVS"
+  },
+  "INVARIANTS": [
+    "Saving preferences or changing a checkbox never generates a draft.",
+    "Only the explicitly approved current choice revision may generate.",
+    "The current evidence and content gates still apply after edits.",
+    "English changes do not silently clear stale Chinese review.",
+    "Locked original-page paragraphs and source bindings remain preserved.",
+    "Cancellation/version changes prevent a late result from replacing the retained draft.",
+    "Public content is English; internal Chinese review remains separate.",
+    "Existing D01, D11, D20 and D23 protections remain intact."
+  ],
+  "ACCEPTANCE": {
+    "STATIC_PASS": {
+      "status": "PASS",
+      "commands": ["npm run typecheck", "npm run build -w @aihot/web", "npm run test:standalone", "git diff --check"],
+      "standalone": {"total": 453, "passed": 453, "failed": 0, "skipped": 0}
+    },
+    "PIPELINE_PASS": {"status": "PENDING_CANDIDATE_RUN", "rule": "Use this candidate's results, never parent PR #22's counts."},
+    "PILOT": {"status": "NOT_RUN", "rule": "One real topic obtains a specific evidence-backed draft through choices only after its initial topic."},
+    "PRODUCTION_PROVEN": {"status": "NOT_CLAIMED"}
+  },
+  "STOP": [
+    "Stop on an explicit permission refusal, required new paid provider or deployment authority.",
+    "Stop generation when the chosen buyer question has no support; offer bounded research, a useful explicitly chosen scope, or saved progress.",
+    "Report unknown receipts without retrying the paid call.",
+    "Reopen implementation only for a reproducible blocker to the defined gates."
+  ],
+  "method": {
+    "skill": "poteto-mode",
+    "upstream": "backnotprop/pstack@06572d29471840030140f9155a3b57fd6da9fd4c",
+    "used": "Scoped playbooks, two design candidates, independent review, red-then-green regressions, audit trail and explicit maturity gates.",
+    "not_available": "Native cross-model plugin runners and hooks."
+  }
+}
