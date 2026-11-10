@@ -402,14 +402,14 @@ function Editor({ row }: { row: Detail }) {
           {row.engineer_review.reply&&<p className="mt-2 text-xs leading-6">{row.engineer_review.reply}</p>}
         </Card>}
         <DraftFigures id={row.id} version={row.version} />
-        {row.status === 'approved' && <><WordPressDraft row={row} dirty={dirty} busy={busy} run={run} />
+        {(!row.upgrade_context || row.status === 'approved') && <WordPressDraft row={row} dirty={dirty} busy={busy} run={run} />}
 
-        <Card title="交付成稿">
+        {row.status === 'approved' && <Card title="交付成稿">
           {row.status === 'approved' && !dirty ? <div className="flex flex-wrap gap-2">
             {['md', 'html', 'json'].map(format => <a key={format} href={'/api/admin/studio/drafts/' + row.id + '/export?format=' + format} className="rounded-control border border-accent/30 px-3 py-2 text-xs font-medium text-accent">{'英文 ' + format.toUpperCase()}</a>)}
             <a href={'/api/admin/studio/drafts/' + row.id + '/export?format=review'} className="rounded-control border border-line px-3 py-2 text-xs text-ink-3">内部中英审稿包</a>
           </div> : <p className="text-xs leading-6 text-ink-3">人工审核通过后，可下载 Markdown、HTML 和结构化稿件。导出不会自动发布到公司网站。</p>}
-        </Card></>}
+        </Card>}
 
         <Card>
           <Accordion type="single" collapsible>

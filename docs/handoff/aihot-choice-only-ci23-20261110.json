@@ -1,0 +1,87 @@
+{
+  "schema": "aihot-execution-delta/1",
+  "task_id": "aihot-choice-only-ci23-ux2-calibration-20261110",
+  "date": "2026-11-10",
+  "timezone": "Asia/Shanghai",
+  "predecessor": "docs/choice-only-handoff-20261110.json",
+  "receiver": "existing AIHOT repository owners and original-instance Sol",
+  "receiver_ack": null,
+  "maturity": "STATIC_PASS",
+  "delivery_state": "CANDIDATE_FIX_NOT_DEPLOYED",
+  "TASK": "Restore explicit one-click access without exposing unapproved original-page upgrade delivery; calibrate UX2 reference against current source.",
+  "TRUTH": {
+    "repository": "liujing2025sem/AIHOT",
+    "pr": "https://github.com/liujing2025sem/AIHOT/pull/23",
+    "branch": "codex/choice-only-editorial-20261110",
+    "previous_remote_head": "e0abdf2b84b6232b242ab19edb67132d91f98539",
+    "previous_local_head": "9b34fab0733fe345e8a005e3e555c5933c93929b",
+    "previous_identical_tree": "132c656d904506dbe322ca6f9c39b431acc1614c",
+    "failed_workflow_run": 42805458925,
+    "failed_job": 129793316186,
+    "observed_web_tests": {"passed": 100, "failed": 2, "skipped": 0},
+    "backend_tests_at_failed_run": "SKIPPED",
+    "root_cause": "Manual approved state hid WordPressDraft including independently enabled DirectPublish.",
+    "fix": "Render WordPressDraft for ordinary drafts or approved upgrades. Keep exports approved-only and inner controls unchanged.",
+    "scope_reference": "AIHOT-REFERENCE-WORKBUDDY-20261110 is DESIGN/proposed, not proof of deployed assets or expanded publication authority."
+  },
+  "SCOPE": [
+    "One UI file, three lines changed; no tests or fixtures changed.",
+    "Append-only source calibration and evidence handoff."
+  ],
+  "FORBIDDEN": [
+    "No merge, deploy, real publication, paid model call or setting change.",
+    "Do not retry the refused browser startup or use another environment to bypass it.",
+    "Do not relax the ordinary one-click or original-page upgrade tests.",
+    "Do not claim complete choice-only behavior in social or post-publication correction flows.",
+    "Do not implement proposed UX2 asset or template systems from this reference alone."
+  ],
+  "INPUT": [
+    "docs/LIVE.md D-01, D-18, D-22, D-23 and G1/G3.",
+    "Existing CI failure and current publishing/workbench tests.",
+    "Drive UX2 reference and plan, read without overwriting."
+  ],
+  "STEPS": [
+    "Verify candidate branch and exact content tree before acting.",
+    "Read the existing PR workflow for this candidate; keep old and new results separate.",
+    "Only reopen code for a reproducible gate failure.",
+    "Keep UX2 asset aggregation, reusable templates and adoption metrics proposed until scoped implementation is authorized."
+  ],
+  "OUTPUT": {
+    "report": "docs/reviews/choice-only-ci23-ux2-20261110.md",
+    "candidate_identity": "Resolve from the commit containing this delta and verify its tree against the local commit; do not infer from a report timestamp.",
+    "drive_parent_id": "1ddY-wLvIRElHvjKbnDE8CaaVXGL8yr7_"
+  },
+  "INVARIANTS": [
+    "One-click remains disabled until settings explicitly enable it.",
+    "One-click does not manufacture human approval.",
+    "Dirty or busy drafts cannot publish through the UI.",
+    "Unapproved original-page upgrades do not show shadow delivery or DirectPublish.",
+    "Approved upgrade shadow delivery and manual export retain existing gates.",
+    "No screenshot or runtime result is inferred from source review."
+  ],
+  "ACCEPTANCE": {
+    "web_typecheck": "PASS",
+    "web_client_server_build": "PASS",
+    "diff_check": "PASS",
+    "browser_local": "NOT_RUN_PERMISSION_REFUSAL_PRESERVED",
+    "new_candidate_pipeline": "PENDING",
+    "five_second_comprehension": "NOT_MEASURED",
+    "real_topic_pilot": "NOT_RUN",
+    "deployed": false,
+    "published": false
+  },
+  "UX2_CALIBRATION": {
+    "actual_components": ["React", "React Router", "Radix", "Tailwind"],
+    "mui_installed": false,
+    "current_news_days": 14,
+    "current_upstream_update_days": 30,
+    "proposed_only": ["same-manuscript asset area", "previewable column templates", "adoption and cost review"],
+    "remaining_required_text": ["social published URL", "social return note", "post-publication replacement text"],
+    "asset_limits": ["figure GET may render on demand", "preview lacks explicit draft version", "informative figures currently append to body end"]
+  },
+  "STOP": [
+    "Stop on permission refusal, missing runtime authority or real publication demand.",
+    "Do not treat uploaded handoff as external-agent acknowledgement.",
+    "Do not label the patch PIPELINE_PASS until its actual workflow passes."
+  ]
+}
