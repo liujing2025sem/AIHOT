@@ -54,7 +54,7 @@ function sentenceAt(body: string, start: number, end: number) {
   return null;
 }
 
-function editedFragmentPacket(packet: Packet, draft: EditorialDraft, start: number, end: number, after: string): Packet | null {
+export function editedFragmentPacket(packet: Packet, draft: EditorialDraft, start: number, end: number, after: string): Packet | null {
   const plan = packet.pitch?.fragments_plan;
   if (!plan?.fragments) return packet;
   const assembled = assembleFragments(plan.paragraphs, plan.edit_plan, plan.fragments);

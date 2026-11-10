@@ -12,7 +12,8 @@ import {searchPitchMaterials} from './studio-pitch-evidence.ts';
 import {importLink,type Prep} from './studio-pitch.ts';
 import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from './studio.ts';
 import {companyFactRules} from './studio-company-facts.ts';
-import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
+import {discoverPitchEvidence} from './studio-pitch-research.ts';
+import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,editorialAdditions,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
 import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,revisionCharacterLimit,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
@@ -21,7 +22,7 @@ const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/$
 type Question=z.infer<typeof buyerQuestionsSchema>['subquestions'][number];
 type Coverage={status:'page_good'|'page_weak'|'direct'|'calc'|'engineer'|'missing';page_paragraphs:string[];evidence:string[];reason?:string;action?:string};
 type Fragment={op_index:number;status:'pending'|'running'|'done'|'unknown'|'failed';html_en?:string;zh_review?:string;used_facts?:string[];figure?:z.infer<typeof fragmentSchema>['figure'];receipt_id?:number|null;error?:string;elapsed_ms?:number};
-type V2=Prep & {workflow_version:2;subquestions?:Array<Question&{coverage:Coverage;demand:{queries:Record<string,unknown>[];inquiries:number}}>;paragraphs?:Paragraph[];source_html?:string;original_title?:string;facts?:Fact[];edit_plan?:EditOperation[];weak_material_ids?:string[];conclusion?:string;fragments?:Fragment[];assembled?:Record<string,unknown>};
+type V2=Prep & {workflow_version:2;reuse_questions?:boolean;research_question_id?:string;subquestions?:Array<Question&{coverage:Coverage;demand:{queries:Record<string,unknown>[];inquiries:number}}>;paragraphs?:Paragraph[];source_html?:string;original_title?:string;facts?:Fact[];edit_plan?:EditOperation[];weak_material_ids?:string[];conclusion?:string;fragments?:Fragment[];assembled?:Record<string,unknown>};
 const cardFor=async(id:string)=>{const [row]=await sql`SELECT * FROM studio_recommendations WHERE id=${id}`;return row;};
 const savePrep=async(id:string,prep:V2)=>sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json(prep as never)}),updated_at=now() WHERE id=${id} AND (document->'prep'->>'version')::int=${prep.version}`;
 
@@ -59,7 +60,7 @@ async function demandFor(questions:Question[],url:string){
   return Object.fromEntries(questions.map(q=>[q.id,{queries:signals.filter(r=>canonical(r.record.page)===canonical(url)&&q.terms.some(t=>String(r.record.query).toLowerCase().includes(t.toLowerCase()))).map(r=>r.record),inquiries:inquiries.filter(r=>q.terms.some(t=>String(r.record.question_rewrite).toLowerCase().includes(t.toLowerCase()))).length}]));
 }
 
-export async function preparePitchV2(id:string,version:number,actor:string,mode:boolean|{retryEditPlanReceiptId:number}=false){
+export async function preparePitchV2(id:string,version:number,actor:string,mode:boolean|{retryEditPlanReceiptId:number}=false,research:typeof discoverPitchEvidence=discoverPitchEvidence){
   const replay=mode===true,retry=typeof mode==='object'?mode:null,reuseInputs=replay||!!retry;
   const card=await cardFor(id);let prep=card?.document.prep as V2;
   if(!prep||prep.version!==version||prep.status!=='preparing'&&!reuseInputs||retry&&prep.status==='ready')return {reused:true};
@@ -90,15 +91,31 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     const paragraphs=splitPage(sourceHtml);
     prep={...prep,paragraphs,source_html:sourceHtml,original_title:page?.title??'',link_errors};
     const system=prompt('studio-pitch-subquestions');
-    const first=await call({model:'default',purpose:'studio_prep_subquestions',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system),system,user:JSON.stringify({question:prep.question,existing_page:page?{title:page.title,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,110)}))}:null}),schema:buyerQuestionsSchema,maxTokens:2400,timeoutMs:45000,sessionId:id},reuseInputs);
-    receipts.push({id:first.receiptId,usage:first.usage,model:first.model});
-    const questions=first.data.subquestions;
+    let decomposition:{question_en:string;subquestions:Question[]};
+    if(prep.reuse_questions&&prep.subquestions?.length){
+      decomposition={question_en:prep.question_en??prep.question,subquestions:prep.subquestions};
+    }else{
+      const first=await call({model:'default',purpose:'studio_prep_subquestions',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system),system,user:JSON.stringify({question:prep.question,existing_page:page?{title:page.title,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,110)}))}:null}),schema:buyerQuestionsSchema,maxTokens:2400,timeoutMs:45000,sessionId:id},reuseInputs);
+      receipts.push({id:first.receiptId,usage:first.usage,model:first.model});decomposition=first.data;
+    }
+    const questions=decomposition.subquestions;
     if(new Set(questions.map(q=>q.id)).size!==questions.length)invalid('子问题编号重复，需检查保存的回答。');
     const candidates=reuseInputs?(prep.materials??[]):await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
     const materials:NonNullable<Prep['materials']>=[...linked,...candidates.filter(m=>!linked.some(l=>l.id===m.id))];
-    const htmls=await sql`SELECT id,body_html,revision FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
-    const evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:m.existing_page?sourceHtml:
+    let htmls=await sql`SELECT id,body_html,revision FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
+    let evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:m.existing_page?sourceHtml:
       htmls.find(h=>h.id===m.id&&h.revision===m.revision)?.body_html})));
+    const missing=questions.filter(q=>prep.research_question_id?q.id===prep.research_question_id:!(evidence.by_question[q.id]?.length));
+    if(!reuseInputs&&missing.length){
+      const acquired=await research(missing,url=>importLink(url,actor,true,true));prep.research=acquired.report;
+      for(const mid of acquired.article_ids){
+        if(materials.some(m=>m.id===mid))continue;
+        const m=await studioMaterial(mid) as NonNullable<Prep['materials']>[number];
+        if(m?.body_text)materials.push({...m,first_party:false,hit_count:0,snippet:m.body_text.slice(0,300)});
+      }
+      htmls=await sql`SELECT id,body_html,revision FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
+      evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:m.existing_page?sourceHtml:htmls.find(h=>h.id===m.id&&h.revision===m.revision)?.body_html})));
+    }
     const facts:Fact[]=[];
     const addFact=(value:Omit<Fact,'id'>)=>{const f={...value,id:`f${facts.length+1}`} as Fact;facts.push(f);return f;};
     const demand=await demandFor(questions,prep.existing_url);
@@ -127,9 +144,15 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     // A short exact quote from the existing page anchors titles without sending the whole page.
     if(page&&!facts.some(f=>f.article_id===page.id)){const quote=shortQuote(paragraphs[0]?.text??'',page.body_text??'');if(quote)addFact({kind:'page',statement:quote,quote,article_id:page.id,revision:page.revision,date:page.publication_time??null,attribution:'Chipshow page',url:page.url});}
     const rules=companyFactRules();
-    prep={...prep,question_en:first.data.question_en,keywords:[...new Set(questions.flatMap(q=>q.terms))],entities:[],materials,related_pages:[],subquestions,facts,weak_material_ids:evidence.weak_material_ids,blacklist:{configured:rules.configured,blocked:0,pending:0}};
+    const unresolved=subquestions.filter(q=>q.coverage.status==='missing');
+    const supported=subquestions.filter(q=>['direct','calc'].includes(q.coverage.status)&&q.coverage.evidence.some(fid=>facts.find(f=>f.id===fid)?.article_id));
+    const scope_options=!page&&unresolved.length?supported.map(q=>({id:`scope-${q.id}`,question:q.zh,includes:[q.zh],omits:subquestions.filter(other=>other.id!==q.id).map(other=>other.zh),subquestion_ids:[q.id]})):[];
+    prep={...prep,question_en:decomposition.question_en,keywords:[...new Set(questions.flatMap(q=>q.terms))],entities:[],materials,related_pages:[],subquestions,facts,scope_options,weak_material_ids:evidence.weak_material_ids,blacklist:{configured:rules.configured,blocked:0,pending:0}};
     await savePrep(id,prep);
-    if(!page&&facts.filter(f=>f.kind!=='calc').length<2){await complete('insufficient','未找到足够的答案句，请按子问题补参考资料。');return {status:'insufficient'};}
+    if(!page&&(!facts.some(f=>f.kind!=='calc')||unresolved.length)){
+      await complete('insufficient',scope_options.length?'已找到可回答的买家问题，请选择保留的范围；未核实的部分不会写入正文。':'自动检索暂未取得足够原文。可以继续自动查找，或保存这个命题稍后处理。');
+      return {status:'insufficient'};
+    }
     const oldPage=(prep.output_type==='auto'||prep.output_type==='update')?page:undefined;
     const system2=prompt(oldPage?'studio-pitch-update-plan':'studio-pitch-edit-plan');
     const excerptLength=Math.max(90,Math.min(240,Math.floor(10500/Math.max(1,paragraphs.length))));
@@ -184,6 +207,7 @@ export function confirmedFragmentPlan(raw:Prep,input:{article_ids:string[];outli
   let index=0;
   const plan=prep.edit_plan!.flatMap(e=>{if(e.op==='keep')return [e];const sectionId=`change-${index++}`;const included=input.outline.find(s=>s.id===sectionId)?.include;return included?[e]:e.op==='revise'?[{op:'keep' as const,paragraph:e.paragraph,facts:[]}]:[];});
   if(!plan.some(e=>e.op!=='keep'))invalid('没有保留任何改动，不需要成稿。');
+  if(plan.some(e=>e.op!=='keep'&&!e.facts?.length))invalid('所选小节尚无可引用事实，请选择已有证据的小节或继续自动查找。');
   const facts=prep.facts!.filter(f=>!f.article_id||input.article_ids.includes(f.article_id));
   const errors=validateEditPlan(prep.paragraphs!,plan,prep.subquestions!,facts);if(errors.length)invalid(errors.join('；'));
   return fragmentPlanSchema.parse({paragraphs:prep.paragraphs,subquestions:prep.subquestions,facts,edit_plan:plan,source_html:prep.source_html,original_title:prep.original_title,method_rule_ids:[]});
@@ -206,19 +230,40 @@ export async function upgradePitch(id:string,input:unknown,actor:string){
 }
 
 export async function supplementPitchEvidence(id:string,input:unknown,actor:string){
-  const b=z.object({version:z.number().int(),subquestion_id:z.string(),url:z.url()}).strict().parse(input);
-  const card=await cardFor(id);if(!card)return null;const prep=card.document.prep as V2;
-  if(prep.version!==b.version||!['ready','insufficient'].includes(prep.status))throw new Conflict('仅待确认或证据不足的备料可补证据，请刷新。');
-  const q=prep.subquestions?.find(q=>q.id===b.subquestion_id);if(!q)invalid('子问题不存在。');
-  const mid=await importLink(b.url,actor,true),m=await studioMaterial(mid) as NonNullable<Prep['materials']>[number];
-  const [html]=await sql`SELECT body_html FROM articles WHERE id=${mid}`;
-  const hits=answerEvidence([q],[{...m,body_html:html?.body_html}]).by_question[q.id]??[];
-  if(!prep.materials!.some(a=>a.id===mid))prep.materials!.push({...m,snippet:hits[0]?.quote??m.title,hit_count:hits.length,first_party:false});
-  const added=hits.flatMap(h=>{const quote=answerQuote(h,m.body_text??'');if(!quote)return [];const f:Fact={id:`f${prep.facts!.length+1}`,kind:'source',statement:quote,quote,article_id:m.id,revision:m.revision,date:m.publication_time??null,attribution:m.source_name,url:m.url};prep.facts!.push(f);return [f.id];});
-  q.coverage={...q.coverage,status:added.length?'direct':q.coverage.status,evidence:[...q.coverage.evidence,...added]};
-  prep.weak_material_ids=hits.length?(prep.weak_material_ids??[]).filter(x=>x!==mid):[...new Set([...(prep.weak_material_ids??[]),mid])];
-  await savePrep(id,prep);await audit(actor,'studio.pitch.supplement',`studio-recommendation:${id}`,'仅补该子问题检索，没有模型调用',null,{subquestion:q.id,article_id:mid,answers:added.length});
-  return {id,answers:added.length,model_calls:0};
+  const b=z.object({version:z.number().int(),subquestion_id:z.string().optional(),url:z.union([z.url(),z.literal('')]).optional()}).strict().parse(input);
+  return continuePreparation(id,b.version,actor,old=>{
+    if(b.subquestion_id&&!old.subquestions?.some(q=>q.id===b.subquestion_id))invalid('子问题不存在。');
+    if(b.url){const u=new URL(b.url);if(!normalizeUrl(b.url)||u.username||u.password)invalid('补充链接必须是公开网页地址。');}
+    return {...old,links:b.url?[...new Set([...old.links,b.url])].slice(-3):old.links,research_question_id:b.subquestion_id};
+  },'studio.pitch.research');
+}
+
+export async function choosePitchScope(id:string,input:unknown,actor:string){
+  const b=z.object({version:z.number().int(),scope_id:z.string()}).strict().parse(input);
+  return continuePreparation(id,b.version,actor,old=>{
+    const choice=old.scope_options?.find(option=>option.id===b.scope_id);if(!choice)throw new Conflict('范围建议已经变化，请刷新后选择。');
+    const questions=old.subquestions?.filter(q=>choice.subquestion_ids.includes(q.id))??[];
+    if(!questions.length)invalid('所选范围没有可回答的买家问题。');
+    return {...old,question:choice.question,question_en:questions.map(q=>q.en).join(' '),subquestions:questions,research_question_id:undefined,
+      scope:{original_question:old.scope?.original_question??old.question,question:choice.question,omitted_questions:[...new Set([...(old.scope?.omitted_questions??[]),...choice.omits])]},scope_options:[]};
+  },'studio.pitch.scope');
+}
+
+async function continuePreparation(id:string,version:number,actor:string,change:(old:V2)=>V2,action:string){
+  const {ensureQueue}=await import('../jobs/queue.ts');await ensureQueue(QUEUES.studioPrep);
+  return sql.begin(async tx=>{
+    const [card]=await tx`SELECT * FROM studio_recommendations WHERE id=${id} FOR UPDATE`;
+    if(!card)return null;
+    const old=card.document.prep as V2;
+    if(!old||old.version!==version||card.task_id||!['ready','insufficient','failed'].includes(old.status))throw new Conflict('备料状态已变化，请刷新后继续。');
+    if(old.model_outcome==='unknown')invalid('已有模型调用结果待核对，未重复发送。');
+    const prep:V2={...change(old),version:old.version+1,status:'preparing',started_at:new Date().toISOString(),reuse_questions:!!old.subquestions?.length};
+    delete prep.editorial_choices;delete prep.edit_plan;delete prep.outline;delete prep.titles;delete prep.hooks;delete prep.error;delete prep.finished_at;
+    await tx`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${tx.json(prep as never)}),updated_by=${actor},updated_at=now() WHERE id=${id}`;
+    const queued=await enqueue(QUEUES.studioPrep,{cardId:id,version:prep.version,actor,phase:'prepare'},{singletonKey:`${id}:${prep.version}`,retryLimit:0},tx);
+    await audit(actor,action,`studio-recommendation:${id}`,'已保存选择并排队备料；原始命题和未回答问题保留',null,{version:prep.version,scope:prep.scope},{db:tx});
+    return {id,status:prep.status,version:prep.version,queued:!!queued,model_calls:0};
+  });
 }
 
 export async function queueFragmentRetry(id:string,index:number,input:unknown,actor:string){
@@ -262,6 +307,8 @@ export async function generatePitchFragments(id:string,actor:string,options:{fra
     const user=JSON.stringify({operation:op.op,heading:op.op==='insert_after'?op.heading:undefined,
       editorial_reason:op.reason,question:question?.en,...revision,context:{before,after},facts,
       engineer:packet.pitch!.engineer,withheld_numbers:packet.pitch!.withheld_numbers,
+      editorial_choices:packet.pitch!.editorial_choices?{additions:packet.pitch!.editorial_choices.additions.map(id=>editorialAdditions[id]),note:packet.pitch!.editorial_choices.note,instruction:'这些是结构与表达要求，不是事实证据。只使用本次提供的facts；无法支持的比较项和数值不写。'}:undefined,
+      approved_scope:packet.pitch!.scope,
       method:methodExcerpt?{id:methodId,text:methodExcerpt}:null,
       output_format:{html_en:'HTML fragment only',zh_review:'仅本片段中文审校',used_facts:op.facts}});
     const saveFragment=()=>sql`UPDATE studio_recommendations SET document=jsonb_set(document,${['prep','fragments',String(fragments.indexOf(fragment))]}::text[],${sql.json(fragment as never)}),updated_at=now() WHERE id=${id} AND (document->'prep'->>'version')::int=${prep.version}`;

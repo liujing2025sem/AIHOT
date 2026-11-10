@@ -3,8 +3,11 @@ import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
 
+type FixtureRevision = { status: string; version: number; goals: string[]; note: string; receipt_id?: number; error?: string };
+
 function reviewFixture() {
   const writes: { path: string; body: Record<string, unknown> }[] = [];
+  let reads = 0;
   const body = 'A whole-cabinet layout is 5760 mm wide.';
   const meta = 'Review the 5760 mm LED cabinet layout.';
   const finding = (field: string, value: string) => ({
@@ -14,7 +17,9 @@ function reviewFixture() {
   });
   const draft = {
     id: 'review-fixture', version: 7, status: 'in_review', updated_at: '2026-11-09T08:00:00Z',
+    revision_request: null as FixtureRevision | null,
     document: {
+      revision_request: null as FixtureRevision | null,
       title_en: 'LED cabinet layout', title_zh: 'LED 箱体布局核对',
       review_zh: '先核对完整箱体数量，再确认最终显示尺寸。', body_en: body,
       keyword_hypothesis: 'LED cabinet layout', meta_description_en: meta,
@@ -34,20 +39,37 @@ function reviewFixture() {
     confirmed_issues: [], history: [],
     wordpress: { ready: false, message: '人审草稿通道未启用。', receipt: null },
   };
+  const setRevision = (revision: FixtureRevision) => {
+    draft.revision_request = revision;
+    draft.document.revision_request = revision;
+  };
   const api = fakeApi(async (url, _res, req) => {
     if (url.pathname === '/api/admin/me') return { name: 'Synthetic operator', csrf: 'fixture', dev: false };
     if (url.pathname === '/api/admin/nav-counts') return {};
     if (url.pathname === '/api/admin/studio/publishing/settings') return { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
-    if (url.pathname === '/api/admin/studio/drafts/review-fixture' && req.method === 'GET') return draft;
+    if (url.pathname === '/api/admin/studio/drafts/review-fixture' && req.method === 'GET') { reads++; return draft; }
     if (url.pathname.startsWith('/api/admin/studio/drafts/review-fixture') && req.method !== 'GET') {
       let text = ''; for await (const chunk of req) text += chunk;
       const input: Record<string, unknown> = text ? JSON.parse(text) : {};
       writes.push({ path: url.pathname, body: input });
-      if (url.pathname.endsWith('/review') && input.action === 'approve') draft.status = 'approved';
+      if (url.pathname.endsWith('/review') && (input.action === 'approve' || input.action === 'submit')) {
+        draft.status = input.action === 'approve' ? 'approved' : 'in_review';
+        draft.version++;
+      }
+      if (url.pathname.endsWith('/review') && input.action === 'return') {
+        draft.version++;
+        draft.status = 'draft';
+        setRevision({ status: 'queued', version: draft.version, goals: input.revision_goals as string[], note: input.note as string });
+      }
+      if (url.pathname.endsWith('/review') && input.action === 'keep_revision_original') {
+        draft.version++;
+        draft.status = 'draft';
+        setRevision({ ...draft.revision_request!, status: 'cancelled' });
+      }
       return draft;
     }
   });
-  return { api, draft, writes };
+  return { api, draft, writes, setRevision, get reads() { return reads; } };
 }
 
 for (const width of [1440, 390]) test('review workbench locates evidence and submits only explicit approval at ' + width, async () => {
@@ -59,6 +81,9 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
+    await expect(page.getByRole('heading', { name: '中文决策摘要', exact: true })).toBeVisible();
+    await expect(page.getByLabel('中文正文', { exact: true })).toBeHidden();
+    await page.getByRole('button', { name: '展开完整稿件', exact: true }).click();
     await expect(page.getByRole('tab', { name: '中文审稿', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByLabel('中文正文', { exact: true })).toHaveValue(fixture.draft.document.review_zh);
     await expect(page.getByRole('complementary', { name: '审稿确认与交付', exact: true })).toBeVisible();
@@ -122,6 +147,7 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
     const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
     await expect(approve).toBeEnabled();
 
+    await page.getByRole('button', { name: '展开完整稿件', exact: true }).click();
     await page.getByLabel('中文正文', { exact: true }).fill('修改后的内容需要重新保存和核对。');
     await expect(first).toBeDisabled(); await expect(second).toBeDisabled();
     await expect(approve).toBeDisabled();
@@ -158,16 +184,148 @@ test('a stale Chinese review requires current English acknowledgement and a boun
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    await page.getByRole('button',{name:'展开完整稿件',exact:true}).click();
     await expect(page.getByRole('tab',{name:'英文交付',exact:true})).toHaveAttribute('aria-selected','true');
     await page.getByRole('checkbox',{name:'确认 正文尺寸数字需与原文一致',exact:true}).check();
     await page.getByRole('checkbox',{name:'确认 搜索摘要数字需与原文一致',exact:true}).check();
     const approve=page.getByRole('button',{name:'确认审核通过',exact:true});await expect(approve).toBeDisabled();
     await page.getByRole('checkbox',{name:'已按当前英文主稿核对',exact:true}).check();await expect(approve).toBeEnabled();
     assert.equal(await page.getByRole('button',{name:'直接上线',exact:true}).count(),0);
-    await expect(page.getByRole('button',{name:'推送原页影子预览稿',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:'推送原页影子预览稿',exact:true})).toHaveCount(0);
     await approve.click();await expect.poll(()=>fixture.writes.length).toBe(1);
     assert.equal(fixture.writes[0].body.english_reviewed,true);
     assert.equal(fixture.writes.some(w=>/\/(publish|wordpress)$/.test(w.path)),false);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  }finally{await browser?.close();await web.stop();}
+});
+
+test('review revision goals accept empty optional notes and do not approve or publish',async()=>{
+  const fixture=reviewFixture();
+  Object.assign(fixture.draft,{editorial_context:{question:'如何选择区域仓现货与原厂直发？',scope_question:'下单前如何核对交付路径？',unanswered_questions:['本次不承诺具体库存与交期']}});
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    await expect(page.getByRole('heading',{name:'中文决策摘要',exact:true})).toBeVisible();
+    await expect(page.getByText('本次不承诺具体库存与交期',{exact:true})).toBeVisible();
+    await expect(page.getByLabel('审稿意见',{exact:true})).toHaveValue('');
+    await expect(page.getByRole('checkbox',{name:'更直接回答买家问题',exact:true})).toBeChecked();
+    await page.getByRole('checkbox',{name:'只保留有依据的说法',exact:true}).check();
+    const revise=page.getByRole('button',{name:'按选择修订',exact:true});
+    await expect(revise).toBeEnabled();
+    assert.equal(fixture.writes.length,0,'selecting goals does not start a model or change review state');
+    await revise.click();
+    await expect.poll(()=>fixture.writes.length).toBe(1);
+    assert.deepEqual(fixture.writes,[{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'return',revision_goals:['clarify_buyer_answer','evidence_only'],note:''}}]);
+    await expect(page.getByText('已安排按所选目标修订。当前仍展示原版本，完成后需重新审稿。',{exact:true})).toBeVisible();
+    await expect(revise).toBeDisabled();
+    await expect(page.getByRole('button',{name:'提交审稿',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toHaveCount(0);
+    assert.equal(fixture.writes.some(write=>/\/(publish|wordpress)$/.test(write.path)),false);
+  }finally{await browser?.close();await web.stop();}
+});
+
+for(const status of ['queued','running','unknown','failed'] as const)test(`revision ${status} exposes explicit no-charge recovery and keeps the original without a note`,async()=>{
+  const fixture=reviewFixture();
+  fixture.setRevision({status,version:7,goals:['clarify_buyer_answer'],note:'',receipt_id:27});
+  const {revision_request: _originalRevision,...original}=fixture.draft.document;
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    const recover=page.getByRole('button',{name:'核对修订结果',exact:true});
+    const keep=page.getByRole('button',{name:'保留原稿继续',exact:true});
+    await expect(recover).toBeEnabled();await expect(keep).toBeEnabled();
+    await expect(page.getByText(/这两个操作均不重新调用付费模型/)).toBeVisible();
+    assert.equal(fixture.writes.length,0,'loading a revision never triggers recovery or another model call');
+    await recover.click();
+    await expect.poll(()=>fixture.writes.length).toBe(1);
+    assert.deepEqual(fixture.writes[0],{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'recover_revision'}});
+    await expect(keep).toBeEnabled();await keep.click();
+    await expect.poll(()=>fixture.writes.length).toBe(2);
+    assert.deepEqual(fixture.writes[1],{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'keep_revision_original'}});
+    await expect(page.getByText('已保留原稿，结束本次修订等待。可以继续审阅。',{exact:true})).toBeVisible();
+    await expect(recover).toHaveCount(0);await expect(keep).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'按选择修订',exact:true})).toBeEnabled();
+    await page.getByRole('button',{name:'展开完整稿件',exact:true}).click();
+    await expect(page.getByLabel('中文正文',{exact:true})).toBeEditable();
+    await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toHaveCount(0);
+    await page.getByRole('button',{name:'提交审稿',exact:true}).click();
+    await expect.poll(()=>fixture.writes.length).toBe(3);
+    assert.deepEqual(fixture.writes[2],{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:8,action:'submit',note:''}});
+    const approve=page.getByRole('button',{name:'确认审核通过',exact:true});await expect(approve).toBeDisabled();
+    await page.getByRole('checkbox',{name:'确认 正文尺寸数字需与原文一致',exact:true}).check();
+    await page.getByRole('checkbox',{name:'确认 搜索摘要数字需与原文一致',exact:true}).check();
+    await expect(approve).toBeEnabled();
+    const {revision_request: _cancelledRevision,...retained}=fixture.draft.document;
+    assert.deepEqual(retained,original);
+    assert.equal(fixture.writes.some(write=>write.body.action==='return'||write.body.action==='approve'||/\/(publish|wordpress)$/.test(write.path)),false);
+  }finally{await browser?.close();await web.stop();}
+});
+
+test('same-version revision metadata updates leave both recovery exits usable without unsaved edits',async()=>{
+  const fixture=reviewFixture();
+  fixture.setRevision({status:'queued',version:7,goals:['clarify_buyer_answer'],note:''});
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await page.clock.install();
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    await expect(page.getByText('已安排按所选目标修订。当前仍展示原版本，完成后需重新审稿。',{exact:true})).toBeVisible();
+    fixture.setRevision({status:'running',version:7,goals:['clarify_buyer_answer'],note:'',receipt_id:27});
+    await page.clock.runFor(3600);
+    await expect(page.getByText('正在修订。原版本与审核记录保留，暂不代表修改已完成。',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'核对修订结果',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'保留原稿继续',exact:true})).toBeEnabled();
+    await expect(page.getByText('先保存修改，系统会按新版本重新核对。',{exact:true})).toHaveCount(0);
+    assert.equal(fixture.draft.version,7);
+    assert.deepEqual(fixture.writes,[]);
+  }finally{await browser?.close();await web.stop();}
+});
+
+test('unknown revision recovery observes a later result without another recovery or writer request',async()=>{
+  const fixture=reviewFixture();
+  fixture.setRevision({status:'unknown',version:7,goals:['clarify_buyer_answer'],note:'',receipt_id:27});
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await page.clock.install();
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    const reads=fixture.reads;
+    await page.getByRole('button',{name:'核对修订结果',exact:true}).click();
+    await expect.poll(()=>fixture.reads).toBeGreaterThan(reads);
+    await expect(page.getByText('正在核对已有修订结果，最多等待 20 秒；可随时保留原稿继续。',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'保留原稿继续',exact:true})).toBeEnabled();
+    fixture.draft.version=8;fixture.draft.status='draft';
+    fixture.draft.document.review_zh='修订结果：先按箱体数量复核可用显示面积。';
+    fixture.setRevision({status:'done',version:7,goals:['clarify_buyer_answer'],note:'',receipt_id:27});
+    await page.clock.runFor(3600);
+    await expect(page.getByText(fixture.draft.document.review_zh,{exact:true}).first()).toBeVisible();
+    await expect(page.getByText('修订已返回，请核对当前版本。',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'提交审稿',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'核对修订结果',exact:true})).toHaveCount(0);
+    await expect(page.getByText(/正在核对已有修订结果/)).toHaveCount(0);
+    assert.deepEqual(fixture.writes,[{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'recover_revision'}}]);
+  }finally{await browser?.close();await web.stop();}
+});
+
+test('recovery stops waiting after twenty seconds without claiming completion or locking the original',async()=>{
+  const fixture=reviewFixture();
+  fixture.setRevision({status:'failed',version:7,goals:['clarify_buyer_answer'],note:'',receipt_id:27});
+  const web=await startWebServer(fixture.api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await page.clock.install();
+    await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
+    await page.getByRole('button',{name:'核对修订结果',exact:true}).click();
+    await expect(page.getByText(/正在核对已有修订结果/)).toBeVisible();
+    await expect(page.getByRole('button',{name:'保留原稿继续',exact:true})).toBeEnabled();
+    await page.clock.runFor(20_100);
+    await expect(page.getByText('本次核对尚未返回新结果，可稍后再查或保留原稿继续。未重新调用付费模型。',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'核对修订结果',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'保留原稿继续',exact:true})).toBeEnabled();
+    await expect(page.getByText('修订已返回，请核对当前版本。',{exact:true})).toHaveCount(0);
+    await page.clock.runFor(8_000);
+    assert.deepEqual(fixture.writes,[{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'recover_revision'}}]);
   }finally{await browser?.close();await web.stop();}
 });

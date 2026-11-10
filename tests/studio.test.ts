@@ -14,10 +14,11 @@ import { createStudioTask, exportStudioTask, receiveStudioTask, generateStudioTa
 import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/studio/studio-review';
 import { updateChannel } from '@aihot/backend/providers/channel';
 import { upsertMaterial } from '@aihot/backend/content/materials';
-import { previewPitch, createPitch, getPitch, preparePitch, confirmPitch, confirmedPitch } from '@aihot/backend/studio/studio-pitch';
+import { previewPitch, createPitch, getPitch, preparePitch, savePitchChoices, confirmPitch, confirmedPitch } from '@aihot/backend/studio/studio-pitch';
+import type {discoverPitchEvidence} from '@aihot/backend/studio/studio-pitch-research';
 import { stopBoss } from '@aihot/backend/jobs/queue';
 import { pitchDraftFindings } from '@aihot/backend/studio/studio-company-facts';
-import {generatePitchFragments,preparePitchV2} from '@aihot/backend/studio/studio-pitch-v2';
+import {generatePitchFragments,preparePitchV2,supplementPitchEvidence,choosePitchScope} from '@aihot/backend/studio/studio-pitch-v2';
 import {ReceiptUnknownError} from '@aihot/backend/providers/receipts';
 const suffix=tag(),source=`studio-${suffix}`,article=`studio-item-${suffix}`,actor='test:studio';
 const original={password:config.adminPassword,dev:config.devAdmin,privateNetwork:config.allowPrivateNetworkFetch};
@@ -555,6 +556,7 @@ test('bound source snapshot remains the review target when live material changes
 
 
 test('pitch preparation uses redacted questions and exact source quotes, resumes duplicates, and permits only evidenced conservative drafting',async t=>{
+ const noResearch:typeof discoverPitchEvidence=async()=>({article_ids:[],report:{state:'unavailable',queries:[],imported:0,failures:[{url:'',reason:'Synthetic fixture has no external network'}]}});
  const dir=await mkdtemp(path.join(tmpdir(),'studio-pitch-'));
  const oldDir=config.credentialsDir, oldEnabled=config.modelCallsEnabled,oldReasoning=process.env.LLM_REASONING_TOKENS;
  config.credentialsDir=dir;config.modelCallsEnabled=true;
@@ -586,19 +588,27 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
   const card=await createPitch({question:cleaned.text,privacy_confirmed:true},actor);
   assert.equal(card.reused,false);assert.equal(provider.hits(),0,'the HTTP create path must only enqueue');
   const duplicate=await createPitch({question:cleaned.text,privacy_confirmed:true},actor);assert.equal(duplicate.id,card.id);assert.equal(duplicate.reused,true);
-  await preparePitch(card.id,1,actor);
+  await preparePitch(card.id,1,actor,false,noResearch);
   const ready=(await getPitch(card.id))!;assert.equal(ready.status,'ready');assert.equal(provider.hits(),2);
   assert.ok(ready.prep!.materials!.some(m=>ids.includes(m.id)),'old technical references remain eligible');
   assert.ok(ready.prep!.materials!.every(m=>m.body_text?.includes(m.snippet)||m.title.includes(m.snippet)));
   assert.ok(submitted.every(x=>!x.includes('buyer@example.org')));
   const selected=ready.prep!.materials!.filter(m=>ids.includes(m.id)).map(m=>m.id);
   const input={version:1,article_ids:selected,selected_title:ready.prep!.titles![0].title,output_type:'guide',outline:ready.prep!.outline!.map(s=>({id:s.id,heading:s.heading,include:true})),engineer:{mode:'conservative',name:'',reply:'',answers:[]}};
-  assert.throws(()=>confirmedPitch(ready.prep!,{...input,article_ids:[selected[0]]}),/证据不足/);
+  assert.doesNotThrow(()=>confirmedPitch(ready.prep!,{...input,article_ids:[selected[0]]}),'V2 does not impose a second-material quota; fragment facts are checked separately');
   assert.throws(()=>confirmedPitch(ready.prep!,{...input,engineer:{mode:'engineer',name:'',reply:'',answers:[{question_id:'q1',choice:'B',note:'600 mm'}]}}),/工程师/);
-  const confirmed=(await confirmPitch(card.id,input,actor))!;
+  const choiceInput={version:1,choice_revision:0,article_ids:selected,selected_title:input.selected_title,outline:input.outline,additions:['checklist','comparison'],note:''};
+  const savedChoices=(await savePitchChoices(card.id,choiceInput,actor))!;
+  assert.equal(provider.hits(),2,'saving a choice does not call the writer');
+  assert.equal((await getPitch(card.id))!.task_id,null);
+  assert.deepEqual((await getPitch(card.id))!.prep!.editorial_choices?.additions,['checklist','comparison']);
+  await assert.rejects(savePitchChoices(card.id,choiceInput,actor),/另一处更新/);
+  await assert.rejects(confirmPitch(card.id,input,actor),/方向或大纲/);
+  const confirmed=(await confirmPitch(card.id,{...input,choice_revision:savedChoices.choice_revision},actor))!;
   const pack=(await exportStudioTask(confirmed.task_id))!;
   assert.equal(pack.request.pitch?.engineer.mode,'conservative');assert.equal(pack.request.pitch?.engineer.name,'');assert.deepEqual(pack.request.pitch?.withheld_numbers,['600 mm']);
   assert.equal(pack.request.articles.length,selected.length);assert.equal(pack.request.draft_article_ids.length,1);
+  assert.deepEqual(pack.request.pitch?.editorial_choices?.additions,['checklist','comparison']);assert.equal(pack.request.pitch?.editorial_choices?.note,'');
   assert.equal((await confirmPitch(card.id,input,actor))?.task_id,confirmed.task_id);
   const draft={source:pack.request.articles[0].binding,title_zh:'按图纸确定',review_zh:'按型号图纸核对。',title_en:'Cabinet installation',body_en:'Use the selected cabinet drawing.',evidence:[],questions_zh:[],keyword_hypothesis:'cabinet',meta_description_en:'Cabinet drawings.'};
   assert.equal(pitchDraftFindings(pack.request,draft).length,0);
@@ -607,6 +617,7 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
   assert.equal(pack.request.pitch!.fragments_plan!.edit_plan.length,2);
   const partial=await generatePitchFragments(card.id,actor,{},async options=>{
    fragmentCalls++;
+   assert.deepEqual(JSON.parse(String(options.user)).editorial_choices.additions,['给买家可执行的核对清单','用可核对条件做对照表']);
    assert.equal(options.timeoutMs,90000);
    if(options.subject.endsWith(':1'))throw new ReceiptUnknownError(991,'simulated response timeout');
    const result={html_en:'<p>According to the source, cabinet dimensions follow the installation drawing.</p>',zh_review:'据原文，箱体尺寸以安装图为准。',used_facts:JSON.parse(String(options.user)).facts.map((f:{id:string})=>f.id)};
@@ -620,11 +631,37 @@ test('pitch preparation uses redacted questions and exact source quotes, resumes
   assert.equal(fragmentCalls,2);
   assert.equal((await sql`SELECT id FROM studio_drafts WHERE task_id=${confirmed.task_id}`).length,0);
   const missing=await createPitch({question:'ZZZZ unmatched imaginary fixture',privacy_confirmed:true},actor);
-  await preparePitch(missing.id,1,actor);assert.equal((await getPitch(missing.id))?.status,'insufficient');
+  await preparePitch(missing.id,1,actor,false,noResearch);assert.equal((await getPitch(missing.id))?.status,'insufficient');
   assert.equal(provider.hits(),3,'insufficient evidence must not spend the second preparation call');
   await assert.rejects(confirmPitch(missing.id,input,actor),/尚未就绪/);
+  const searchOnly=(await supplementPitchEvidence(missing.id,{version:1},actor))!;
+  assert.equal(searchOnly.status,'preparing');assert.equal(searchOnly.version,2);assert.equal(provider.hits(),3,'the no-URL action queues work only');
+  await assert.rejects(supplementPitchEvidence(missing.id,{version:1},actor),/状态已变化/);
+  const previousBody=pageBody;
+  pageBody='ZZZZ and ZZZX are the identifiers recorded on the installation drawing. Check ZZZY against ZZZK before collection. '+body+' Supporting documentation is checked against the requested installation conditions. '.repeat(5);
+  try{
+    const automatic:typeof discoverPitchEvidence=async(questions,importPage)=>{
+      assert.ok(questions.some(q=>q.id==='q1'));
+      const imported=await importPage(`${materialBase}/pitch-research-${suffix}`);
+      return {article_ids:[imported],report:{state:'complete',queries:['synthetic local research'],imported:1,failures:[]}};
+    };
+    await preparePitchV2(missing.id,2,actor,false,automatic);
+    const recovered=(await getPitch(missing.id))!;
+    assert.equal(recovered.status,'ready');assert.equal(recovered.prep!.research!.imported,1);
+    assert.equal(provider.hits(),4,'recovery reuses decomposed questions and buys only the new evidence-backed plan');
+    assert.ok(recovered.prep!.materials!.some(m=>m.url.includes(`/pitch-research-${suffix}`)));
+  }finally{pageBody=previousBody;}
+  const scopeCard=await createPitch({question:'Explicit scope choice fixture',privacy_confirmed:true},actor);
+  const scopePrep={...ready.prep!,version:1,status:'insufficient',scope_options:[{id:'scope-q1',question:'图纸尺寸是什么',includes:['图纸尺寸是什么'],omits:['未核实的交期'],subquestion_ids:['q1']}]};
+  await sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json(scopePrep as never)}) WHERE id=${scopeCard.id}`;
+  await assert.rejects(confirmPitch(scopeCard.id,input,actor),/尚未就绪/);
+  const narrowed=(await choosePitchScope(scopeCard.id,{version:1,scope_id:'scope-q1'},actor))!;
+  assert.equal(narrowed.status,'preparing');assert.equal(provider.hits(),4,'scope selection itself never calls a model');
+  const narrowedPrep=(await getPitch(scopeCard.id))!.prep!;
+  assert.equal(narrowedPrep.question,'图纸尺寸是什么');assert.deepEqual(narrowedPrep.scope?.omitted_questions,['未核实的交期']);assert.deepEqual(narrowedPrep.scope_options,[]);
+  await assert.rejects(choosePitchScope(scopeCard.id,{version:1,scope_id:'scope-q1'},actor),/状态已变化/);
   const retryCard=await createPitch({question:'Cabinet installation retry fixture',privacy_confirmed:true},actor);
-  await preparePitch(retryCard.id,1,actor);
+  await preparePitch(retryCard.id,1,actor,false,noResearch);
   const [prior]=await sql`SELECT id FROM receipts WHERE subject=${`studio-pitch:${retryCard.id}:1`} AND purpose='studio_prep_edit_plan'`;
   await sql`UPDATE receipts SET status='unknown',response=NULL WHERE id=${prior.id}`;
   const readyPrep=(await getPitch(retryCard.id))!.prep!;

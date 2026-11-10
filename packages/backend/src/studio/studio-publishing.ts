@@ -115,9 +115,9 @@ async function loadDraft(db: Db, id: string) {
   const [row] = await db<{ version: number; document: unknown; request: unknown }[]>`SELECT d.version,d.document,t.request
     FROM studio_drafts d JOIN studio_tasks t ON t.id=d.task_id WHERE d.id=${id} FOR SHARE OF d,t`;
   if (!row) return null;
-  const envelope = z.object({ editorial_gate: z.unknown().optional(), camos: z.unknown().optional(), figures: z.unknown().optional(), review_sync: z.unknown().optional() })
+  const envelope = z.object({ editorial_gate: z.unknown().optional(), camos: z.unknown().optional(), figures: z.unknown().optional(), review_sync: z.unknown().optional(), revision_request: z.unknown().optional() })
     .passthrough().parse(row.document);
-  const { editorial_gate: _gate, camos: _camos, review_sync: _reviewSync, figures, ...document } = envelope;
+  const { editorial_gate: _gate, camos: _camos, review_sync: _reviewSync, revision_request: _revision, figures, ...document } = envelope;
   const draft = responseSchema.shape.drafts.element.parse(document);
   const specs = Array.isArray(figures) ? figures.flatMap(spec => {
     const parsed = figureSpecSchema.safeParse(spec);

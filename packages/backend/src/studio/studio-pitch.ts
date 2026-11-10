@@ -12,7 +12,8 @@ import { chatJson, type ChatJsonOptions, type ChatJsonResult } from '../provider
 import { createStudioTask, extractStudioMaterial, generateStudioTask, studioMaterial, studioGenerationStatus } from './studio.ts';
 import { redactPitch, normalizePitch, searchPitchMaterials } from './studio-pitch-evidence.ts';
 import { companyFactRules } from './studio-company-facts.ts';
-import { pitchType, pitchPlanSchema, pitchKeywordsSchema, pitchSchema, type Pitch } from '../../../../scripts/editorial-pitch-lib.ts';
+import { pitchType, pitchPlanSchema, pitchKeywordsSchema, pitchSchema, editorialChoicesSchema, type EditorialChoices, type Pitch } from '../../../../scripts/editorial-pitch-lib.ts';
+import type { ResearchReport, discoverPitchEvidence } from './studio-pitch-research.ts';
 
 function invalid(message:string):never {throw Object.assign(new Error(message),{statusCode:400});}
 const urlSchema=z.string().trim().max(2000).refine(value=>!value||!!normalizeUrl(value)&&!new URL(value).username&&!new URL(value).password,'请填写公开网页链接');
@@ -24,6 +25,9 @@ export type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
   version:number;status:'preparing'|'ready'|'insufficient'|'failed'|'confirmed';question:string;output_type:z.infer<typeof pitchType>;existing_url:string;links:string[];
   started_at:string;finished_at?:string;question_en?:string;keywords?:string[];entities?:string[];materials?:Material[];
   related_pages?:{title:string;url:string}[];blacklist?:{configured:boolean;blocked:number;pending:number};
+  research?:ResearchReport;editorial_choices?:EditorialChoices;
+  scope_options?:{id:string;question:string;includes:string[];omits:string[];subquestion_ids:string[]}[];
+  scope?:{original_question:string;question:string;omitted_questions:string[]};
   error?:string;link_errors?:{url:string;reason:string}[];metrics?:{preparation_ms:number|null;replayed?:boolean;replay_ms?:number;confirmation_elapsed_ms?:number;receipts:{id:number;usage:unknown;model:string}[]};
 };
 type Card={id:string;question_id:string;task_id:string|null;status:string;document:Record<string,any>&{prep?:Prep};updated_at:Date;task_state?:string|null};
@@ -82,24 +86,30 @@ export async function revisePitch(id:string,input:unknown,actor:string){
     if(card.task_id)invalid('已经建立成稿任务，请在原任务继续。');
     if(old.status==='preparing')invalid('备料正在进行，请等待结果。');
     if(old.model_outcome==='unknown')invalid('已有备料调用结果待核对，不会用重新备料重复发送。');
-    const prep:Prep={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString()};
+    const prep:Prep={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString(),...(old.scope?{scope:old.scope}:{})};
     await tx`UPDATE studio_recommendations SET document=${tx.json({...card.document,existing_url:b.existing_url,prep} as never)},updated_by=${actor},updated_at=now() WHERE id=${id}`;
     await enqueue(QUEUES.studioPrep,{cardId:id,version:prep.version,actor,phase:'prepare'},{singletonKey:`${id}:${prep.version}`,retryLimit:0},tx);
     return {id,status:prep.status,version:prep.version};
   });
 }
 
-export async function importLink(url:string,actor:string,reference=false){
-  const rows=await sql`SELECT id,url,title FROM articles`;
+export async function importLink(url:string,actor:string,reference=false,automatic=false){
+  const rows=await sql`SELECT id,url,title,source_id FROM articles`;
   const existing=rows.find(row=>canonical(row.url)===canonical(url));
-  if(existing&&existing.title!==new URL(url).hostname){const material=await studioMaterial(existing.id);if(!material?.body_text)await extractStudioMaterial(existing.id,actor);return existing.id as string;}
-  const sourceId=reference?'studio-reference-pages':'studio-operator-links';
-  await sql`INSERT INTO sources(id,name,kind,config,tier,participation_mode,first_party,enabled) VALUES(${sourceId},${reference?'参考资料':'运营提供'},'web_list',${sql.json({detail:{titleSelector:'h1'}})},'T2','isolated',false,false) ON CONFLICT(id) DO UPDATE SET config=sources.config||EXCLUDED.config`;
+  if(existing&&existing.title!==new URL(url).hostname&&!automatic){
+    let material=await studioMaterial(existing.id);
+    if(!material?.body_text){await extractStudioMaterial(existing.id,actor);material=await studioMaterial(existing.id);}
+    if(!material?.body_text?.trim())throw new Error('该资料正文暂未取得，未记为可用证据。');
+    return existing.id as string;
+  }
+  if(existing&&automatic){const material=await studioMaterial(existing.id);if(material?.body_text?.trim())return existing.id as string;}
+  const sourceId=existing&&automatic?existing.source_id:reference?'studio-reference-pages':'studio-operator-links';
+  if(!(existing&&automatic))await sql`INSERT INTO sources(id,name,kind,config,tier,participation_mode,first_party,enabled) VALUES(${sourceId},${reference?'参考资料':'运营提供'},'web_list',${sql.json({detail:{titleSelector:'h1'}})},'T2','isolated',false,false) ON CONFLICT(id) DO UPDATE SET config=sources.config||EXCLUDED.config`;
   const [source]=await sql<SourceRow[]>`SELECT * FROM sources WHERE id=${sourceId}`;
-  const result=await fetchDetail(url,source,{title:true,date:true,body:true,summary:false});
-  if(!result.body?.text)throw new Error('当前抽取器没有取得可读正文，请补充可访问的网页版资料。');
-  const saved=await upsertMaterial({sourceId,url,title:result.title||new URL(url).hostname,bodyText:result.body.text,bodyHtml:result.body.html,bodyStatus:'ok',publishedAt:result.publishedAt,publicationTime:result.publicationTime,via:'studio-pitch',backfill:'operator-reference'});
-  await audit(actor,'studio.material.extract',`content:${saved.articleId}`,'运营提供链接，复用正文抽取',null,{state:'ok',via:'studio-pitch'});
+  const result=await fetchDetail(url,automatic?{...source,config:{...source.config,url:undefined}}:source,{title:true,date:true,body:true,summary:false},automatic?0:undefined);
+  if(!result.body?.text)throw new Error(automatic?'已发现链接，但本轮未取得可读正文。可以继续自动查找其他资料。':'当前抽取器没有取得可读正文，请补充可访问的网页版资料。');
+  const saved=await upsertMaterial({sourceId,url,title:existing&&automatic?existing.title:result.title||new URL(url).hostname,bodyText:result.body.text,bodyHtml:result.body.html,bodyStatus:'ok',publishedAt:result.publishedAt,publicationTime:result.publicationTime,via:'studio-pitch',backfill:'operator-reference'});
+  await audit(actor,'studio.material.extract',`content:${saved.articleId}`,automatic?'自动发现公开链接，复用正文抽取':'运营提供链接，复用正文抽取',null,{state:'ok',via:'studio-pitch'});
   return saved.articleId;
 }
 async function linkedMaterial(id:string,existingUrl:string):Promise<Material>{
@@ -131,10 +141,10 @@ async function pitchModel<S extends z.ZodType>(options:ChatJsonOptions<S>,replay
   const data=options.schema.parse(JSON.parse(content));
   return {data,receiptId:Number(saved.id),model:saved.model,usage:saved.usage,reused:true};
 }
-export async function preparePitch(id:string,version:number,actor:string,replay=false){
+export async function preparePitch(id:string,version:number,actor:string,replay=false,research?:typeof discoverPitchEvidence){
   const [card]=await sql<Card[]>`SELECT * FROM studio_recommendations WHERE id=${id}`;
   const prep=card?.document.prep;
-  if(prep?.workflow_version===2){const {preparePitchV2}=await import('./studio-pitch-v2.ts');return preparePitchV2(id,version,actor,replay);}
+  if(prep?.workflow_version===2){const {preparePitchV2}=await import('./studio-pitch-v2.ts');return preparePitchV2(id,version,actor,replay,research);}
   if(!card||!prep||prep.version!==version||prep.status!=='preparing'&&!(replay&&prep.status==='failed'))return {reused:true};
   const receipts:NonNullable<Prep['metrics']>['receipts']=[];
   const start=performance.now();
@@ -190,15 +200,18 @@ export async function preparePitch(id:string,version:number,actor:string,replay=
   }
 }
 
-const confirmSchema=z.object({version:z.number().int(),article_ids:z.array(z.string()).min(1).max(12),selected_title:z.string().min(1).max(60),output_type:z.enum(['update','guide','short']),outline:z.array(z.object({id:z.string(),heading:z.string().min(1).max(200),include:z.boolean()})).min(1).max(7),engineer:z.object({mode:z.enum(['conservative','engineer']),name:z.string().max(100).default(''),reply:z.string().max(2000).default(''),answers:z.array(z.object({question_id:z.string(),choice:z.string().regex(/^[A-D]$/),note:z.string().max(1000).default('')})).max(3).default([])})}).strict();
+const confirmSchema=z.object({version:z.number().int(),choice_revision:z.number().int().nonnegative().optional(),article_ids:z.array(z.string()).min(1).max(12),selected_title:z.string().min(1).max(60),output_type:z.enum(['update','guide','short']),outline:z.array(z.object({id:z.string(),heading:z.string().min(1).max(200),include:z.boolean()})).min(1).max(7),engineer:z.object({mode:z.enum(['conservative','engineer']),name:z.string().max(100).default(''),reply:z.string().max(2000).default(''),answers:z.array(z.object({question_id:z.string(),choice:z.string().regex(/^[A-D]$/),note:z.string().max(1000).default('')})).max(3).default([])})}).strict();
 export function confirmedPitch(prep:Prep,input:unknown):Pitch{
   const b=confirmSchema.parse(input);
   if(prep.version!==b.version)throw new Conflict('备料已更新，请刷新后确认。');
   if(prep.status!=='ready')invalid('备料尚未就绪，不能成稿。');
+  if(prep.scope_options?.length)invalid('请先选择这篇要解决的买家问题，范围变化需要明确确认。');
+  const saved=prep.editorial_choices;
+  if(saved&&(b.choice_revision!==saved.revision||b.selected_title!==saved.selected_title||JSON.stringify(b.article_ids)!==JSON.stringify(saved.article_ids)||JSON.stringify(b.outline)!==JSON.stringify(saved.outline)))throw new Conflict('方向或大纲已变化，请先保存当前选择，再确认成稿。');
   const materials=(prep.materials??[]).filter(m=>b.article_ids.includes(m.id));
   if(new Set(b.article_ids).size!==b.article_ids.length||materials.length!==b.article_ids.length)invalid('所选素材不在本次备料卡中。');
   if(materials.some(m=>m.body_status!=='ok'||!m.body_text))invalid('所选素材正文尚未齐全。');
-  if(materials.length<2&&!materials.some(m=>m.existing_page))invalid('证据不足：至少选两条素材，或绑定已有页面正文。');
+  if(prep.workflow_version!==2&&materials.length<2&&!materials.some(m=>m.existing_page))invalid('证据不足：至少选两条素材，或绑定已有页面正文。');
   if(b.output_type==='update'&&(!prep.existing_url||!materials.some(m=>m.existing_page)))invalid('升级稿必须选中已有页面正文。');
   if(!prep.titles?.some(t=>t.title===b.selected_title&&b.article_ids.includes(t.article_id)))invalid('请选用有已选素材支撑的标题。');
   const engineer=b.engineer;
@@ -222,8 +235,28 @@ export function confirmedPitch(prep:Prep,input:unknown):Pitch{
   });
   if(!outline.length)invalid('至少保留一个有依据的小节。');
   return pitchSchema.parse({question:prep.question,output_type:b.output_type,existing_url:prep.existing_url,selected_title:b.selected_title,primary_article_id:(materials.find(m=>m.existing_page)??materials[0]).id,outline,
+    ...(saved?{editorial_choices:saved}:{}),...(prep.scope?{scope:prep.scope}:{}),
     engineer:{mode:engineer.mode,name:engineer.mode==='engineer'?engineer.name:'',reply:engineer.mode==='engineer'?engineer.reply:'',answers},
     withheld_numbers:questions.filter(q=>answers.find(a=>a.question_id===q.id)?.choice==='A').flatMap(q=>q.withheld_numbers)});
+}
+export async function savePitchChoices(id:string,input:unknown,actor:string){
+  const b=editorialChoicesSchema.omit({revision:true}).extend({version:z.number().int(),choice_revision:z.number().int().nonnegative()}).strict().parse(input);
+  return sql.begin(async tx=>{
+    const [card]=await tx<Card[]>`SELECT * FROM studio_recommendations WHERE id=${id} FOR UPDATE`;
+    if(!card)return null;
+    const prep=card.document.prep;
+    if(!prep||prep.version!==b.version||prep.status!=='ready'||card.task_id)throw new Conflict('此备料卡不能修改方向，请刷新。');
+    if((prep.editorial_choices?.revision??0)!==b.choice_revision)throw new Conflict('选择已在另一处更新，请刷新。');
+    if(prep.scope_options?.length)invalid('请先确认有证据支持的采编范围。');
+    if(new Set(b.outline.map(s=>s.id)).size!==b.outline.length||b.outline.length!==prep.outline?.length)invalid('请保存当前完整大纲。');
+    const choices=editorialChoicesSchema.parse({...b,revision:b.choice_revision+1,additions:[...new Set(b.additions)]});
+    const candidate={...prep,editorial_choices:choices};
+    const pitch=confirmedPitch(candidate,{version:b.version,choice_revision:choices.revision,article_ids:b.article_ids,selected_title:b.selected_title,output_type:prep.output_type==='auto'?'guide':prep.output_type,outline:b.outline,engineer:{mode:'conservative'}});
+    if(prep.workflow_version===2){const {confirmedFragmentPlan}=await import('./studio-pitch-v2.ts');confirmedFragmentPlan(candidate,b,pitch);}
+    await tx`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep,editorial_choices}',${tx.json(choices as never)}),updated_by=${actor},updated_at=now() WHERE id=${id}`;
+    await audit(actor,'studio.pitch.choices',`studio-recommendation:${id}`,'保存方向与选填要求；未生成正文',null,{choice_revision:choices.revision,additions:choices.additions},{db:tx});
+    return {id,choice_revision:choices.revision,editorial_choices:choices};
+  });
 }
 export async function confirmPitch(id:string,input:unknown,actor:string){
   const b=confirmSchema.parse(input);

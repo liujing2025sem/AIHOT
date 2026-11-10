@@ -485,7 +485,9 @@ test('pitch fragments: evidence requires distinct visible terms within one check
   const overlap = { ...pitchStepsQuestion, terms: ['traffic speed', 'speed'] };
   assert.deepEqual(answerEvidence([overlap], [material]).by_question[overlap.id], []);
   const shared = { ...pitchStepsQuestion, id: 'shared', terms: ['traffic speed', 'road width'] };
-  assert.deepEqual(answerEvidence([pitchStepsQuestion, shared], [material]).by_question[pitchStepsQuestion.id], []);
+  const sharedResult = answerEvidence([pitchStepsQuestion, shared], [material]);
+  assert.equal(sharedResult.by_question[pitchStepsQuestion.id].length, 1, 'one distinctive anchor can combine with a shared topic term');
+  assert.deepEqual(sharedResult.by_question[shared.id], [], 'a shared topic cannot replace the other question\'s missing road-width anchor');
 });
 
 test('pitch fragments: evidence keeps the complete answer when a fact quote would exceed 300 characters', () => {

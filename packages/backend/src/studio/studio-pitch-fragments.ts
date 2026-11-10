@@ -359,12 +359,15 @@ export function answerEvidence(subquestions: readonly Subquestion[], materials: 
   for (const own of terms) for (const term of own) owners.set(term, (owners.get(term) ?? 0) + 1);
   const strong = new Set<string>();
   const by_question = Object.fromEntries(subquestions.map((question, qIndex) => {
-    const patterns = [...terms[qIndex]].filter(term => owners.get(term) === 1).sort((a, b) => b.length - a.length).map(termPattern);
+    const ordered = [...terms[qIndex]].sort((a, b) => b.length - a.length);
+    const distinctive = ordered.filter(term => owners.get(term) === 1).map(termPattern);
+    const patterns = distinctive.length >= 2 ? distinctive : ordered.map(termPattern);
     const hits: EvidenceSentence[] = [];
-    if (patterns.length >= 2) for (const doc of docs) {
+    if (distinctive.length && patterns.length >= 2) for (const doc of docs) {
       doc.units.forEach((unit, index) => {
         const score = evidenceScore(unit, patterns, question.answer_shape);
         if (score < 2 || !answerShape(question.answer_shape, unit)) return;
+        if (evidenceScore(unit, distinctive, question.answer_shape) === 0) return;
         strong.add(doc.id);
         const hit: EvidenceSentence = { article_id: doc.id, quote: unit.quote, score,
           context: { before: doc.units[index - 1]?.quote ?? null, after: doc.units[index + 1]?.quote ?? null } };

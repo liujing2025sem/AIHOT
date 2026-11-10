@@ -112,7 +112,7 @@ test('manual editorial card uses the saved question version, binds dated evidenc
   }finally{await browser?.close();await web.stop();}
 });
 
-test('pitch desk keeps raw text out of saved requests, confirms evidence and queues writing separately on mobile',async()=>{
+test('pitch desk keeps raw text private and generates only after explicit outline approval on mobile',async()=>{
   const base='/api/admin/studio',pitches=base+'/pitches',redact=base+'/pitch/redact';
   const questionId='fixture-question',savedTitle='安装前要核对什么？',raw='安装前要核对什么？联系 fixture@example.test',sanitized='安装前要核对什么？联系 [邮箱]';
   const relatedUrl='https://existing.example.test/guide';
@@ -129,7 +129,8 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
     blacklist:{configured:false,blocked:0,pending:0},started_at:'2026-11-08T08:01:00Z',finished_at:'2026-11-08T08:02:00Z',
   };
   const id='fixture-pitch',taskId='fixture-task';
-  let version=1, status='preparing', task:string|null=null,reads=0,reuse=false;
+  let version=1, status='preparing', task:string|null=null,reads=0,reuse=false,choiceRevision=0;
+  let editorialChoices:Record<string,unknown>|undefined;
   const writes:{method:string|undefined;path:string;body:unknown}[]=[];
   const requestedUrls:string[]=[];
   const api=fakeApi(async(url,_res,req)=>{
@@ -151,8 +152,9 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
       const activePrep={question:sanitized,output_type:'auto',existing_url:'',links:[],started_at:prep.started_at};
       return {id,title:sanitized,status,version,task_id:task,prep:status==='preparing'?activePrep:version===1?prep:
         status==='failed'?{...activePrep,output_type:'update',existing_url:relatedUrl,links:[material.url],error:'模拟取文失败：原页面超时。'}:
-          {...prep,output_type:'update',existing_url:relatedUrl,links:[material.url],materials:[material,oldPage]}};
+          {...prep,output_type:'update',existing_url:relatedUrl,links:[material.url],materials:[material,oldPage],editorial_choices:editorialChoices}};
     }
+    if(url.pathname===pitches+'/'+id+'/choices'){editorialChoices={...(body as Record<string,unknown>),revision:++choiceRevision};return {choice_revision:choiceRevision};}
     if(url.pathname===pitches+'/'+id+'/confirm'){status='confirmed';version++;task=taskId;return {id,status,task_id:task};}
     if(url.pathname===pitches+'/'+id+'/generate')return {id,task_id:task,queued:true};
   });
@@ -182,26 +184,27 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
     assert.deepEqual(writes,[{method:'POST',path:redact,body:{question:raw}},{method:'POST',path:redact,body:{question:raw+'?'}},
       {method:'POST',path:pitches,body:{question:sanitized,privacy_confirmed:true,output_type:'auto',existing_url:'',links:[],question_id:questionId}}]);
 
+    await page.getByText('补参考链接或调整设置（选填）',{exact:true}).click();
     await page.getByRole('button',{name:'用作已有页面',exact:true}).click();
     await expect(page.getByRole('textbox',{name:'已有页面 URL'})).toHaveValue(relatedUrl);
     await page.getByRole('textbox',{name:'公开线索链接'}).fill(material.url);
     await page.getByRole('button',{name:'重新备料（调用模型）',exact:true}).click();
     await expect(page.getByText('模拟取文失败：原页面超时。')).toBeVisible();
+    await page.getByText('补参考链接或调整设置（选填）',{exact:true}).click();
     await expect(page.getByRole('textbox',{name:'公开线索链接'})).toHaveValue(material.url);
     await page.getByRole('button',{name:'重新备料（调用模型）',exact:true}).click();
-    await expect(page.getByText('已有页面正文',{exact:false}).first()).toBeVisible();
-    const confirm=page.getByRole('button',{name:'确认备料',exact:true});
+    const confirm=page.getByRole('button',{name:'确认大纲并生成全文',exact:true});
+    await page.getByRole('button',{name:'核对依据',exact:true}).click();
     await page.getByRole('checkbox',{name:'选用 '+oldPage.title,exact:true}).uncheck();
-    await page.getByRole('button',{name:'标题',exact:true}).click();
+    await page.getByRole('button',{name:'方向与大纲',exact:true}).click();
     await expect(page.getByRole('radio',{name:/Installation drawing checklist/})).toBeDisabled();
     await expect(confirm).toBeDisabled();
     await expect(page.getByText('请选至少 2 条素材，或选用已有页面正文。')).toBeVisible();
-    await page.getByRole('button',{name:'素材',exact:true}).click();
+    await page.getByRole('button',{name:'核对依据',exact:true}).click();
     await page.getByRole('checkbox',{name:'选用 '+oldPage.title,exact:true}).check();
     await page.getByRole('checkbox',{name:'选用 '+material.title,exact:true}).uncheck();
-    await page.getByRole('button',{name:'标题',exact:true}).click();
+    await page.getByRole('button',{name:'方向与大纲',exact:true}).click();
     await page.getByRole('radio',{name:/Installation drawing checklist/}).check();
-    await page.getByRole('button',{name:'大纲',exact:true}).click();
     await expect(page.getByText('缺证据：缺适用条件')).toBeVisible();
     await page.getByRole('textbox',{name:'第 1 节标题',exact:true}).fill('先核对图纸');
     await page.getByRole('button',{name:'工程确认',exact:true}).click();
@@ -217,15 +220,16 @@ test('pitch desk keeps raw text out of saved requests, confirms evidence and que
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
 
     await confirm.click();
-    await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toBeEnabled();
+    await expect(page.getByText(/英文稿正在后台处理/).first()).toBeVisible();
     assert.deepEqual(writes.slice(3),[
       {method:'PATCH',path:pitches+'/'+id,body:{version:1,links:[material.url],output_type:'update',existing_url:relatedUrl}},
       {method:'PATCH',path:pitches+'/'+id,body:{version:2,links:[material.url],output_type:'update',existing_url:relatedUrl}},
-      {method:'POST',path:pitches+'/'+id+'/confirm',body:{version:3,article_ids:[oldPage.id],selected_title:prep.titles[0].title,output_type:'update',
+      {method:'POST',path:pitches+'/'+id+'/choices',body:{version:3,choice_revision:0,article_ids:[oldPage.id],selected_title:prep.titles[0].title,
+        outline:[{id:'s1',heading:'先核对图纸',include:true}],additions:[],note:''}},
+      {method:'POST',path:pitches+'/'+id+'/confirm',body:{version:3,choice_revision:1,article_ids:[oldPage.id],selected_title:prep.titles[0].title,output_type:'update',
         outline:[{id:'s1',heading:'先核对图纸',include:true}],engineer:{mode:'conservative',name:'',reply:'',answers:[{question_id:'q1',choice:'A',note:''}]}}},
+      {method:'POST',path:pitches+'/'+id+'/generate',body:{}},
     ]);
-    await page.getByRole('button',{name:'生成英文稿',exact:true}).click();
-    await expect(page.getByText(/英文稿正在后台处理/).first()).toBeVisible();
     assert.deepEqual(writes.at(-1),{method:'POST',path:pitches+'/'+id+'/generate',body:{}});
     await page.reload();
     await expect(page.getByRole('link',{name:'继续原采编任务 →',exact:true})).toHaveAttribute('href','/admin/studio?tab=tasks#task-'+taskId);
@@ -382,7 +386,7 @@ for (const width of [1440, 390]) test(`selected material actions keep single-dra
   } finally { await browser?.close(); await web.stop(); }
 });
 
-test('pitch v2 explains the plan and only retries the chosen fragment after consent on a narrow screen',async()=>{
+test('pitch v2 saves padded default headings consistently and only retries the chosen fragment after consent on a narrow screen',async()=>{
   const pitches='/api/admin/studio/pitches', id='pitch-v2', url=pitches+'/'+id;
   const oldUrl='https://guide.example.test/dimensions', sourceUrl='https://reference.example.test/dimensions';
   const materials=[
@@ -406,20 +410,31 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
   const safeHtml='<p id="probe" onclick="window.fixtureRan=true">New '+ 'x'.repeat(360) + '</p><script>window.fixtureRan=true</script>';
   const chinese='中文审稿：先核对外壳尺寸，再下单。';
   const writes:{path:string;body:unknown}[]=[];
-  let phase:'insufficient'|'ready'|'waiting'|'running'|'unknown'|'retry-queued'|'done'='insufficient', version=7, polls=0, legacyUpgraded=false;
+  let phase:'insufficient'|'preparing'|'ready'|'waiting'|'running'|'unknown'|'retry-queued'|'done'='insufficient', version=7, polls=0, legacyUpgraded=false,choiceRevision=0;
+  let editorialChoices:Record<string,unknown>|undefined;
   const api=fakeApi(async(requestUrl,_res,req)=>{
     const pathname=requestUrl.pathname;
     if(pathname==='/api/admin/me')return {name:'Synthetic operator',csrf:'fixture',dev:false};
     if(pathname===pitches)return {rows:[]};
     if(pathname===url+'/evidence'){
       let input='';for await(const chunk of req)input+=chunk;
-      writes.push({path:pathname,body:JSON.parse(input)});phase='ready';version++;
-      return {id,version};
+      writes.push({path:pathname,body:JSON.parse(input)});phase='preparing';version++;polls=0;
+      return {id,version,status:'preparing',queued:true,model_calls:0};
+    }
+    if(pathname===url+'/choices'){
+      let input='';for await(const chunk of req)input+=chunk;
+      const body=JSON.parse(input);writes.push({path:pathname,body});editorialChoices={...body,revision:++choiceRevision};
+      return {choice_revision:choiceRevision};
     }
     if(pathname===url+'/confirm'||pathname===url+'/generate'||pathname===url+'/fragments/2/retry'){
       let input='';for await(const chunk of req)input+=chunk;
-      writes.push({path:pathname,body:JSON.parse(input)});
-      if(pathname.endsWith('/confirm')){phase='waiting';version++;return {id,status:'confirmed',task_id:'task-v2'};}
+      const body=JSON.parse(input);writes.push({path:pathname,body});
+      if(pathname.endsWith('/confirm')){
+        if(body.choice_revision!==choiceRevision||JSON.stringify(body.outline)!==JSON.stringify(editorialChoices?.outline)){
+          _res.statusCode=409;return {detail:'方向或大纲已变化，请先保存当前选择，再确认成稿。'};
+        }
+        phase='waiting';version++;return {id,status:'confirmed',task_id:'task-v2'};
+      }
       if(pathname.endsWith('/generate')){phase='running';return {id,task_id:'task-v2',queued:true};}
       phase='retry-queued';polls=0;return {queued:true};
     }
@@ -433,13 +448,14 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
       : {id:'old-unknown',title:'旧任务结果待核对',status:'confirmed',version:1,task_id:'old-task',task_state:'unknown',prep:null};
     if(pathname!==url&&pathname!==pitches+'/no-change')return;
     const noChange=pathname===pitches+'/no-change';
+    if(!noChange&&phase==='preparing'&&++polls>1)phase='ready';
     if(!noChange&&phase==='running'&&++polls>1){phase='unknown';version++;}
     if(!noChange&&phase==='retry-queued'&&++polls>1){phase='done';version++;}
-    const task=!noChange&&!['insufficient','ready'].includes(phase);
+    const task=!noChange&&!['insufficient','preparing','ready'].includes(phase);
     return {id:noChange?'no-change':id,title:'升级尺寸指南',status:noChange?'ready':task?'confirmed':phase,version,
       task_id:task?'task-v2':null,task_state:task?(phase==='running'?'writing':phase==='done'?'received':phase==='retry-queued'?'unknown':phase):null,
       prep:{
-        workflow_version:2,question:'升级尺寸指南',output_type:'update',existing_url:oldUrl,links:[],weak_material_ids:['weak'],
+        workflow_version:2,question:'升级尺寸指南',output_type:'update',existing_url:oldUrl,links:[],weak_material_ids:['weak'],editorial_choices:editorialChoices,
         materials:phase==='insufficient'?materials.slice(0,2):materials,paragraphs,facts:phase==='insufficient'?[calc]:[calc,source],
         subquestions:[
           {id:'q1',zh:covered,en:'Standard sizes?',need:'page',answer_shape:'table',terms:[],coverage:{status:'page_good',page_paragraphs:['p1'],evidence:[]},demand:{queries:[],inquiries:0}},
@@ -447,7 +463,7 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
           {id:'q3',zh:pixels,en:'How many pixels?',need:'calc',answer_shape:'number',terms:[],coverage:{status:'calc',page_paragraphs:[],evidence:['c1']},demand:{queries:[{query:'billboard size in pixels',impressions:31,position:4.5}],inquiries:2}},
         ],
         edit_plan:noChange?[change[0]]:phase==='insufficient'?[]:task?change.slice(0,3):change,conclusion:noChange?'no_change':'upgrade',
-        outline:change.slice(1).map((item,i)=>({id:'change-'+i,heading:item.heading,evidence:[],gap:null,action:null})),
+        outline:change.slice(1).map((item,i)=>({id:'change-'+i,heading:'  '+item.heading+' \n',evidence:[],gap:null,action:null})),
         titles:[{title:'Billboard Size Guide',anchor:'原页尺寸',article_id:'page'}],
         fragments:task?[{op_index:1,status:phase==='waiting'?'pending':'done',...(phase!=='waiting'?{zh_review:chinese,html_en:safeHtml,used_facts:['f1']}:{})},
           {op_index:2,status:phase==='unknown'||phase==='retry-queued'?'unknown':phase==='done'?'done':phase==='running'?'running':'pending',...(phase==='unknown'||phase==='retry-queued'?{receipt_id:71}:phase==='done'?{zh_review:'中文审稿：给出像素换算方法。'}:{})}]:[],
@@ -469,12 +485,15 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
     await expect(page.getByRole('heading',{name:'旧页已答好 · 1 题'})).toBeVisible();
     await expect(page.getByText('无需求数据',{exact:true}).first()).toBeVisible();
     await expect(page.getByText('billboard size in pixels · 曝光 31 · 排名 4.5')).toBeVisible();
-    const find=page.getByRole('button',{name:'只检索这一题'});
-    await expect(find).toBeDisabled();
-    await page.getByRole('textbox',{name:'补充证据链接：'+gap}).fill(sourceUrl);
+    const find=page.getByRole('button',{name:'自动查找这一题'});
+    await expect(find).toBeEnabled();
+    await expect(page.getByRole('textbox',{name:'补充证据链接：'+gap})).toBeHidden();
     await find.click();
+    await expect(page.getByRole('heading',{name:'后台正在备料'})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'选择方向与大纲'})).toBeVisible({timeout:9000});
+    await page.getByRole('button',{name:'核对依据',exact:true}).click();
     await expect(page.getByRole('heading',{name:'有直接证据 · 1 题'})).toBeVisible();
-    assert.deepEqual(writes,[{path:url+'/evidence',body:{version:7,subquestion_id:'q2',url:sourceUrl}}]);
+    assert.deepEqual(writes,[{path:url+'/evidence',body:{version:7,subquestion_id:'q2'}}]);
     const weak=page.getByRole('checkbox',{name:'选用 弱相关行业新闻'});
     await expect(weak).toBeHidden();
     await page.getByText('弱相关 1 条',{exact:true}).click();
@@ -482,7 +501,7 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
     await expect(weak).not.toBeChecked();
     await expect(page.getByRole('checkbox',{name:'选用 尺寸参考资料'})).toBeChecked();
 
-    await page.getByRole('button',{name:'编辑计划',exact:true}).click();
+    await page.getByRole('button',{name:'方向与大纲',exact:true}).click();
     await expect(page.getByText('买家问题：'+gap)).toBeVisible();
     await expect(page.getByText('原文：'+source.quote)).toBeVisible();
     const pixelEdit=page.getByRole('article').filter({has:page.getByRole('heading',{name:'新增 · 画面像素换算示例',exact:true})});
@@ -492,17 +511,25 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
     await page.getByText('原样保留 1 段',{exact:true}).click();
     await expect(keep).toBeVisible();
     await page.getByRole('checkbox',{name:'保留改动：额外的换算附录'}).uncheck();
-    await page.getByRole('button',{name:'标题',exact:true}).click();
     await page.getByRole('radio',{name:/Billboard Size Guide/}).check();
-    await page.getByRole('button',{name:'确认备料',exact:true}).click();
+    await page.getByRole('checkbox',{name:'增加条件对照表',exact:true}).check();
+    await expect(page.getByRole('textbox',{name:'补充逻辑（选填）',exact:true})).toHaveValue('');
+    assert.equal(writes.length,1,'selecting a direction, outline and additions does not create a task or call a writer');
+    await page.getByRole('button',{name:'保存选择，稍后生成',exact:true}).click();
+    assert.deepEqual(writes[1],{path:url+'/choices',body:{version:8,choice_revision:0,article_ids:['page','reference'],selected_title:'Billboard Size Guide',
+      outline:[{id:'change-0',heading:change[1].heading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],additions:['comparison'],note:''}});
+    await page.reload();
+    await expect(page.getByRole('checkbox',{name:'增加条件对照表',exact:true})).toBeChecked();
+    await expect(page.getByRole('checkbox',{name:'保留改动：额外的换算附录'})).not.toBeChecked();
+    assert.equal(writes.length,2,'saving and reloading choices do not generate a draft');
+    await page.getByRole('button',{name:'确认大纲并生成全文',exact:true}).click();
     const generate=page.getByRole('button',{name:'生成英文稿',exact:true});
-    await expect(generate).toBeEnabled();
-    assert.deepEqual(writes[1],{path:url+'/confirm',body:{version:8,article_ids:['page','reference'],selected_title:'Billboard Size Guide',output_type:'update',
+    await expect(generate).toHaveCount(0);
+    assert.deepEqual(writes[2],{path:url+'/confirm',body:{version:8,choice_revision:1,article_ids:['page','reference'],selected_title:'Billboard Size Guide',output_type:'update',
       outline:[{id:'change-0',heading:change[1].heading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],
       engineer:{mode:'conservative',name:'',reply:'',answers:[]}}});
     await expect(page.getByRole('heading',{name:/额外的换算附录/})).toHaveCount(0);
 
-    await generate.click();
     const retry=page.getByRole('button',{name:'只重试此片段'});
     await expect(retry).toBeVisible({timeout:9000});
     await expect(page.getByText(/上一次调用结果未知，可能已经计费/)).toBeVisible();
@@ -514,7 +541,7 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
     await retry.click();
     const approveRetry=page.getByRole('button',{name:'确认重试此片段'});
     await expect(approveRetry).toBeVisible();
-    assert.deepEqual(writes.slice(2),[{path:url+'/generate',body:{}}],'opening or reloading the unknown result, and reviewing retry, never starts another call');
+    assert.deepEqual(writes.slice(3),[{path:url+'/generate',body:{}}],'opening or reloading the unknown result, and reviewing retry, never starts another call');
     await page.getByRole('button',{name:'取消',exact:true}).click();
     await expect(approveRetry).toHaveCount(0);
     await retry.click();await approveRetry.click();
@@ -522,7 +549,7 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
     await expect(retry).toHaveCount(0);
     await expect(page.getByRole('heading',{name:'新旧对比'})).toBeVisible({timeout:9000});
     assert.deepEqual(writes.at(-1),{path:url+'/fragments/2/retry',body:{version:10,confirm_unknown:true}});
-    assert.equal(writes.length,4);
+    assert.equal(writes.length,5);
     await page.getByText('改写 · p2',{exact:true}).click();
     await expect(page.getByText(paragraphs[1].html,{exact:true})).toBeVisible();
     await expect(page.getByText(safeHtml,{exact:true})).toBeVisible();
@@ -535,14 +562,60 @@ test('pitch v2 explains the plan and only retries the chosen fragment after cons
     await expect(generate).toHaveCount(0);
     await expect(retry).toHaveCount(0);
     await expect(page.getByRole('link',{name:'继续原采编任务 →'})).toHaveAttribute('href','/admin/studio?tab=tasks#task-old-task');
-    assert.equal(writes.length,4);
+    assert.equal(writes.length,5);
     await page.getByRole('button',{name:'改用片段采编（新备料）'}).click();
     await expect(page.getByRole('heading',{name:'后台正在备料'})).toBeVisible();
     assert.deepEqual(writes.at(-1),{path:pitches+'/old-unknown/upgrade',body:{version:1}});
     await open('no-change');
     await expect(page.getByRole('heading',{name:'无需升级',exact:true})).toBeVisible();
-    await expect(page.getByRole('button',{name:'确认备料',exact:true})).toHaveCount(0);
-    assert.equal(writes.length,5);
+    await expect(page.getByRole('button',{name:'确认大纲并生成全文',exact:true})).toHaveCount(0);
+    assert.equal(writes.length,6);
     assert.deepEqual(errors,[]);
+  }finally{await browser?.close();await web.stop();}
+});
+
+test('missing evidence offers a concrete scope choice with omissions and needs no text input',async()=>{
+  const id='scope-choice',url='/api/admin/studio/pitches/'+id,writes:{path:string;body:unknown}[]=[];
+  const question='欧洲现货订单和原厂直发差几天？';
+  let selected=false,readsAfterSelection=0;
+  const api=fakeApi(async(request,_res,req)=>{
+    if(request.pathname==='/api/admin/me')return {name:'Synthetic operator',csrf:'fixture',dev:false};
+    if(request.pathname==='/api/admin/studio/pitches')return {rows:[]};
+    if(request.pathname===url+'/scope'){
+      let text='';for await(const chunk of req)text+=chunk;
+      writes.push({path:request.pathname,body:JSON.parse(text)});selected=true;
+      return {version:2,status:'preparing',queued:true};
+    }
+    if(request.pathname===url){
+      const ready=selected&&++readsAfterSelection>1;
+      return {id,title:question,version:selected?2:1,status:ready?'ready':selected?'preparing':'insufficient',task_id:null,prep:{
+      workflow_version:2,question:selected?'下单前如何核对自提与配送条件？':question,output_type:'guide',existing_url:'',links:[],
+      materials:[{id:'source',title:'Collection arrangements',url:'https://official.example.test/collection',revision:1,publication_time:null,published_at:null,snippet:'Confirm collection arrangements.',hit_count:1,first_party:true,body_status:'ok'}],
+      titles:ready?[{title:'Collection order checks',anchor:'下单前确认提货安排',article_id:'source'}]:[],
+      outline:ready?[{id:'checks',heading:'确认提货与配送安排',evidence:[{article_id:'source',quote:'Confirm collection arrangements.'}],gap:null,action:null}]:[],
+      facts:[{id:'collection-fact',kind:'source',statement:'Confirm collection arrangements.',quote:'Confirm collection arrangements.',article_id:'source',url:'https://official.example.test/collection'}],
+      subquestions:[{id:'order-checks',zh:'下单前如何核对自提与配送条件？',en:'How to check collection arrangements?',need:'source',answer_shape:'checklist',terms:[],coverage:{status:'direct',page_paragraphs:[],evidence:['collection-fact']}}],
+      edit_plan:ready?[{op:'insert_after',paragraph:'',subquestion:'order-checks',heading:'确认提货与配送安排',facts:['collection-fact']}]:[],
+      research:{state:'partial',queries:['European LED display warehouse collection'],imported:1,failures:[]},
+      scope:selected?{original_question:question,question:'下单前如何核对自提与配送条件？',omitted_questions:['未证实的具体交期差值','未证实的德国仓现货案例']}:undefined,
+      scope_options:selected?[]:[{id:'supported-order-checks',question:'下单前如何核对自提与配送条件？',includes:['核对提货和配送安排所需的条件'],omits:['未证实的具体交期差值','未证实的德国仓现货案例'],subquestion_ids:['order-checks']}],
+    }};}
+  });
+  const web=await startWebServer(api);let browser;
+  try{
+    browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
+    await visit(page,web.origin+'/admin/studio/pitch?id='+id);
+    await expect(page.getByText('核对提货和配送安排所需的条件',{exact:true})).toBeVisible();
+    await expect(page.getByText('未证实的德国仓现货案例',{exact:true})).toBeVisible();
+    assert.deepEqual(writes,[],'scope suggestions do not silently change the buyer question');
+    await page.getByRole('button',{name:'选择此范围，准备大纲',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'后台正在备料',exact:true})).toBeVisible();
+    assert.deepEqual(writes,[{path:url+'/scope',body:{version:1,scope_id:'supported-order-checks'}}]);
+    await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('heading',{name:'这篇回答什么',exact:true})).toBeVisible();
+    await expect(page.getByText('你已选择的回答范围：下单前如何核对自提与配送条件？',{exact:true})).toBeVisible();
+    await expect(page.getByText('未证实的德国仓现货案例',{exact:true})).toBeVisible();
+    assert.equal(writes.length,1,'loading the saved narrower scope does not draft or publish');
   }finally{await browser?.close();await web.stop();}
 });
