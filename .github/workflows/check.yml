@@ -85,6 +85,8 @@ jobs:
       # Each test file runs on its own copy of aihot_ci (tests/databases.ts), which the run migrates and
       # leaves empty; the smoke check then reads that empty database.
       - name: Backend tests
+        # Keep the independent backend evidence even when a browser assertion fails.
+        if: success() || failure()
         run: npm test
       - name: Smoke check of the built site
         # The site itself runs with collection and model calls off (the tests above use local stubs).

@@ -285,7 +285,7 @@ test('pitch desk keeps raw text private and generates only after explicit outlin
     await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toHaveCount(0);
 
     reuse=true;
-    await page.getByRole('link',{name:'+ 新命题',exact:true}).click();
+    await page.getByRole('link',{name:'新命题',exact:true}).click();
     await question.fill(savedTitle);await preview.click();await consent.check();await save.click();
     await page.waitForURL('**/admin/studio?tab=tasks#task-'+taskId);
     await expect(page.locator('#task-'+taskId)).toBeVisible();
