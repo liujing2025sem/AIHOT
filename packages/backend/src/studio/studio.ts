@@ -31,6 +31,7 @@ import { previewStudioDraftMedia } from './studio-draft-media.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialIssues, type EditorialConfirmation } from './editorial-issues.ts';
 import { packetSchema, responseSchema, validateResponse, writingHandoffFiles, responseFormat, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
 import { writingPolicyBundle } from './writing-policy-bundle.ts';
+import { studioDeliveryCapabilities } from './studio-delivery.ts';
 
 const invalid = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 const draftSchema = responseSchema.shape.drafts.element;
@@ -81,7 +82,7 @@ export async function studioOverview(f: { q?: string; source?: string; quality?:
       FROM studio_tasks ORDER BY created_at DESC LIMIT 30`,
     sql`SELECT id,task_id,article_id,status,version,document->>'title_zh' AS title_zh,document->>'title_en' AS title_en,updated_at FROM studio_drafts ORDER BY updated_at DESC LIMIT 100`,
   ]);
-  return { rows, total: count[0].n, page, stats: stats[0], sources, tasks, drafts, generation: await studioGenerationStatus() };
+  return { rows, total: count[0].n, page, stats: stats[0], sources, tasks, drafts, generation: await studioGenerationStatus(), delivery: studioDeliveryCapabilities() };
 }
 
 export async function studioGenerationStatus() {
@@ -265,7 +266,8 @@ export async function studioDraft(id: string) {
   const state=await draftReviewState(row,packet);
   const [approval]=await sql<{after:{version?:number}}[]>`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`}
     AND action='studio.draft.approve' ORDER BY id DESC LIMIT 1`;
-  return { ...row, ...state, currentVersion:row.version, approvedVersion:approval?.after.version??null,
+  const [pitch]=await sql<{id:string}[]>`SELECT id FROM studio_recommendations WHERE task_id=${row.task_id} ORDER BY created_at DESC LIMIT 1`;
+  return { ...row, ...state, pitch_id:pitch?.id??null, currentVersion:row.version, approvedVersion:approval?.after.version??null,
     suggestions:reviewEditSuggestions(packet,storedDraft(row.document),state.issues),
     review_sync:row.document.review_sync??null, upgrade_context:studioUpgradeContext(packet),
     revision_request:row.document.revision_request??null,
@@ -545,10 +547,12 @@ export async function lockStudioPublication(id: string, version: number, tx: Db)
   const approved=await approvedDraft(row,tx);
   return {...approvedPublication(approved),packet:approved.packet,draft:approved.d};
 }
-export async function exportStudioDraft(id: string, format: string) {
+export async function exportStudioDraft(id: string, format: string, version?: number) {
+  if(version!==undefined&&(!Number.isSafeInteger(version)||version<1))invalid('导出版本无效，请刷新稿件后重试。');
   return sql.begin(async tx => {
     const [row] = await tx<DraftRow[]>`SELECT * FROM studio_drafts WHERE id=${id} FOR SHARE`;
     if (!row) return null;
+    if(version!==undefined&&row.version!==version)throw new Conflict('稿件版本已更新，请刷新并核对当前版本后再下载。');
     const approved=await approvedDraft(row,tx);
     if (format === 'review') return { type: 'application/json', extension: 'review.json', body: JSON.stringify({ id, version: row.version, audience: 'INTERNAL_REVIEW_ONLY', reviewed_by: row.reviewed_by, reviewed_at: row.reviewed_at, document: {...approved.d,camos:row.document.camos,editorial_gate:approved.gate} }, null, 2) };
     const publication = approvedPublication(approved);

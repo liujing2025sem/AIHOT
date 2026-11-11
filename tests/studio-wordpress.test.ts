@@ -5,12 +5,16 @@ import { randomUUID } from 'node:crypto';
 import { sql, closeDb } from '@aihot/backend/db';
 import { stopBoss } from '@aihot/backend/jobs/queue';
 import { createStudioTask, exportStudioTask, studioDraft, reviewStudioDraft, saveStudioDraft, exportStudioDraft } from '@aihot/backend/studio/studio';
-import { pushStudioWordPressDraft, studioWordPressDetail, studioWordPressReceipt } from '@aihot/backend/studio/studio-wordpress';
+import { pushStudioWordPressDraft, studioWordPressDetail, studioWordPressReceipt, wordpressClient } from '@aihot/backend/studio/studio-wordpress';
+import { studioDeliveryCapabilities } from '@aihot/backend/studio/studio-delivery';
 
 const actor = 'test:wordpress-versions', suffix = tag();
 after(async () => { await stopBoss(); await closeDb(); });
 
 test('draft delivery verifies the exact approved version, recovers by slug or ID without writing, and updates the same draft', async t => {
+  const previousDeliveryMode = process.env.STUDIO_DELIVERY_MODE;
+  process.env.STUDIO_DELIVERY_MODE = 'wordpress';
+  t.after(() => { if (previousDeliveryMode === undefined) delete process.env.STUDIO_DELIVERY_MODE; else process.env.STUDIO_DELIVERY_MODE = previousDeliveryMode; });
   Object.assign(process.env, { WP_BASE_URL: 'https://wp-versions.example.test/', WP_USER: 'fixture', WP_APP_PASSWORD: 'test-only',
     WP_GUIDE_CATEGORY_SLUG: 'choose-guides', WP_FEATURED_MEDIA_COMPONENTS_CONTROL: '91', WP_DRAFT_PUSH_ENABLED: 'true' });
   t.after(() => { for (const key of ['WP_BASE_URL', 'WP_USER', 'WP_APP_PASSWORD', 'WP_GUIDE_CATEGORY_SLUG', 'WP_FEATURED_MEDIA_COMPONENTS_CONTROL']) delete process.env[key]; process.env.WP_DRAFT_PUSH_ENABLED = 'false'; });
@@ -73,9 +77,13 @@ test('draft delivery verifies the exact approved version, recovers by slug or ID
   const count = writes.length, originalId = writes.at(-1)!;
   await saveStudioDraft(first.id, { ...first.document, version: first.version, title_en: 'Updated LED display inspection conditions' }, actor);
   const edited = (await studioDraft(first.id))!;
-  process.env.WP_DRAFT_PUSH_ENABLED = 'false';
+  process.env.STUDIO_DELIVERY_MODE = 'manual';
+  process.env.WP_DRAFT_PUSH_ENABLED = 'true';
   detail = await studioWordPressDetail(first.id);
   assert.equal(detail.ready, false); assert.equal(detail.recoveryReady, true);
+  assert.match(detail.message!, /手工交付/);
+  await assert.rejects(push(first.id, edited.version), /手工交付/);
+  assert.equal(writes.length, count, 'the deployment capability overrides an enabled draft-push valve');
   loseAcknowledgement = false;
   const recovered = await push(first.id, edited.version, true);
   assert.equal(recovered?.state, 'pushed'); assert.equal(recovered?.version, first.version); assert.equal(recovered?.postId, originalId);
@@ -83,6 +91,7 @@ test('draft delivery verifies the exact approved version, recovers by slug or ID
   detail = await studioWordPressDetail(first.id);
   assert.equal(detail.currentVersion, edited.version); assert.equal(detail.approvedVersion, first.version);
   assert.equal(detail.syncedVersion, first.version); assert.equal(detail.currentSynced, false);
+  process.env.STUDIO_DELIVERY_MODE = 'wordpress';
   process.env.WP_DRAFT_PUSH_ENABLED = 'true';
   await assert.rejects(push(first.id, edited.version), /审稿/);
   const approvedVersion = await approve(first.id);
@@ -141,4 +150,42 @@ test('draft delivery verifies the exact approved version, recovers by slug or ID
   await assert.rejects(push(strict.id, strict.version + 1), /当前版本尚无有效批准/);
   await assert.rejects(exportStudioDraft(strict.id, 'html'), /当前版本尚无有效批准/);
   assert.equal((await studioWordPressDetail(strict.id)).approvedVersion, strict.version);
+});
+
+test('the sending boundary blocks retained clients and media payloads while authenticated reads remain usable', async t => {
+  const previousMode = process.env.STUDIO_DELIVERY_MODE, previousValve = process.env.WP_DRAFT_PUSH_ENABLED;
+  t.after(() => {
+    if (previousMode === undefined) delete process.env.STUDIO_DELIVERY_MODE; else process.env.STUDIO_DELIVERY_MODE = previousMode;
+    if (previousValve === undefined) delete process.env.WP_DRAFT_PUSH_ENABLED; else process.env.WP_DRAFT_PUSH_ENABLED = previousValve;
+  });
+  delete process.env.STUDIO_DELIVERY_MODE;
+  process.env.WP_DRAFT_PUSH_ENABLED = 'true';
+  assert.equal(studioDeliveryCapabilities().mode, 'wordpress', 'existing deployments retain the original switches by default');
+  const request = wordpressClient({ ready: true, base: new URL('https://wp-boundary.example.test/'), user: 'fixture', password: 'test-only' });
+  const calls: RequestInit[] = [];
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(new URL(input instanceof Request ? input.url : input).hostname, 'wp-boundary.example.test');
+    calls.push(init!);
+    return Response.json({ id: 1 });
+  });
+  process.env.STUDIO_DELIVERY_MODE = 'manual';
+  assert.deepEqual(studioDeliveryCapabilities(), { mode: 'manual', wordpressWritesAllowed: false,
+    draftPushAllowed: false, readOnlyRecoveryAllowed: true,
+    message: '当前工作台采用手工交付。请下载已批准版本后，由运营上传。' });
+  await assert.rejects(request('posts/1', {}, { status: 'publish' }), /手工交付/);
+  const form = new FormData(); form.set('file', new Blob(['test-only']), 'fixture.png');
+  await assert.rejects(request('media', {}, form), /手工交付/);
+  assert.equal(calls.length, 0, 'clients created before the switch cannot send a later write');
+  await request('posts/1', { context: 'edit' });
+  assert.equal(new Headers(calls[0].headers).get('X-HTTP-Method-Override'), 'GET');
+  assert.equal(calls[0].body, undefined);
+  await request('posts', {}, undefined, 'OPTIONS');
+  assert.equal(calls[1].method, 'OPTIONS');
+  process.env.STUDIO_DELIVERY_MODE = 'wordpress';
+  await request('posts/1', {}, { status: 'draft' });
+  assert.equal(calls.length, 3);
+  assert.deepEqual(JSON.parse(calls[2].body as string), { status: 'draft' });
+  process.env.STUDIO_DELIVERY_MODE = 'typo';
+  await assert.rejects(request('posts/1', {}, { status: 'publish' }), /STUDIO_DELIVERY_MODE/);
+  assert.equal(calls.length, 3, 'an invalid deployment mode cannot open the write boundary');
 });

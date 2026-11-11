@@ -5,6 +5,7 @@ import { adminGet } from '../../lib/admin.server';
 import { copyText } from '../../lib/clipboard';
 import { useAdminAction } from '../../features/admin/action';
 import { AdminPage, Badge, Button, ButtonLink, Card, Field, Input, Select, Textarea, Time } from '../../features/admin/ui';
+import { ArticleWorkflow } from '../../features/admin/workflow';
 
 const base = '/api/admin/studio';
 const desk = '/admin/studio/pitch';
@@ -172,10 +173,10 @@ function BriefFields({ output, setOutput, url, setUrl, links, setLinks, disabled
 }
 
 function Progress({ current }: { current: number }) {
-  return <ol aria-label="命题进度" className="mb-5 grid grid-cols-4 gap-1 rounded-panel bg-bg-sunk p-1 sm:gap-2">
+  return <ol aria-label="命题进度" className="pitch-preparation-progress">
     {['写题', '备料', '确认', '成稿'].map((step, i) => <li key={step} aria-current={i === current ? 'step' : undefined}
-      className={'rounded-control px-1 py-2 text-center text-xs sm:text-sm ' + (i === current ? 'bg-accent font-semibold text-white' : i < current ? 'text-ok' : 'text-ink-3')}>
-      {i < current ? '✓' : i + 1} {step}
+      className={i === current ? 'font-semibold text-accent' : i < current ? 'text-ink-2' : 'text-ink-3'}>
+      {i < current ? '✓ ' : ''}{step}
     </li>)}
   </ol>;
 }
@@ -863,7 +864,8 @@ export default function StudioPitch({ loaderData }: Route.ComponentProps) {
   const { history, pitch, question, questionId } = loaderData;
   const step = !pitch ? 0 : pitch.task_id || pitch.status === 'confirmed' ? 3 : pitch.status === 'ready' || pitch.prep?.v2?.conclusion === 'no_change' ? 2 : 1;
   return <AdminPage title="命题采编" subtitle="输入一次题目，系统找资料。你选方向与大纲，确认后生成全文。"
-    actions={<><ButtonLink to={desk} tone={pitch ? 'primary' : 'ghost'}>+ 新命题</ButtonLink><ButtonLink to="/admin/studio">返回采编工作台</ButtonLink></>}>
+    actions={<><ButtonLink to={desk} tone={pitch ? 'primary' : 'ghost'}>新命题</ButtonLink><ButtonLink to="/admin/workbench">返回工作台</ButtonLink></>}>
+    <ArticleWorkflow current="direction" directionTo={pitch ? pitchLink(pitch.id) : desk} draftId={pitch?.prep?.v2?.assembled?.draft_id ?? undefined} />
     <Progress current={step} />
     {pitch ? <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] lg:items-start">
       <aside className="contents lg:block lg:space-y-4">

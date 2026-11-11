@@ -10,6 +10,7 @@ import { lockStudioPublication } from './studio.ts';
 import { publicStudioTitle, studioUpgradeContext } from './studio-upgrade.ts';
 import { wpFigures, wpUpdateTarget, type PublishedFigure } from './studio-publishing-wordpress.ts';
 import type { PublicationIssue } from './studio-publishing-content.ts';
+import { requireStudioWordPressWrite, studioDeliveryCapabilities } from './studio-delivery.ts';
 
 const shortCategory = 'industry-news';
 const consumerTag = 'consumer-display';
@@ -44,6 +45,8 @@ function invalid(message: string): never {
   throw Object.assign(new Error(message), { statusCode: 400 });
 }
 export function wordpressSettings(requireDraftValve = true) {
+  const delivery = studioDeliveryCapabilities();
+  if (requireDraftValve && !delivery.wordpressWritesAllowed) return { ready: false as const, message: delivery.message! };
   if (requireDraftValve && !config.wpDraftPushEnabled) return { ready: false as const, message: 'WordPress 草稿推送尚未开启。' };
   try {
     const base = new URL(credential('integrations', 'WP_BASE_URL') ?? '');
@@ -79,6 +82,7 @@ function receiptView(receipt: Receipt, target: Settings, draftId: string) {
   return { ...result, editUrl, recoveryKey: !postId && (receipt.state === 'pending' || receipt.state === 'unknown') ? slugOf(draftId) : null };
 }
 export async function studioWordPressDetail(id: string) {
+  const delivery = studioDeliveryCapabilities();
   const target = settings(false);
   const [draft] = await sql<{ version: number }[]>`SELECT version FROM studio_drafts WHERE id=${id}`;
   const [approval] = await sql<{ after: { version?: number } }[]>`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`}
@@ -94,8 +98,8 @@ export async function studioWordPressDetail(id: string) {
     return { ...state, currentSynced: false, ready: false, recoveryReady: false, message: '此稿已绑定另一 WordPress 站点，请让维护人核对站点配置。', receipt: null };
   }
   return { ...state, currentSynced: state.currentSynced && receipt?.state === 'pushed' && receipt.version === versions.currentVersion,
-    ready: config.wpDraftPushEnabled, recoveryReady: !!receipt && (['pending', 'unknown'].includes(receipt.state) || receipt.state === 'pushed' && !receipt.expected),
-    message: config.wpDraftPushEnabled ? null : 'WordPress 草稿推送尚未开启。',
+    ready: delivery.draftPushAllowed, recoveryReady: !!receipt && (['pending', 'unknown'].includes(receipt.state) || receipt.state === 'pushed' && !receipt.expected),
+    message: delivery.message ?? (config.wpDraftPushEnabled ? null : 'WordPress 草稿推送尚未开启。'),
     receipt: receipt && receipt.state !== 'not_sent' ? receiptView(receipt, target, id) : null };
 }
 
@@ -124,6 +128,8 @@ export function wordpressClient(target: Settings, options?: { perRequestTimeout:
   const authorization = 'Basic ' + Buffer.from(`${target.user}:${target.password}`).toString('base64');
   const signal = AbortSignal.timeout(15_000);
   return async (path: string, query: Record<string, string>, payload?: object, method?: 'OPTIONS'): Promise<unknown> => {
+    // Authenticated reads use POST with a GET override below. A payload is an actual write.
+    if (payload !== undefined) requireStudioWordPressWrite();
     const url = new URL(`wp-json/wp/v2/${path}`, target.base);
     url.search = new URLSearchParams(query).toString();
     // Chipshow's CDN cached authenticated GETs and ignored query parameters (real post 9597).
@@ -214,6 +220,7 @@ export function sanitizeReviewedHtml(html: string) {
 
 export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: string) {
   const { recoverOnly, ...input } = pushSchema.parse(raw);
+  if (!recoverOnly) requireStudioWordPressWrite();
   const configured = settings(!recoverOnly);
   if (!configured.ready) invalid(configured.message);
   const target: Settings = configured;
@@ -250,7 +257,7 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
   }
   async function write(tx: Tx, before: Receipt, request: Request, publication: Publication, placement: Placement, postId?: number) {
     let ready: Awaited<ReturnType<typeof preflight>>;
-    try { ready = await preflight(request, publication, postId); }
+    try { requireStudioWordPressWrite(); ready = await preflight(request, publication, postId); }
     catch (error) { throw new DraftPreflightFailure(error); }
     const { base, content } = ready;
     let receipt: Receipt = { ...base, state: 'unknown', postId };

@@ -13,6 +13,7 @@ import { equivalentPage, figureSpecSchema, wpFigures, wpMeta, wpPreviousRevision
   wpUpdateTarget, wpVerify, wpWrite, type Visibility, type PublishedFigure } from './studio-publishing-wordpress.ts';
 import { checkedUpdatePatch, publicStudioTitle, studioUpgradeContext, updateBaselineHash } from './studio-upgrade.ts';
 import { sameWordPressHtml } from './studio-publishing-content.ts';
+import { ManualDeliveryError, requireStudioWordPressWrite } from './studio-delivery.ts';
 
 const settingKey = 'studio.publishing';
 const receiptAction = 'studio.publishing.receipt';
@@ -68,6 +69,7 @@ const subject = (id: string) => 'studio-publication:' + id;
 const invalid = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 const issue = (code: string, message: string): PublicationIssue => ({ code, message });
 const targetSettings = (): Target => {
+  requireStudioWordPressWrite();
   const target = wordpressSettings(false);
   if (!target.ready) return invalid(target.message);
   return target;
@@ -84,6 +86,7 @@ export async function setStudioPublishingSettings(raw: unknown, actor: string) {
     await lock(tx, settingKey);
     const before = await getStudioPublishingSettings(tx);
     const next = settingsValue({ ...before, ...patch, daily_limits: { ...before.daily_limits, ...patch.daily_limits } });
+    if (next.enabled) requireStudioWordPressWrite();
     await tx`INSERT INTO settings (key,value,updated_by) VALUES (${settingKey},${tx.json(next)},${actor})
       ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()`;
     await audit(actor, 'studio.publishing.settings', settingKey, null, before, next, { db: tx });
@@ -91,6 +94,7 @@ export async function setStudioPublishingSettings(raw: unknown, actor: string) {
   });
 }
 async function requireOneClick(db: Db = sql) {
+  requireStudioWordPressWrite();
   const { enabled, mode } = await getStudioPublishingSettings(db);
   if (!enabled || mode !== 'one_click') throw new Conflict('一键上线未开启。请在发布设置中选择一键上线并打开开关。');
 }
@@ -283,6 +287,8 @@ export async function actOnStudioPublishingReview(id: string, raw: unknown, acto
   return actOnReview(id, actionInput.parse(raw), actor, receiptAction);
 }
 async function actOnReview(id: string, action: Action, actor: string, auditAction: string) {
+  // A local acknowledgement remains available; corrections, rollback and unpublish write to WP.
+  if (action.action !== 'ok') requireStudioWordPressWrite();
   return sql.begin(async tx => {
     await lock(tx, subject(id));
     const before = await latest(id, auditAction, tx);
@@ -465,7 +471,7 @@ export async function runStudioMaterialPublication(job: JobData['studio.publish'
     const message = error instanceof Conflict ? error.message :
       error instanceof Error && 'statusCode' in error && error.statusCode === 400 ? error.message :
         '成稿未能确认，请查看写作回执。此任务不会自动再次调用模型。';
-    return save(sql, job.actor, { ...current, status: 'failed', updated_at: new Date().toISOString(),
-      issues: [...current.issues, issue('material_publish', message)] });
+    return save(sql, job.actor, { ...current, status: error instanceof ManualDeliveryError ? 'skipped' : 'failed', updated_at: new Date().toISOString(),
+      issues: [...current.issues, issue(error instanceof ManualDeliveryError ? 'manual_delivery' : 'material_publish', message)] });
   }
 }

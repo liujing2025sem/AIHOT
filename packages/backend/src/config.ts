@@ -50,6 +50,13 @@ export const config = {
   privateFeedHosts: (env.PRIVATE_FEED_HOSTS || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
   feishuContentPushEnabled: bool("FEISHU_CONTENT_PUSH_ENABLED", false),
   get wpDraftPushEnabled(): boolean { return bool("WP_DRAFT_PUSH_ENABLED", false); },
+  /** Deployment capability. Existing installations retain their original WordPress switches. */
+  get studioDeliveryMode(): 'manual' | 'wordpress' {
+    const value = env.STUDIO_DELIVERY_MODE?.trim();
+    if (!value || value === 'wordpress') return 'wordpress';
+    if (value === 'manual') return 'manual';
+    throw new Error('STUDIO_DELIVERY_MODE must be manual or wordpress');
+  },
   indexNowSubmitEnabled: bool("INDEXNOW_SUBMIT_ENABLED", false),
   /** IndexNow key (32 hex characters); without one nothing is submitted and no key file is served. */
   indexNowKey: /^[0-9a-f]{32}$/.test(env.INDEXNOW_KEY ?? "") ? env.INDEXNOW_KEY! : null,
@@ -63,7 +70,9 @@ export const config = {
   get modelCallsEnabled(): boolean { return modelCallsOverride ?? (channelCredential("MODEL_CALLS_ENABLED") === "true"); },
   set modelCallsEnabled(value: boolean) { modelCallsOverride = value; },
   devAdmin: env.DEV_AUTH_ROLE === "admin" ? { displayName: env.DEV_AUTH_DISPLAY_NAME || "Dev Admin" } : null,
-  /** The admin password (at least 12 characters). Feishu sign-in below is optional. */
+  /** Optional account name; unset deployments retain password-only sign-in. */
+  adminUsername: env.ADMIN_USERNAME?.trim() || null,
+  /** The admin password (at least 11 characters). Feishu sign-in below is optional. */
   adminPassword: env.ADMIN_PASSWORD || null,
   adminUnionIds: (env.ADMIN_FEISHU_UNION_IDS || "").split(",").map((v) => v.trim()).filter(Boolean),
   adminEmails: (env.ADMIN_EMAILS || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),

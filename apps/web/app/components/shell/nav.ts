@@ -32,7 +32,7 @@ const SECTIONS: Array<{ title: string; items: NavItem[] }> = [
   {
     title: "工作台",
     items: [
-      { to: "/admin/studio", label: "采编工作台", icon: IconDoc },
+      { to: "/admin/workbench", label: "采编工作台", icon: IconDoc },
       { to: "/admin/channels", label: "API 渠道", icon: IconPlug },
       { to: "/admin/sources", label: "信源管理", icon: IconList },
       { to: "/more", label: "阅读设置", icon: IconUser },

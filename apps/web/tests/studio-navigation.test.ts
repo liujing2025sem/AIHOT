@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { isWorkbenchNavActive, workbenchNavigation } from '../app/features/admin/navigation.ts';
 
 const cases = [
+  ['/admin/workbench', '', '工作台'],
   ['/admin/studio', '', '今日选稿'],
   ['/admin/studio', '?tab=materials&q=MiP&page=2', '今日选稿'],
   ['/admin/studio/materials/example', '', '今日选稿'],

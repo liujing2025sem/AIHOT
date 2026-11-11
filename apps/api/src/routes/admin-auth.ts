@@ -32,7 +32,7 @@ const secure = (req: FastifyRequest) => req.protocol === "https";
 
 /**
  * Password attempts: at most 10 per client address and 50 in all per 15 minutes. The overall cap holds
- * even when a client forges its address; with a 12+ character password that is far too slow to guess.
+ * even when a client forges its address. Configured usernames share the same attempt budget.
  */
 const attempts = new Map<string, number[]>();
 function over(key: string, limit: number, now: number): boolean {
@@ -100,7 +100,9 @@ export function registerAdminAuth(app: FastifyInstance) {
     return reply.header("Cache-Control", "no-store").redirect(loginPage(returnTo), 302);
   });
 
-  app.get("/api/auth/options", async (_req, reply) => reply.header("Cache-Control", "no-store").send({ password: !!config.adminPassword, feishu: feishuLoginConfigured() }));
+  app.get("/api/auth/options", async (_req, reply) => reply.header("Cache-Control", "no-store").send({
+    password: !!config.adminPassword, usernameRequired: !!config.adminUsername, feishu: feishuLoginConfigured(),
+  }));
 
   // The sign-in and sign-out forms post as plain HTML forms; only these routes read that format.
   app.register(async (form) => {
@@ -113,7 +115,7 @@ export function registerAdminAuth(app: FastifyInstance) {
       reply.header("Cache-Control", "no-store");
       if (tooManyAttempts(String(req.ip))) return reply.redirect(loginPage(returnTo, "too-many"), 303);
       try {
-        const { token, returnTo: target } = await passwordLogin(String(b.password ?? ""), returnTo, req.headers["user-agent"]);
+        const { token, returnTo: target } = await passwordLogin(String(b.password ?? ""), returnTo, req.headers["user-agent"], String(b.username ?? ""));
         reply.header("Set-Cookie", cookie(SESSION_COOKIE, token, SESSION_DAYS * 86400, secure(req)));
         return reply.redirect(target, 303);
       } catch (error) {

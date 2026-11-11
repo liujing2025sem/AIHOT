@@ -10,7 +10,7 @@ import { ago, bj } from "./format";
 
 export function AdminPage({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[1320px] px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pt-8">
+    <div className="admin-page mx-auto w-full max-w-[1320px] px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pt-8">
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-[22px] font-semibold tracking-tight text-ink sm:text-[24px]">{title}</h1>
@@ -28,7 +28,7 @@ const InScrollCard = createContext(false);
 
 export function Card({ title, right, children, className = "", pad = true, scrollable = false }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; pad?: boolean; scrollable?: boolean }) {
   return (
-    <section className={`rounded-panel bg-surface ring-1 ring-line ${scrollable ? "flex max-h-120 min-h-0 min-w-0 flex-col" : ""} ${className}`}>
+    <section className={`admin-card rounded-panel bg-surface ring-1 ring-line ${scrollable ? "flex max-h-120 min-h-0 min-w-0 flex-col" : ""} ${className}`}>
       {(title || right) && (
         <div className={`flex items-center justify-between gap-3 border-b border-line px-4 py-3 ${scrollable ? "shrink-0" : ""}`}>
           <h2 className="text-[14px] font-semibold text-ink">{title}</h2>

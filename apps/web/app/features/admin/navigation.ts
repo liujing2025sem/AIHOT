@@ -15,6 +15,7 @@ export function isWorkbenchNavActive(pathname: string, search: string, target: s
 }
 
 export const workbenchNavigation: WorkbenchNavEntry[] = [
+  { to: '/admin/workbench', label: '工作台', icon: 'home' },
   { to: '/admin/studio?tab=materials', label: '今日选稿', icon: 'news' },
   { to: '/admin/studio/pitch', label: '专业内容', icon: 'guide' },
   { to: '/admin/studio?tab=drafts', label: '我的稿件', icon: 'drafts' },

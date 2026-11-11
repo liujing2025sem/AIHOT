@@ -15,7 +15,7 @@ const PASSWORD_B = `test-password-b-${T}`;
 const SECRET_A = `test-session-secret-a-${T}`;
 const SECRET_B = `test-session-secret-b-${T}`;
 const APP = `test-login-app-${T}`;
-const original = { password: config.adminPassword, unions: config.adminUnionIds, emails: config.adminEmails, dev: config.devAdmin, environment: config.environmentName, siteUrl: config.siteUrl };
+const original = { username: config.adminUsername, password: config.adminPassword, unions: config.adminUnionIds, emails: config.adminEmails, dev: config.devAdmin, environment: config.environmentName, siteUrl: config.siteUrl };
 const envKeys = ["SESSION_SECRET", "FEISHU_LOGIN_APP_ID", "FEISHU_LOGIN_APP_SECRET"];
 const oldEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 let profile: { union_id?: string; email?: string; enterprise_email?: string; name?: string } = {};
@@ -79,6 +79,7 @@ before(async () => {
   base = await app.listen({ host: "127.0.0.1", port: 0 });
 });
 beforeEach(() => {
+  config.adminUsername = null;
   config.adminPassword = PASSWORD_A;
   config.adminUnionIds = [];
   config.adminEmails = [];
@@ -92,7 +93,7 @@ beforeEach(() => {
 after(async () => {
   globalThis.fetch = realFetch;
   await app.close(); await oauth.close();
-  config.adminPassword = original.password; config.adminUnionIds = original.unions; config.adminEmails = original.emails;
+  config.adminUsername = original.username; config.adminPassword = original.password; config.adminUnionIds = original.unions; config.adminEmails = original.emails;
   config.devAdmin = original.dev; config.environmentName = original.environment; config.siteUrl = original.siteUrl;
   for (const [key, value] of oldEnv) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   await closeDb();
@@ -126,11 +127,88 @@ for (const next of [null, "short"]) test(`password ${next === null ? "removal" :
 test("unchanged sessions preserve CSRF, and neither the password nor the token is stored", async () => {
   const token = await password();
   const me = await principal(token);
+  const options = await (await realFetch(`${base}/api/auth/options`)).json() as { usernameRequired: boolean };
+  assert.equal(options.usernameRequired, false, "existing deployments still accept password-only sign-in");
   assert.equal((await principal(token)).csrf, me.csrf);
   assert.equal((await request("/api/admin/session-test", token, "wrong")).status, 403);
   assert.equal((await request("/api/admin/session-test", token, me.csrf)).status, 200);
   const rows = await sql`SELECT * FROM admin_sessions`;
   assert.ok(rows.length > 0 && !JSON.stringify(rows).includes(PASSWORD_A) && !JSON.stringify(rows).includes(token));
+});
+
+test("configured account name is enforced by the form endpoint and an eleven-character test password works", async () => {
+  config.adminUsername = "editor-test";
+  config.adminPassword = "qa-pass-123";
+  assert.equal(config.adminPassword.length, 11);
+  const options = await realFetch(`${base}/api/auth/options`);
+  assert.equal(options.headers.get("cache-control"), "no-store");
+  const body = await options.json() as Record<string, unknown>;
+  assert.equal(body.usernameRequired, true);
+  assert.equal(body.password, true);
+  assert.equal(JSON.stringify(body).includes(config.adminUsername), false);
+  assert.equal(JSON.stringify(body).includes(config.adminPassword), false);
+  const login = (fields: Record<string, string>) => realFetch(`${base}/api/auth/password`, {
+    method: "POST", redirect: "manual", body: new URLSearchParams({ return: "/admin/studio", ...fields }),
+    headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": "198.51.100.21" },
+  });
+  const [before] = await sql`SELECT count(*)::int AS n FROM admin_sessions`;
+  const rejectedFields: Record<string, string>[] = [
+    { password: config.adminPassword },
+    { username: "Editor-test", password: config.adminPassword },
+    { username: config.adminUsername, password: "wrong-test-password" },
+  ];
+  for (const fields of rejectedFields) {
+    const rejected = await login(fields);
+    assert.equal(rejected.status, 303);
+    assert.equal(new URL(rejected.headers.get("location")!, base).searchParams.get("error"), "wrong");
+    assert.equal(rejected.headers.getSetCookie().length, 0);
+  }
+  const [after] = await sql`SELECT count(*)::int AS n FROM admin_sessions`;
+  assert.equal(after.n, before.n, "a password alone cannot create a named-account session");
+  const accepted = await login({ username: config.adminUsername, password: config.adminPassword });
+  assert.equal(accepted.status, 303);
+  assert.equal(accepted.headers.get("location"), "/admin/studio");
+  const header = accepted.headers.getSetCookie().find(line => line.startsWith(`${SESSION_COOKIE}=`))!;
+  assert.ok(header);
+  const token = decodeURIComponent(header.split(";")[0].slice(SESSION_COOKIE.length + 1));
+  const me = await principal(token);
+  assert.equal(me.name, config.adminUsername);
+  assert.equal((await request("/api/admin/session-test", token, "wrong")).status, 403);
+  assert.equal((await request("/api/admin/session-test", token, me.csrf)).status, 200);
+  config.adminPassword = "qa-pass-12";
+  await assert.rejects(passwordLogin(config.adminPassword, "/admin", undefined, config.adminUsername), /至少 11 位/);
+  await revoked(token);
+});
+
+test("account-name configuration changes revoke prior password sessions", async () => {
+  const legacy = await password();
+  config.adminUsername = "editor-test";
+  await revoked(legacy);
+  await assert.rejects(passwordLogin(PASSWORD_A, "/admin", undefined), /账户名或密码/);
+  const named = (await passwordLogin(PASSWORD_A, "/admin", undefined, "editor-test")).token;
+  await principal(named);
+  config.adminUsername = "replacement-editor";
+  await revoked(named);
+  config.adminUsername = "editor-test";
+  await revoked(named);
+  const replacement = (await passwordLogin(PASSWORD_A, "/admin", undefined, "editor-test")).token;
+  config.adminUsername = null;
+  await revoked(replacement);
+  await principal(await password());
+});
+
+test("changing attempted account names does not reset the existing login attempt limit", async () => {
+  config.adminUsername = "editor-test";
+  for (let i = 0; i <= 10; i++) {
+    const response: Response = await realFetch(`${base}/api/auth/password`, {
+      method: "POST", redirect: "manual",
+      body: new URLSearchParams({ username: i === 10 ? config.adminUsername : `wrong-editor-${i}`, password: PASSWORD_A }),
+      headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": "198.51.100.22" },
+    });
+    assert.equal(response.status, 303);
+    assert.equal(new URL(response.headers.get("location")!, base).searchParams.get("error"), i === 10 ? "too-many" : "wrong");
+    assert.equal(response.headers.getSetCookie().length, 0);
+  }
 });
 
 test("Feishu original union or normalized email remains authorized under OR semantics", async () => {

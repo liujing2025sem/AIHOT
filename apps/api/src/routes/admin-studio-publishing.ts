@@ -4,12 +4,15 @@ import {
   getStudioPublishingSettings, setStudioPublishingSettings, publishStudioDraft,
   enqueueStudioMaterialPublication, listStudioPublishingReviews, actOnStudioPublishingReview,
 } from '@aihot/backend/studio/studio-publishing';
+import { studioDeliveryCapabilities } from '@aihot/backend/studio/studio-delivery';
 import { adminHandler } from './admin-auth.ts';
 import { body, orNotFound, param } from './admin.ts';
 
 export function registerAdminStudioPublishing(app: FastifyInstance) {
   const root = '/api/admin/studio';
-  app.get(`${root}/publishing/settings`, adminHandler(async () => getStudioPublishingSettings()));
+  app.get(`${root}/publishing/settings`, adminHandler(async () => ({
+    ...await getStudioPublishingSettings(), delivery: studioDeliveryCapabilities(),
+  })));
   app.put(`${root}/publishing/settings`, adminHandler(async (req, _reply, admin) =>
     setStudioPublishingSettings(body(req), actorOf(admin))));
   app.post(`${root}/drafts/:id/publish`, adminHandler(async (req, reply, admin) =>

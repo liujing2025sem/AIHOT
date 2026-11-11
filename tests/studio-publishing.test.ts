@@ -3,6 +3,7 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { sql, closeDb } from '@aihot/backend/db';
+import { audit } from '@aihot/backend/audit';
 import { createStudioTask, exportStudioTask, reviewStudioDraft, studioDraft } from '@aihot/backend/studio/studio';
 import { stopBoss } from '@aihot/backend/jobs/queue';
 import { getStudioPublishingSettings, setStudioPublishingSettings, publishStudioDraft, listStudioPublishingReviews, actOnStudioPublishingReview, enqueueStudioMaterialPublication, runStudioMaterialPublication } from '@aihot/backend/studio/studio-publishing';
@@ -16,6 +17,9 @@ const actor='test:publishing', suffix=tag();
 after(async()=>{await stopBoss();await closeDb();});
 
 test('one-click publication retains manual draft state, reads back, corrects and rolls back, with default off',async t=>{
+  const previousDeliveryMode=process.env.STUDIO_DELIVERY_MODE;
+  process.env.STUDIO_DELIVERY_MODE='wordpress';
+  t.after(()=>{if(previousDeliveryMode===undefined)delete process.env.STUDIO_DELIVERY_MODE;else process.env.STUDIO_DELIVERY_MODE=previousDeliveryMode;});
   Object.assign(process.env,{WP_BASE_URL:'https://wp.example.test/',WP_USER:'fixture',WP_APP_PASSWORD:'test-only',WP_GUIDE_CATEGORY_SLUG:'choose-guides',WP_DRAFT_PUSH_ENABLED:'true'});
   t.after(()=>{for(const key of ['WP_BASE_URL','WP_USER','WP_APP_PASSWORD','WP_GUIDE_CATEGORY_SLUG'])delete process.env[key];process.env.WP_DRAFT_PUSH_ENABLED='false';});
   const source='publish-'+suffix, article='article-'+suffix;
@@ -91,6 +95,65 @@ test('one-click publication retains manual draft state, reads back, corrects and
   await sql`UPDATE studio_drafts SET version=version+1 WHERE id=${id}`;
   const failed=await publishStudioDraft(id,{version:2,kind:'guide',section:'components-ics'},actor);
   assert.equal(failed!.status,'draft');assert.equal(posts.get(failed!.postId!)!.status,'draft');
+});
+
+test('manual delivery blocks saved one-click settings and retained jobs without model or WordPress calls', async t => {
+  const values = { STUDIO_DELIVERY_MODE: 'wordpress', WP_BASE_URL: 'https://wp-manual.example.test/', WP_USER: 'fixture',
+    WP_APP_PASSWORD: 'test-only', WP_GUIDE_CATEGORY_SLUG: 'choose-guides', WP_DRAFT_PUSH_ENABLED: 'true',
+    LLM_BASE_URL: 'https://llm-manual.example.test/v1', LLM_API_KEY: 'fixture-key', LLM_MODEL: 'test-flash' };
+  const previousEnv = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  t.after(() => { for (const [key, value] of Object.entries(previousEnv)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  } });
+  let externalCalls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { externalCalls++; throw new Error('manual delivery must not contact an external service'); });
+  const source = 'manual-source-' + suffix, article = 'manual-article-' + suffix;
+  const sourceText = 'The supplier describes inspection conditions for an indoor LED display.';
+  await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${source},'Supplier','web_list',false)`;
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,body_status,body_text)
+    VALUES(${article},${source},${article},${'https://source.example.test/' + article},'Inspection conditions',now(),now(),'ok',${sourceText})`;
+  const task = await createStudioTask({ article_ids: [article] }, actor), packet = (await exportStudioTask(task.id))!.request;
+  const id = randomUUID(), document = { source: packet.articles[0].binding, title_zh: '检查条件', title_en: 'LED display inspection conditions',
+    review_zh: '供应商说明检查条件。', body_en: sourceText, evidence: [{ claim: 'Inspection conditions', quote: sourceText }],
+    questions_zh: [], keyword_hypothesis: 'display inspection', meta_description_en: 'Supplier inspection conditions.' };
+  await sql`INSERT INTO studio_drafts(id,task_id,article_id,document,updated_by) VALUES(${id},${task.id},${article},${sql.json(document)},${actor})`;
+  await setStudioPublishingSettings({ mode: 'one_click', enabled: true }, actor);
+  const queued = await enqueueStudioMaterialPublication({ article_ids: [article], kind: 'guide', section: 'components-ics' }, actor);
+  // A saved synthetic publication record exercises local review without rendering or publishing a new image.
+  const [queueReceipt] = await sql`SELECT after FROM audit_log WHERE action='studio.publishing.receipt'
+    AND subject=${'studio-publication:' + queued.id} ORDER BY id DESC LIMIT 1`;
+  await audit(actor, 'studio.publishing.receipt', 'studio-publication:' + id, null, null,
+    { ...queueReceipt.after, id, draft_id: id, version: 1, title: document.title_en, content: document.body_en,
+      site: values.WP_BASE_URL, status: 'published', postId: 9001, canRollback: true });
+  const [before] = await sql`SELECT (SELECT count(*)::int FROM studio_tasks) AS tasks,
+    (SELECT count(*)::int FROM studio_drafts) AS drafts, (SELECT count(*)::int FROM receipts) AS receipts`;
+  process.env.STUDIO_DELIVERY_MODE = 'manual';
+  const { publishStudioDraftPrivateTest, actOnStudioPublishingPrivateTest } = await import('@aihot/backend/studio/studio-publishing');
+  for (const operation of [
+    () => publishStudioDraft(id, { version: 1, kind: 'guide', section: 'components-ics' }, actor),
+    () => publishStudioDraftPrivateTest(id, { version: 1, kind: 'guide', section: 'components-ics' }, actor),
+    () => enqueueStudioMaterialPublication({ article_ids: [article], kind: 'brief', section: 'components-ics' }, actor),
+    () => actOnStudioPublishingReview(id, { action: 'correct', title: 'Must not be sent' }, actor),
+    () => actOnStudioPublishingReview(id, { action: 'unpublish' }, actor),
+    () => actOnStudioPublishingReview(id, { action: 'rollback' }, actor),
+    () => actOnStudioPublishingPrivateTest('private-' + id, { action: 'correct', title: 'Must not be sent' }, actor),
+    () => setStudioPublishingSettings({ mode: 'one_click', enabled: true }, actor),
+    () => setStudioPublishingSettings({ mode: 'automatic', enabled: true }, actor),
+  ]) await assert.rejects(operation(), /手工交付/);
+  const preference = await getStudioPublishingSettings();
+  assert.equal(preference.mode, 'one_click'); assert.equal(preference.enabled, true, 'saved preferences remain intact');
+  const job = { id: queued.id, actor, article_ids: [article], kind: 'guide' as const, section: 'components-ics' as const };
+  await runStudioMaterialPublication(job);
+  const retained = (await listStudioPublishingReviews()).rows.find(row => row.id === queued.id)!;
+  assert.equal(retained.status, 'skipped'); assert.equal(retained.draft_id, null);
+  assert.ok(retained.issues.some(issue => issue.code === 'manual_delivery'));
+  await runStudioMaterialPublication(job);
+  const [afterCounts] = await sql`SELECT (SELECT count(*)::int FROM studio_tasks) AS tasks,
+    (SELECT count(*)::int FROM studio_drafts) AS drafts, (SELECT count(*)::int FROM receipts) AS receipts`;
+  assert.deepEqual(afterCounts, before, 'stopped jobs create no task, draft or paid request');
+  assert.equal((await actOnStudioPublishingReview(id, { action: 'ok' }, actor))!.reviewed, true, 'local acknowledgement remains available');
+  assert.equal(externalCalls, 0, 'blocked actions, retained jobs and local acknowledgement send zero external requests');
 });
 
 test('five automatic filters remove content, keep WARN optional and preserve authorised own-page wording',()=>{

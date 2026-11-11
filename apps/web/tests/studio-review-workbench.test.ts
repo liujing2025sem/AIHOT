@@ -48,6 +48,8 @@ function reviewFixture() {
   const api = fakeApi(async (url, _res, req) => {
     if (url.pathname === '/api/admin/me') return { name: 'Synthetic operator', csrf: 'fixture', dev: false };
     if (url.pathname === '/api/admin/nav-counts') return {};
+    if (url.pathname === '/api/admin/studio/capabilities') return { delivery: { mode: 'manual', wordpressWritesAllowed: false, draftPushAllowed: false, readOnlyRecoveryAllowed: true, message: '当前工作台采用手工交付。请下载已批准版本后，由运营上传。' } };
+    if (url.pathname === '/api/admin/studio/drafts/review-fixture/covers') return { revision: 0, selectedHash: null, candidates: [], confirmed: false, confirmedVersion: null };
     if (url.pathname === '/api/admin/studio/publishing/settings') return { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
     if (url.pathname === '/api/admin/studio/drafts/review-fixture' && req.method === 'GET') { reads++; return draft; }
     if (url.pathname.startsWith('/api/admin/studio/drafts/review-fixture') && req.method !== 'GET') {
@@ -83,12 +85,12 @@ test('an older unknown delivery can be checked from an unapproved current draft 
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     await page.route('**/*', route => new URL(route.request().url()).origin === web.origin ? route.continue() : route.abort());
-    await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
+    await visit(page, web.origin + '/admin/studio/drafts/review-fixture?stage=delivery');
     const versions = page.getByLabel('稿件版本对应');
     await expect(versions).toContainText('版本 7');
     await expect(versions).toContainText('版本 6');
     await expect(versions).toContainText('版本 4');
-    await expect(page.getByRole('button', { name: '推送WordPress草稿', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '推送WordPress草稿', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '核对上次送达结果', exact: true }).click();
     await expect(page.getByRole('button', { name: '核对上次送达结果', exact: true })).toBeEnabled();
     assert.deepEqual(fixture.writes, [{ path: '/api/admin/studio/drafts/review-fixture/wordpress', body: { version: 6, kind: 'guide', section: 'industry', recoverOnly: true } }]);
@@ -156,8 +158,9 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
         ],
       },
     });
+    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '手工交付', exact: true }).click();
     await expect(page.getByRole('link', { name: '英文 HTML', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '直接上线', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '直接上线', exact: true })).toHaveCount(0);
     assert.equal(fixture.writes.some(write => /\/(publish|wordpress)$/.test(write.path)), false, 'human approval does not initiate a publishing request');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);

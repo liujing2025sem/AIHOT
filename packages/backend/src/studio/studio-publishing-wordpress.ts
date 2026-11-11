@@ -9,6 +9,7 @@ import type { FigureSpec } from './studio-figures.ts';
 import { sameWordPressHtml, type EditorialDraft, type PublicationIssue } from './studio-publishing-content.ts';
 import { prepareStudioFigures, type DraftFigure } from './studio-draft-media.ts';
 import { samePage } from './studio-upgrade.ts';
+import { ManualDeliveryError } from './studio-delivery.ts';
 
 type Request = ReturnType<typeof wordpressClient>;
 export const postId = z.number().int().positive();
@@ -212,7 +213,10 @@ export async function wpFigures(request: Request, input: {
           '" width="1200" height="675" alt="' + escape(figure.alt_en) + '" loading="lazy"><figcaption>' +
           escape(figure.caption_en) + '</figcaption></figure>');
       }
-    } catch { issues.push({ code: 'figure_missing', message: '配图未能上传，文字已保留。' }); }
+    } catch (error) {
+      if (error instanceof ManualDeliveryError) throw error;
+      issues.push({ code: 'figure_missing', message: '配图未能上传，文字已保留。' });
+    }
   }
   const body = [input.content, ...figures].filter(Boolean).join('\n');
   return { content: input.kind === 'brief' && !/<(?:section|div)\b[^>]*class=["'][^"']*\bcs-brief\b/i.test(body)

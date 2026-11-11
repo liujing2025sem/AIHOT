@@ -70,7 +70,17 @@ jobs:
       - name: Browser test engines
         run: npx playwright install --with-deps chromium webkit
       - name: Web tests
+        env:
+          AIHOT_UI_REVIEW_DIR: test-artifacts/workbench
         run: node --test apps/web/tests/*.test.ts
+      - name: Workbench visual evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: workbench-visual-evidence
+          path: test-artifacts/workbench
+          if-no-files-found: ignore
+          retention-days: 7
 
       # Each test file runs on its own copy of aihot_ci (tests/databases.ts), which the run migrates and
       # leaves empty; the smoke check then reads that empty database.

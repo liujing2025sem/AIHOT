@@ -386,6 +386,32 @@ test("an unknown outcome is released automatically once, so a lost answer costs 
   assert.equal(sent, 2);
 });
 
+test("all Studio writing purposes retain unknown outcomes without an automatic second purchase", async () => {
+  const purposes = ['studio_editorial', 'studio_revision', 'studio_prep_keywords', 'studio_prep_outline',
+    'studio_prep_subquestions', 'studio_prep_edit_plan', 'studio_fragment', 'studio_future_operation'];
+  const requests = purposes.map(purpose => ({ service: 'invariant-studio-unbudgeted', purpose,
+    subject: `studio-task:unknown-${purpose}-${tag()}`, identity: { purpose, run: tag() } }));
+  let sent = 0;
+  const lost = async () => { sent++; throw new Error('simulated lost response after sending'); };
+  for (const request of requests) await assert.rejects(paidRequest(request, lost), ReceiptUnknownError);
+  assert.equal(sent, purposes.length);
+  const subjects = requests.map(request => request.subject);
+  await sql`UPDATE receipts SET updated_at = now() - interval '31 minutes' WHERE subject = ANY(${subjects})`;
+  await autoReleaseUnknownReceipts();
+  const retained = await sql<{ id: number; purpose: string; status: string; attempts: number }[]>`
+    SELECT id,purpose,status,attempts FROM receipts WHERE subject = ANY(${subjects}) ORDER BY purpose`;
+  assert.equal(retained.length, purposes.length);
+  for (const row of retained) {
+    assert.equal(row.status, 'unknown', row.purpose);
+    assert.equal(row.attempts, 1, row.purpose);
+  }
+  for (const request of requests) await assert.rejects(paidRequest(request, lost), /operator recovery is required/);
+  assert.equal(sent, purposes.length, 'reading or revisiting the same request does not call its provider again');
+  const releases = await sql`SELECT id FROM audit_log WHERE action='receipt.release'
+    AND subject=ANY(${retained.map(row => `receipt:${row.id}`)})`;
+  assert.equal(releases.length, 0);
+});
+
 // The classification the alert layer already uses: a TPM/RPM throttle may pass; an account, spending or
 // access refusal stops new calls, because the same request would be refused again in a minute.
 test("a throttle is not a spent account: only an access or billing refusal stops calls", () => {

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { useAdminAction } from './action';
 import { Button, Card } from './ui';
+import { useDelivery } from './delivery';
 
 export type PublishingSettings = {
   mode: 'review' | 'one_click' | 'automatic'; enabled: boolean;
@@ -10,23 +11,30 @@ export type PublishingSettings = {
 };
 const defaults: PublishingSettings = { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
 const endpoint = '/api/admin/studio/publishing/settings';
-function usePublishingSettings() {
+function usePublishingSettings(enabled = true) {
   const [value, setValue] = useState<PublishingSettings | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     void fetch(endpoint, { credentials: 'same-origin', signal: controller.signal }).then(async r => {
       if (!r.ok) throw Error('上线设置暂时无法读取，请刷新重试。');
       const result = await r.json(); setValue({ ...defaults, ...result });
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
-  }, []);
+  }, [enabled]);
   return { value, setValue, error };
 }
 
 export function PublishingSettingsCard() {
-  const { value, setValue, error } = usePublishingSettings();
+  const delivery = useDelivery();
+  const { value, setValue, error } = usePublishingSettings(delivery.wordpressWritesAllowed);
   const { run, busy } = useAdminAction();
+  if (!delivery.wordpressWritesAllowed) return <Card title="手工交付">
+    <p className="text-sm leading-7">{delivery.message || '审核成稿后，下载文件，由运营上传到网站。'}</p>
+    <p className="mt-2 text-sm leading-7 text-ink-3">稿件、配图、版本和发布历史都保留在原工作台。</p>
+    <Link to="/admin/studio?tab=drafts" className="mt-4 inline-flex text-sm font-medium text-accent">查看稿件</Link>
+  </Card>;
   if (!value) return <Card title="上线方式"><p className="text-sm text-ink-3">{error || '正在读取设置…'}</p></Card>;
   return <Card title="上线方式">
     <div className="space-y-3 text-sm">
@@ -46,11 +54,13 @@ export function DirectPublish({ draft, materialIds, disabled = false, onQueued }
   draft?: { id: string; version: number; title: string };
   materialIds?: string[]; disabled?: boolean; onQueued?: () => void;
 }) {
-  const { value, error } = usePublishingSettings();
+  const delivery = useDelivery();
+  const { value, error } = usePublishingSettings(delivery.wordpressWritesAllowed);
   const { run, busy } = useAdminAction();
   const [kind, setKind] = useState(draft ? /^\[UPDATE\]/i.test(draft.title) ? 'update' : 'guide' : 'article');
   const [section, setSection] = useState('components-ics');
   const [notice, setNotice] = useState('');
+  if (!delivery.wordpressWritesAllowed) return null;
   const enabled = value?.enabled && value.mode === 'one_click';
   const selected = !!draft || !!materialIds?.length;
   return <div className="mt-4 border-t border-line pt-4">

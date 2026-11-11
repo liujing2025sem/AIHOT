@@ -298,7 +298,9 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
   if (claimed.kind === "reuse") return { receiptId: claimed.row.id, response: claimed.row.response, reused: true };
   if (claimed.kind === "busy") throw new ReceiptBusyError(`Receipt ${claimed.row.id} is in flight`);
   if (claimed.kind === "unknown") {
-    throw new ReceiptUnknownError(claimed.row.id, `Receipt ${claimed.row.id} has an unknown outcome; it is released once automatically, then from the admin`);
+    const recovery = req.purpose.startsWith('studio_') ? 'operator recovery is required before another attempt'
+      : 'it is released once automatically, then from the admin';
+    throw new ReceiptUnknownError(claimed.row.id, `Receipt ${claimed.row.id} has an unknown outcome; ${recovery}`);
   }
 
   const { id: receiptId, attemptId } = claimed;

@@ -44,6 +44,11 @@ export function fakeApi(route: (url: URL, res: ServerResponse, req: IncomingMess
     const body = await route(url, res, req);
     if (res.writableEnded) return;
     if (body !== undefined) return res.end(JSON.stringify(body));
+    // Admin fixtures default to the manual deployment; WordPress tests explicitly opt in.
+    if (url.pathname === "/api/admin/studio/capabilities") return res.end(JSON.stringify({ delivery: {
+      mode: "manual", wordpressWritesAllowed: false, draftPushAllowed: false, readOnlyRecoveryAllowed: true,
+      message: "当前工作台采用手工交付。请下载已批准版本后，由运营上传。",
+    } }));
     if (url.pathname === "/api/site/meta") return res.end(JSON.stringify({ changelogVersion: "fixture" }));
     if (url.pathname === "/api/site/track") { res.statusCode = 204; return res.end(); }
     if (url.pathname === "/api/health") return res.end("{}");

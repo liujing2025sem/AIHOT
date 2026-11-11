@@ -9,6 +9,8 @@ for (const width of [1440, 390]) test(`operator enables one-click, publishes an 
   const review = { id: 'receipt-1', title: 'MiP package sizes', content: '<p>The package measurement is conditional.</p>', kind: 'guide', status: 'private', postId: 99, url: 'https://example.test/?p=99', created_at: '2026-11-08T15:00:00Z', issues: [], canRollback: true, reviewed: false };
   const api = fakeApi(async (url, _res, req) => {
     if (url.pathname === '/api/admin/me') return { name: 'Synthetic operator', csrf: 'fixture', dev: false };
+    if (url.pathname === '/api/admin/studio/capabilities') return { delivery: { mode: 'wordpress', wordpressWritesAllowed: true, draftPushAllowed: true, readOnlyRecoveryAllowed: true, message: null } };
+    if (url.pathname === '/api/admin/studio/drafts/mip/covers') return { revision: 0, selectedHash: null, candidates: [], confirmed: false, confirmedVersion: null };
     let text = ''; for await (const chunk of req) text += chunk;
     const input = text ? JSON.parse(text) : {};
     if (req.method !== 'GET') writes.push({ path: url.pathname, body: input });
@@ -22,7 +24,7 @@ for (const width of [1440, 390]) test(`operator enables one-click, publishes an 
   const web = await startWebServer(api); const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width, height: 900 } }); const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
-    await visit(page, web.origin + '/admin/studio/drafts/mip');
+    await visit(page, web.origin + '/admin/studio/drafts/mip?stage=delivery');
     await expect(page.getByRole('button', { name: '直接上线', exact: true })).toBeDisabled();
     assert.equal(writes.filter(w => w.path.endsWith('/publish')).length, 0);
     await page.getByRole('link', { name: '去设置开启一键上线 →' }).click();
@@ -30,7 +32,7 @@ for (const width of [1440, 390]) test(`operator enables one-click, publishes an 
     await page.getByRole('checkbox', { name: '开启直接上线', exact: true }).check();
     await page.getByRole('button', { name: '保存上线方式', exact: true }).click();
     assert.equal(settings.enabled, true); assert.equal(settings.mode, 'one_click');
-    await page.goto(web.origin + '/admin/studio/drafts/mip');
+    await page.goto(web.origin + '/admin/studio/drafts/mip?stage=delivery');
     await expect(page.getByRole('button', { name: '直接上线', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '直接上线', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '私密验收样例已保存' })).toBeVisible();
