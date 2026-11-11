@@ -11,6 +11,11 @@ import { Checkbox } from '../../components/ui/primitives/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/primitives/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../../components/ui/primitives/accordion';
 
+function quoteText(value: string) {
+  const entities: Record<string, string> = { '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
+  return value.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, token => entities[token]).replace(/\s+/g, ' ').trim();
+}
+
 type Document = {
   news_status?: 'reported' | 'unconfirmed' | 'confirmed' | 'denied' | 'corrected';
   camos?: { status: string; ruleIds: string[]; suppliedRuleIds?: string[] };
@@ -218,7 +223,7 @@ function Editor({ row }: { row: Detail }) {
             <p className="mt-1 text-xs leading-5 text-ink-3">{i.confirmable ? '核对原文后勾选，确认仅对当前版本有效。' : '人审模式下需要修改内容，不能勾选放行。'}</p>
           </div>
         </div>
-        {i.occurrences[0] && <blockquote className="mt-3 whitespace-pre-wrap break-words border-l-2 border-line pl-3 text-sm leading-6">{i.occurrences[0].quote}</blockquote>}
+        {i.occurrences[0] && <blockquote className="mt-3 whitespace-pre-wrap break-words border-l-2 border-line pl-3 text-sm leading-6">{quoteText(i.occurrences[0].quote).slice(0, 240)}{quoteText(i.occurrences[0].quote).length > 240 && '…'}</blockquote>}
         {(row.suggestions??[]).filter(s=>s.issueId===i.id).map(s=><div key={s.id} className="mt-3 space-y-2 rounded-control bg-bg-sunk p-3">
           <p className="text-xs font-medium text-ink">建议修改英文主稿</p>
           <p className="break-words text-xs leading-6 text-ink-2">{s.before}</p>
@@ -232,7 +237,7 @@ function Editor({ row }: { row: Detail }) {
             <AccordionContent className="pb-0">
               {i.occurrences.map((f, index) => <div key={index} className="mt-3 border-l-2 border-line pl-3">
                 <p className="text-xs leading-6 text-ink-2">{f.reason}</p>
-                <blockquote className="mt-2 whitespace-pre-wrap break-words rounded-control bg-bg-sunk p-2.5 text-xs leading-6 text-ink-3">{f.quote}</blockquote>
+                <blockquote className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-control bg-bg-sunk p-2.5 text-xs leading-6 text-ink-3">{quoteText(f.quote)}</blockquote>
                 <Button size="sm" tone="ghost" className="mt-1" onClick={() => locate(f)}><LocateFixed aria-hidden="true" />定位到稿件</Button>
                 <p className="mt-1 break-all text-[11px] text-ink-4">规则 {f.ruleId} · {f.severity} · {f.field} · {f.start}–{f.end}</p>
               </div>)}
