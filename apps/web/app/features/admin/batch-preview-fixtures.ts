@@ -1,4 +1,12 @@
-import type { DirectionId, ReviewChoice } from './batch-session.ts';
+import type { CoverAngle, DirectionId, ReviewChoice } from './batch-session.ts';
+
+export type SourceParagraph = {
+  id: string;
+  text: string;
+  highlight?: string;
+  reason?: string;
+  suggestion?: string;
+};
 
 export type DemoArticle = {
   id: string;
@@ -20,6 +28,7 @@ export type DemoArticle = {
   evidence: string;
   checklist: string[];
   body: { heading: string; text: string }[];
+  sourcePage?: { url: string; label: string; paragraphs: SourceParagraph[] };
 };
 
 export function demoArticleTitle(article: DemoArticle, reviewChoice: ReviewChoice | null): string {
@@ -45,6 +54,15 @@ export const demoArticles: DemoArticle[] = [
     narrowerQuestion: '买家询价前应提供哪些场地尺寸和内容信息？',
     omitted: '本篇先不推荐具体屏幕尺寸，也不承诺观看效果。',
     evidence: '演示核对项：原句把屏幕变大直接等同于看得更清楚，缺少观看距离和内容条件。这里未加载真实信源。',
+    sourcePage: {
+      url: 'https://example.com/led-display-size-guide',
+      label: '示例 URL 与原文，用于展示旧页优化流程；待接入实际页面。',
+      paragraphs: [
+        { id: 'source-intro', text: 'Choosing an LED display starts with the space you have available. Measure the wall and select a screen that fits.', highlight: 'Measure the wall and select a screen that fits.', reason: '安装空间、可视区域和维护净空混在一起，采购难以拿这句话去询价。', suggestion: '将可视区尺寸、整体安装尺寸和维护净空分别列出。' },
+        { id: 'source-viewing', text: 'A larger LED screen always gives every viewer a clearer image. Choose the biggest size that your budget allows.', highlight: 'A larger LED screen always gives every viewer a clearer image.', reason: '观看距离和内容字号缺失，原句给出了过度承诺。', suggestion: '同时核对观看距离、内容字号、内容比例和可用安装空间。' },
+        { id: 'source-enquiry', text: 'Contact a supplier for a quotation and further information.', highlight: 'Contact a supplier for a quotation and further information.', reason: '读者缺少下一步要准备的具体资料，转化入口不够清楚。', suggestion: '增加现场照片或图纸、观看位置、内容样例和安装限制的询价清单。' },
+      ],
+    },
     checklist: ['Can the drawing label the visible screen area and the overall installed dimensions separately?', 'Which site dimensions, viewing positions and clearance requirements should I provide?', 'How will the proposed aspect ratio handle my typical content?'],
     body: [
       { heading: 'Start with the usable space', text: 'Record the available width and height, then identify clearance, structural limits and maintenance access. Keep the visible display area separate from the overall installed dimensions.' },
@@ -157,3 +175,16 @@ export const demoArticles: DemoArticle[] = [
 export const demoCatalog = Object.fromEntries(demoArticles.map(article => [article.id, article]));
 export const defaultBatchIds = demoArticles.filter(article => article.id !== 'hot-topic')
   .sort((a, b) => b.priority - a.priority || a.effort - b.effort).map(article => article.id);
+
+export const coverAngleLabels: Record<CoverAngle, string> = { product: '产品细节', scene: '使用场景', diagram: '结构示意' };
+const coverBriefs: Record<string, Record<CoverAngle, string>> = {
+  'size-guide': { product: '提供 LED 屏正面全景，能看清可视区域边界；另附外形尺寸图。', scene: '提供实际场地的屏幕与后排观看位置，保留人物或门窗作为比例参照。', diagram: '标出可视区、整体安装尺寸和维护净空，尺寸数值由项目资料确认。' },
+  maintenance: { product: '提供前维护模组拆装照片，露出工具、吸取位置和对应部件。', scene: '提供靠墙安装的真实场景，能看清人员站位与维护操作空间。', diagram: '用部件示意标出模组、电源、接收卡与线缆的检修路径。' },
+  power: { product: '提供箱体、AC 电源入口与电表的同框照片，保留清晰设备主体。', scene: '提供广告屏运行现场和电量测量环境，测量条件写在图片说明中。', diagram: '将屏体、AC 输入、电表和运行时长连成简洁示意，文字只用短标签。' },
+  camera: { product: '提供屏体与现场摄影机同框照片，展示真实拍摄设备。', scene: '提供舞台彩排现场，保留 LED 屏、相机与拍摄位置。', diagram: '以短标签标出相机设置、LED 屏、控制链路和测试画面。' },
+  'hot-topic': { product: '提供发布方授权的控制器产品图，型号需与官方公告一致。', scene: '提供控制器连接真实项目设备的场景，保留相关连接关系。', diagram: '按官方兼容信息画出控制器、接收系统和信号源，不添加未核实功能。' },
+};
+
+export function coverSuggestion(article: DemoArticle, angle: CoverAngle): string {
+  return coverBriefs[article.id]?.[angle] ?? '提供主体清晰、拥有使用授权的图片素材。';
+}

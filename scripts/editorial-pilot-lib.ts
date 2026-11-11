@@ -9,6 +9,7 @@ import sanitizeHtml from 'sanitize-html';
 import { editorialDirectionText, assertPublicEnglish } from '../site/editorial.ts';
 import { pitchSchema, figureSpecSchema } from './editorial-pitch-lib.ts';
 import { briefSelectionSchema, briefMetadataSchema, validateBriefResponse, briefHandoffFormat } from '../packages/backend/src/studio/studio-brief-content.ts';
+import { writingPolicyBundle, type WritingPolicyPhase } from '../packages/backend/src/studio/writing-policy-bundle.ts';
 
 export const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 export const safeId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/);
@@ -98,22 +99,29 @@ export function validateResponse(packet: Packet, input: unknown): Response {
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const writingText = (name: string) => readFileSync(path.join(repoRoot, 'industry/writing', name), 'utf8');
-export function writingHandoffFiles(packet: Packet): Record<string, string> {
-  const direction = packet.writing && packet.writing.site !== 'chipshow.com'
-    ? '本任务使用显式指定站点的独立写作规则；Chipshow Blog发布口径不得覆盖其他品牌事实。'
-    : editorialDirectionText();
+export function writingHandoffFiles(packet: Packet, phase: WritingPolicyPhase = packet.brief ? 'brief' : 'draft'): Record<string, string> {
+  const policy = writingPolicyBundle(packet, phase);
+  const site = packet.writing?.site ?? packet.editorial_policy?.publication_site;
+  const brand = site === 'unishineled.com' ? 'unishine' : site ? 'chipshow' : null;
+  const direction = site === 'chipshow.com' ? editorialDirectionText()
+    : site ? `本任务使用显式指定站点 ${site} 的独立写作规则；按本次任务证据核对品牌事实与目标页面。`
+    : '本任务为中立行业新闻；没有指定品牌站点或目标发布页面。仅归纳提供的厂商材料、事实归属和适用条件。';
   const files: Record<string, string> = {
     'WRITING_START_HERE.md': direction + '\n\n' + instructions(packet) + (packet.reader_profile ? '\n读者定向仅使用request.json的reader_profile聚合描述（提及最多的20组以内）；它不是公司或产品事实，不推断公司能力，不索取或还原单条询盘。' : '\n未提供客户画像时保持未知，不生成虚构的客户画像。'),
     'EDITORIAL_DIRECTION.md': direction,
-    'WRITING_RULES.md': readFileSync(path.join(repoRoot, 'industry/prompts/rules-editorial-writing.md'), 'utf8'),
+    'WRITING_RULES.md': readFileSync(path.join(repoRoot, 'industry/prompts/rules-editorial-writing.md'), 'utf8') + '\n\n' + policy.text,
+    'WRITING_POLICY_MANIFEST.json': JSON.stringify(policy.manifest, null, 2),
     'WRITING_SOURCES.md': writingText('SOURCES.md'),
     ...(packet.methods ? { 'CAMOS_METHODS.md': packet.methods.text || packet.methods.reason || 'CAMOS方法未接入' } : {}),
     'LED_RULE_EXAMPLES.json': writingText('led-rule-examples.json'),
     'LICENSE-human-writing.txt': writingText('LICENSE-human-writing.txt'),
-    'writing/chipshow-candidate.md': writingText('chipshow-candidate.md'),
-    'writing/unishine-candidate.md': writingText('unishine-candidate.md'),
+    ...(brand ? { [`writing/${brand}-candidate.md`]: writingText(`${brand}-candidate.md`) } : {}),
+    ...policy.referenceFiles,
   };
-  for (const name of readdirSync(path.join(repoRoot, 'industry/writing/sources'))) files[`writing/sources/${name}`] = writingText(`sources/${name}`);
+  for (const name of readdirSync(path.join(repoRoot, 'industry/writing/sources'))) {
+    if (name.startsWith('chipshow-') && brand !== 'chipshow' || name.startsWith('unishine-') && brand !== 'unishine') continue;
+    files[`writing/sources/${name}`] = writingText(`sources/${name}`);
+  }
   return files;
 }
 

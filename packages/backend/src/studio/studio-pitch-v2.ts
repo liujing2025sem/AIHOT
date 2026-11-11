@@ -15,6 +15,7 @@ import {companyFactRules} from './studio-company-facts.ts';
 import {discoverPitchEvidence} from './studio-pitch-research.ts';
 import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,editorialAdditions,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
+import {writingPolicyBundle} from './writing-policy-bundle.ts';
 import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,revisionCharacterLimit,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
 function invalid(s:string):never{throw Object.assign(new Error(s),{statusCode:400});}
@@ -286,7 +287,7 @@ export async function generatePitchFragments(id:string,actor:string,options:{fra
   const items=plan.edit_plan.flatMap((op,i)=>op.op==='keep'?[]:[i]);
   const fragments:Fragment[]=prep.fragments??items.map(op_index=>({op_index,status:'pending'}));prep.fragments=fragments;
   const persist=()=>savePrep(id,prep);
-  const system=prompt('studio-pitch-fragment');
+  const system=prompt('studio-pitch-fragment')+'\n\n'+writingPolicyBundle(packet,'fragment').text;
   const methodId=packet.methods?.ruleIds.find(id=>id==='chipshow-three-site-writing')??packet.methods?.ruleIds[0];
   const methodSection=methodId?packet.methods!.text.split(/\n(?=## CAMOS )/).find(s=>s.split('\n')[0].includes(methodId)):undefined;
   const methodExcerpt=methodSection?.slice(0,700)??'';

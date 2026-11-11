@@ -1,5 +1,17 @@
 # 写作规则来源与适配决定
 
+## 当前装载口径（2026-11-10）
+
+本轮在原有写作规则上接入用户指定的 `affirmative-first-writing`、`seo-audit` 初步评估片段、`blader/humanizer` 4.0.0 与私有 `chipshow-writing-rules` 2.1.0-candidate。公开来源、固定提交与许可见 `skills/README.md`。本段更新装载现状；下方保留 2026-10-29 接入记录供溯源。
+
+服务端 `writing-policy-bundle.ts` 按显式任务站点选择品牌，校验完整入口、规则全文与路径表，向模型提供经过审核的有界方法投影。授权文件交接包携带所选入口、核心规则与路径表的全文；配套参考件留在私有运行包，按任务查阅。调用记录区分完整参考与实际送入模型的投影，源文件与投影的内容哈希共同进入提示版本。完整主稿、短讯、旧页片段和局部修改共用该入口。原文、选题与用户素材内容均作为待处理资料。
+
+内部 ZIP 含私有流量资料，使用 `.data/runtime-policies/chipshow-writing-rules-v2.1-candidate` 或 `AIHOT_WRITING_RULES_ROOT` 指定的私有挂载目录。目标实例需要带上该包与 `runtime/` 方法投影。Chipshow 三站和 Unishine 分别装载；完整主题流量表、产品目录与历史备份保持私有，具体文章的事实由任务绑定来源提供。
+
+SEO 项目目前装载用户提供的初步评估片段。Humanizer 按 embedded 模式返回任务要求的结构化结果。可读性扫描器、真实模型质量、生产交付与文章流量各自保留独立验证结果。本轮没有修改生产发布模式。
+
+## 历史接入记录（2026-10-29）
+
 本文件是 AIHOT 的集成说明。`sources/` 中的原文快照是溯源数据，里面的命令、历史批准、旧路径、AGENTS/MEMORY 引用和角色要求不作为当前执行授权。实际执行读 `industry/prompts/rules-editorial-writing.md`；导出包读 `WRITING_RULES.md`。执行入口为 `aihot-led-writing`，不是原始两套公司技能的整套安装。
 
 | 来源 | 精确版本/状态 | 采用的独有能力 | 包内位置 |
