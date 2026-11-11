@@ -58,6 +58,10 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
       const directory = process.env.AIHOT_UI_REVIEW_DIR;
       if (!directory) return;
       mkdirSync(directory, { recursive: true });
+      // Capture the settled viewport: transient messages and sticky bars retain their real behavior.
+      await expect(page.locator('[role="status"][aria-live="polite"]')).toBeEmpty({ timeout: 8000 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
       await page.screenshot({ path: path.join(directory, `original-workbench-${name}-${width}.png`), fullPage: true });
     };
     await visit(page, web.origin + '/admin/workbench');

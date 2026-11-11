@@ -26,8 +26,10 @@ type Document = {
   title_zh: string; title_en: string; review_zh: string; body_en: string;
   keyword_hypothesis: string; meta_description_en: string; questions_zh: string[];
   evidence: { claim: string; quote: string }[];
+  brief?: { items: { sources: { article_id: string; url: string }[]; evidence: { article_id: string; claim: string; quote: string }[] }[] };
   source: { url: string; revision: number; published_at: string | null };
 };
+type SourceSnapshot = { binding: { article_id: string; url: string }; title: string; body_text: string | null };
 type Finding = { ruleId: string; severity: 'BLOCK' | 'WARN'; field: string; start: number; end: number; quote: string; reason: string };
 type Issue = { id: string; fingerprint: string; ruleId: string; severity: 'BLOCK' | 'WARN'; title: string; group: 'required' | 'recommended'; confirmable: boolean; count: number; occurrences: Finding[] };
 type WordPressReceipt = { version: number; kind: string; section: string; editUrl: string | null; recoveryKey: string | null } & (
@@ -39,7 +41,7 @@ type Detail = {
   pitch_id?: string | null;
   editorial_context?: { question: string; scope_question?: string; unanswered_questions: string[]; additions?: string[] } | null;
   revision_request?: { status: 'queued' | 'running' | 'done' | 'failed' | 'unknown' | 'cancelled'; version: number; goals: string[]; note: string; error?: string; receipt_id?: number } | null;
-  source_snapshots?:{binding:{article_id:string;url:string};title:string;body_text:string|null}[];
+  source_snapshots?: SourceSnapshot[];
   suggestions?: {id:string;issueId:string;fingerprint:string;field:string;before:string;after:string;label:string;explanation:string}[];
   review_sync?: {status:'stale';english_hash:string}|null;
   upgrade_context?: {target_existing_url:string;target_post_id:number|null;baseline_sha256:string|null;changes:{operation:string;paragraph:string;reason:string}[];notice:string}|null;
@@ -149,14 +151,38 @@ function DraftFigures({id,version}:{id:string;version:number}){
   </Card>;
 }
 
-function EvidenceDesk({ evidence, sourceUrl }: { evidence: Document['evidence']; sourceUrl: string }) {
+function evidenceUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}
+
+function evidenceEntries(document: Document, snapshots: SourceSnapshot[]) {
+  // The flat brief evidence loses article_id; the canonical event keeps that binding.
+  if (document.brief) return document.brief.items.flatMap(item => item.evidence.map(evidence => {
+    const sources = item.sources.filter(source => source.article_id === evidence.article_id);
+    const urls = [...new Set(sources.map(source => evidenceUrl(source.url)))];
+    return { ...evidence, sourceUrl: urls.length === 1 ? urls[0] : null };
+  }));
+  return document.evidence.map(evidence => {
+    if (snapshots.length <= 1) return { ...evidence, sourceUrl: evidenceUrl(document.source.url) };
+    const quote = quoteText(evidence.quote);
+    const matches = quote ? snapshots.filter(source => quoteText(source.body_text ?? '').includes(quote) || quoteText(source.title).includes(quote)) : [];
+    return { ...evidence, sourceUrl: matches.length === 1 ? evidenceUrl(matches[0].binding.url) : null };
+  });
+}
+
+function EvidenceDesk({ document, snapshots, onOpenSources }: { document: Document; snapshots: SourceSnapshot[]; onOpenSources: () => void }) {
+  const evidence = evidenceEntries(document, snapshots);
   const [selected, setSelected] = useState(0);
   const current = evidence[selected] ?? evidence[0];
   if (!current) return null;
-  return <details className="draft-evidence-desk">
+  return <details className="draft-evidence-desk" aria-label="稿件说法与原文依据">
     <summary>对照稿件说法与原文依据<span>{evidence.length} 条摘录</span></summary>
     <div className="draft-evidence-switcher" aria-label="选择对照说法">{evidence.map((item, index) => <button key={index} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}>{quoteText(item.claim).slice(0, 64)}{quoteText(item.claim).length > 64 ? '…' : ''}</button>)}</div>
-    <div className="draft-evidence-pair"><section><h3>稿件中的说法</h3><p>{quoteText(current.claim)}</p></section><section><h3>对应原文摘录</h3><blockquote>{quoteText(current.quote)}</blockquote><a href={sourceUrl} target="_blank" rel="noreferrer">打开原始来源</a></section></div>
+    <div className="draft-evidence-pair"><section><h3>稿件中的说法</h3><p>{quoteText(current.claim)}</p></section><section><h3>对应原文摘录</h3><blockquote>{quoteText(current.quote)}</blockquote>{current.sourceUrl ? <a href={current.sourceUrl} target="_blank" rel="noreferrer">打开原始来源</a> : <div className="mt-3"><p className="text-sm text-amber-ink">这条摘录暂时无法唯一定位来源。</p><Button className="mt-3" onClick={onOpenSources}>查看全部绑定原文</Button></div>}</section></div>
     <p className="draft-evidence-note">核对数字、适用条件和归属。摘录由原稿携带，最终事实判断由审稿人确认。</p>
   </details>;
 }
@@ -327,7 +353,10 @@ function Editor({ row }: { row: Detail }) {
       </div>}
     </Card>
 
-    <EvidenceDesk evidence={d.evidence} sourceUrl={d.source.url} />
+    <EvidenceDesk document={d} snapshots={row.source_snapshots ?? []} onOpenSources={() => {
+      setFulltextOpen(true); setTab('source');
+      setTimeout(() => document.getElementById('draft-fulltext')?.scrollIntoView({ block: 'start', behavior: scrollBehavior() }), 50);
+    }} />
     <div className="draft-review-layout grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="order-2 min-w-0 space-y-5 xl:order-1">
         {row.review_sync?.status==='stale'&&<div role="status" className="rounded-card border border-amber-ink/20 bg-amber-ink/5 p-4 text-sm leading-6 text-amber-ink">英文主稿已变更。中文对照是旧版，仅供参考；请核对当前英文后批准。保存与采纳修改都不会上线。</div>}

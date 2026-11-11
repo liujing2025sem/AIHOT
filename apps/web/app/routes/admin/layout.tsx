@@ -71,7 +71,7 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
   const advancedActive = advanced.some(e => isWorkbenchNavActive(location.pathname, location.search, e.to));
   const sidebar = (compact: boolean, mobile = false) => <>
     <div className={`flex h-20 shrink-0 items-center ${compact ? 'justify-center' : 'gap-3 px-3'}`}>
-      <Link to="/admin/workbench" onClick={() => setMobileOpen(false)} aria-label="AIHOT 工作台" className="flex items-center gap-3 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"><span className="grid size-10 shrink-0 place-items-center rounded-card bg-accent text-[17px] font-bold text-accent-contrast">A</span>{!compact && <span className="text-[18px] font-semibold text-ink">AIHOT<span className="mt-0.5 block text-xs font-normal text-ink-3">Chipshow 内容工作台</span></span>}</Link>
+      <Link to="/admin/workbench" onClick={() => setMobileOpen(false)} aria-label="AIHOT 工作台" className="flex items-center gap-3 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"><span className="grid size-10 shrink-0 place-items-center rounded-card bg-accent text-[17px] font-bold text-accent-contrast">A</span>{!compact && <span className="text-[18px] font-semibold text-ink">AIHOT<span className="mt-0.5 block whitespace-nowrap text-[11px] font-normal text-ink-3">Chipshow 内容工作台</span></span>}</Link>
     </div>
     <nav aria-label={mobile ? '移动工作台导航' : '工作台导航'} className="min-h-0 flex-1 space-y-1 overflow-y-auto pb-5">
       {workbenchNavigation.map(entry => <NavItem key={entry.to} entry={entry} collapsed={compact} counts={counts} countsKey={countsKey} onNavigate={() => setMobileOpen(false)}/>)}

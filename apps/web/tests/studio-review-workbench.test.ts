@@ -76,6 +76,63 @@ function reviewFixture() {
   return { api, draft, writes, setRevision, get reads() { return reads; } };
 }
 
+test('five-event evidence keeps each canonical source and never guesses the first source for unresolved multi-source quotes', async () => {
+  const fixture = reviewFixture();
+  const sharedQuote = 'This shared condition appears in two different source snapshots.';
+  const items = Array.from({ length: 5 }, (_, index) => {
+    const number = index + 1, articleId = 'brief-source-' + number;
+    return {
+      event_id: 'synthetic-event-' + number, section: 'components-ics',
+      sources: [{ article_id: articleId, url: `https://example.test/event-${number}`, revision: 1, published_at: '2026-11-08T12:00:00Z' }],
+      evidence: [{ article_id: articleId, claim: `Event ${number} clearance comes from its own source.`, quote: `Synthetic event ${number} records a clearance of ${100 + number} mm.` }],
+    };
+  });
+  const snapshots = items.map((item, index) => ({ binding: item.sources[0], title: 'Synthetic event ' + (index + 1), body_text: item.evidence[0].quote + (index < 2 ? '\n' + sharedQuote : '') }));
+  Object.assign(fixture.draft.document, {
+    title_zh: '隔离样本：5 个事件短讯', title_en: 'Synthetic sample: five-event LED display brief',
+    review_zh: '五个独立事件各自使用已绑定原文，仅用于来源定位回归测试。',
+    body_en: `<section>${items.map((item, index) => `<article><h2>Synthetic event ${index + 1}</h2><p>${item.evidence[0].claim}</p></article>`).join('')}</section>`,
+    source: items[0].sources[0], brief: { schema: 'aihot-brief/1', highlight_event_ids: items.slice(0, 3).map(item => item.event_id), items },
+    evidence: items.flatMap(item => item.evidence.map(({ claim, quote }) => ({ claim, quote }))),
+  });
+  Object.assign(fixture.draft, { source_snapshots: snapshots, source_snapshot: snapshots[0], material: { title: snapshots[0].title, body_text: snapshots[0].body_text, revision: 1 } });
+  fixture.draft.issues = { items: [], summary: { findingCount: 0, issueCount: 0, requiredCount: 0, recommendedCount: 0 } };
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await page.route('**/*', route => new URL(route.request().url()).origin === web.origin ? route.continue() : route.abort());
+    await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
+    const desk = page.getByLabel('稿件说法与原文依据', { exact: true });
+    await desk.locator('summary').click();
+    await expect(desk.getByRole('button', { name: /^Event [1-5] clearance/ })).toHaveCount(5);
+    await desk.getByRole('button', { name: items[1].evidence[0].claim, exact: true }).click();
+    await expect(desk.getByRole('link', { name: '打开原始来源', exact: true })).toHaveAttribute('href', items[1].sources[0].url);
+    await expect(desk.locator(`a[href="${items[0].sources[0].url}"]`)).toHaveCount(0);
+    assert.equal(fixture.draft.document.source.url, items[0].sources[0].url, 'the draft-level source remains the first event');
+
+    Object.assign(fixture.draft.document, { brief: undefined, evidence: [
+      { claim: 'The complete quote has one matching source.', quote: items[1].evidence[0].quote },
+      { claim: 'The shared quote has more than one matching source.', quote: sharedQuote },
+      { claim: 'This quote is absent from all bound source snapshots.', quote: 'No source contains this synthetic missing quotation.' },
+    ] });
+    await page.reload();
+    await desk.locator('summary').click();
+    await expect(desk.getByRole('link', { name: '打开原始来源', exact: true })).toHaveAttribute('href', items[1].sources[0].url);
+    for (const claim of [fixture.draft.document.evidence[1].claim, fixture.draft.document.evidence[2].claim]) {
+      await desk.getByRole('button', { name: claim, exact: true }).click();
+      await expect(desk.getByRole('link', { name: '打开原始来源', exact: true })).toHaveCount(0);
+      await expect(desk.getByText('这条摘录暂时无法唯一定位来源。', { exact: true })).toBeVisible();
+    }
+    await desk.getByRole('button', { name: '查看全部绑定原文', exact: true }).click();
+    await expect(page.getByRole('tab', { name: '原文与证据', exact: true })).toHaveAttribute('aria-selected', 'true');
+    for (const source of snapshots) await expect(page.getByText(source.title, { exact: true })).toBeVisible();
+    assert.equal(fixture.writes.length, 0, 'source lookup and opening bound originals do not generate, approve or publish');
+    assert.equal(fixture.draft.version, 7);
+    assert.equal(fixture.draft.status, 'in_review');
+  } finally { await browser?.close(); await web.stop(); }
+});
+
 test('an older unknown delivery can be checked from an unapproved current draft without resending', async () => {
   const fixture = reviewFixture();
   Object.assign(fixture.draft.wordpress, { recoveryReady: true, currentVersion: 7, approvedVersion: 6, syncedVersion: 4, currentSynced: false,
