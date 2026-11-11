@@ -23,7 +23,7 @@ type Finding = { ruleId: string; severity: 'BLOCK' | 'WARN'; field: string; star
 type Issue = { id: string; fingerprint: string; ruleId: string; severity: 'BLOCK' | 'WARN'; title: string; group: 'required' | 'recommended'; confirmable: boolean; count: number; occurrences: Finding[] };
 type WordPressReceipt = { version: number; kind: string; section: string; editUrl: string | null; recoveryKey: string | null } & (
   { state: 'pushed'; media: 'set' | 'not_configured' | 'not_applied'; metaDescription: string } |
-  { state: 'unknown'; httpStatus?: number } | { state: 'pending' | 'blocked' }
+  { state: 'unknown'; httpStatus?: number } | { state: 'mismatch'; reason?: string } | { state: 'pending' | 'blocked' }
 );
 type Detail = {
   editorial_context?: { question: string; scope_question?: string; unanswered_questions: string[]; additions?: string[] } | null;
@@ -40,7 +40,8 @@ type Detail = {
   id: string; document: Document; status: string; version: number; updated_at: string;
   material: { title: string; body_text: string; revision: number };
   history: { created_at: string; actor: string; action: string; reason: string | null }[];
-  wordpress: { ready: boolean; message: string | null; receipt: WordPressReceipt | null };
+  wordpress: { ready: boolean; message: string | null; receipt: WordPressReceipt | null;
+    currentVersion?: number | null; approvedVersion?: number | null; syncedVersion?: number | null; currentSynced?: boolean; recoveryReady?: boolean };
 };
 export async function loader({ request, params }: Route.LoaderArgs) {
   return adminGet<Detail>(request, '/api/admin/studio/drafts/' + params.id);
@@ -57,6 +58,7 @@ function editableDocument(document: Document) {
 
 function WordPressDraft({ row, dirty, busy, run }: { row: Detail; dirty: boolean; busy: boolean; run: ReturnType<typeof useAdminAction>['run'] }) {
   const { ready, message, receipt } = row.wordpress;
+  const unresolvedDelivery = receipt?.state === 'unknown' || receipt?.state === 'pending';
   const [kind, setKind] = useState(row.upgrade_context?'guide':receipt?.kind ?? ''), [section, setSection] = useState(receipt?.section ?? '');
   const hold = message ?? (dirty ? '请先保存修改，再审核当前版本。'
     : row.status !== 'approved' ? '审核通过后可以推送英文稿。'
@@ -83,16 +85,24 @@ function WordPressDraft({ row, dirty, busy, run }: { row: Detail; dirty: boolean
           <option value="">请选择分节</option>{CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.section}</option>)}
         </Select></Field>
       </div>}
-      <Button className="w-full" disabled={busy || !!hold || !kind || !section} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/wordpress', { version: row.version, kind, section })}>{row.upgrade_context?'推送原页影子预览稿':'推送WordPress草稿'}</Button>
+      <Button className="w-full" disabled={busy || !!hold || !kind || !section || unresolvedDelivery} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/wordpress', { version: row.version, kind, section })}>{row.upgrade_context?'推送原页影子预览稿':'推送WordPress草稿'}</Button>
     </div>
     {receipt && <div className="mt-4 space-y-2 text-sm leading-6" aria-live="polite">
       {receipt.state === 'pushed' && <>
-        <p>已推送版本 {receipt.version}。{(receipt.version !== row.version || row.status !== 'approved' || dirty) && '这是此前的推送记录。'}</p>
+        <p>{row.wordpress.recoveryReady ? '此前记录已推送版本 ' + receipt.version + '，正文尚待回读核对。' : '已核对送达版本 ' + receipt.version + '。'}{(receipt.version !== row.version || row.status !== 'approved' || dirty) && '这是此前的推送记录。'}</p>
         <p className="text-xs text-ink-3">{receipt.media === 'set' ? '已应用分节特色图。' : receipt.media === 'not_applied' ? 'WordPress 未确认应用特色图，请在草稿中核对。' : '本分节未配置特色图，本次未设置。'}</p>
         <Field label="SEO 描述未写入，请复制到 WordPress"><Input readOnly value={receipt.metaDescription} onFocus={e => e.currentTarget.select()} /></Field>
       </>}
       {receipt.state === 'blocked' && <p>WordPress 文章已不是草稿，或已找不到。已停止改写，请在 WordPress 中核对。</p>}
-      {(receipt.state === 'unknown' || receipt.state === 'pending') && <p>尚未确认推送结果{receipt.state === 'unknown' && receipt.httpStatus ? '（HTTP ' + receipt.httpStatus + '）' : ''}。{receipt.editUrl ? '再次推送只会检查并更新原草稿。' : '再次点击只会查找原草稿。若找不到，请让维护人在 WordPress 核对。'}</p>}
+      {receipt.state === 'mismatch' && <p className="rounded-control bg-amber/10 p-3 text-sm">已找回原 WordPress 草稿，内容与送稿记录尚未对上。请核对原草稿；要采用当前稿件，审核后再次点击送稿，将更新同一草稿。</p>}
+      {unresolvedDelivery && <>
+        <p>上次送稿结果待核对{receipt.state === 'unknown' && receipt.httpStatus ? '（HTTP ' + receipt.httpStatus + '）' : ''}。先查回 WordPress 中的原草稿，核对标题和正文后再继续。</p>
+      </>}
+      {(unresolvedDelivery || row.wordpress.recoveryReady) && <>
+        <Button className="w-full" disabled={busy || !row.wordpress.recoveryReady} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/wordpress',
+          { version: receipt.version, kind: receipt.kind, section: receipt.section, recoverOnly: true }, { success: '核对已结束，请查看送达状态。' })}>核对上次送达结果</Button>
+        <p className="text-xs text-ink-3">此操作只读取草稿，不重新送稿。</p>
+      </>}
       {receipt.recoveryKey && <details><summary className="cursor-pointer text-xs text-ink-3">查看查找编号</summary><p className="mt-2 break-all text-xs text-ink-3">{receipt.recoveryKey}</p></details>}
       {receipt.editUrl && <a className="inline-flex items-center gap-1 text-accent" href={receipt.editUrl} target="_blank" rel="noreferrer">打开 WordPress 文章 <ExternalLink className="size-3.5" aria-hidden="true" /></a>}
     </div>}
@@ -402,7 +412,15 @@ function Editor({ row }: { row: Detail }) {
           {row.engineer_review.reply&&<p className="mt-2 text-xs leading-6">{row.engineer_review.reply}</p>}
         </Card>}
         <DraftFigures id={row.id} version={row.version} />
-        {(!row.upgrade_context || row.status === 'approved') && <WordPressDraft row={row} dirty={dirty} busy={busy} run={run} />}
+        <Card title="当前稿件与交付版本">
+          <dl className="space-y-2 text-sm" aria-label="稿件版本对应">
+            <div className="flex justify-between gap-3"><dt>当前稿件</dt><dd>版本 {row.version}{dirty && ' · 尚有未保存修改'}</dd></div>
+            <div className="flex justify-between gap-3"><dt>最近人工批准</dt><dd>{row.wordpress.approvedVersion != null ? '版本 ' + row.wordpress.approvedVersion : '尚未批准'}</dd></div>
+            <div className="flex justify-between gap-3"><dt>已核对送达 WP</dt><dd>{row.wordpress.syncedVersion != null ? '版本 ' + row.wordpress.syncedVersion : '尚未核对送达'}</dd></div>
+          </dl>
+          <p className="mt-3 text-xs leading-6 text-ink-3">{row.wordpress.currentSynced && !dirty ? '当前版本与已核对的 WordPress 草稿对应。' : '修改稿件后，需要审核当前版本，再更新原 WordPress 草稿。'}</p>
+        </Card>
+        {(!row.upgrade_context || row.status === 'approved' || row.wordpress.receipt) && <WordPressDraft row={row} dirty={dirty} busy={busy} run={run} />}
 
         {row.status === 'approved' && <Card title="交付成稿">
           {row.status === 'approved' && !dirty ? <div className="flex flex-wrap gap-2">

@@ -35,6 +35,7 @@ const coverageLabels = {
 };
 type CoverageStatus = keyof typeof coverageLabels;
 type Fact = { id: string; kind: string; statement: string; quote?: string; url?: string; attribution?: string; article_id?: string };
+type OperatorFact = { id?: string; subquestion_id?: string; statement: string; attribution: string; url?: string; article_id?: string; quote?: string; verification?: 'source_verified' | 'operator_supplied' };
 type Subquestion = {
   id: string; zh: string; en: string; need: string; answer_shape: string; terms: string[];
   coverage: { status: CoverageStatus; page_paragraphs: string[]; evidence: (string | Partial<Fact>)[]; reason?: string; action?: string };
@@ -58,6 +59,7 @@ type V2 = {
   conclusion?: 'upgrade' | 'no_change';
 };
 type Prep = Brief & {
+  operator_facts?: OperatorFact[];
   editorial_choices?: EditorialChoices;
   research?: { state: 'complete' | 'partial' | 'unavailable'; queries: string[]; imported: number; failures: { url: string; reason: string }[] };
   scope_options?: ScopeOption[];
@@ -94,6 +96,7 @@ function readPrep(raw: PitchResponse['prep']): Prep | null {
     question: raw.question, output_type: raw.output_type, existing_url: raw.existing_url, links: raw.links,
     model_outcome:raw.model_outcome,pending_receipt_id:raw.pending_receipt_id,
     editorial_choices: raw.editorial_choices, research: raw.research, scope_options: raw.scope_options, scope: raw.scope,
+    operator_facts: raw.operator_facts,
     blacklist: raw.blacklist, error: raw.error, link_errors: raw.link_errors, started_at: raw.started_at,
     question_en: raw.question_en ?? '', keywords: raw.keywords ?? [], related_pages: raw.related_pages ?? [],
     outline: raw.outline ?? [], titles: raw.titles ?? [], hooks: raw.hooks ?? [], engineer_questions: raw.engineer_questions ?? [],
@@ -300,7 +303,7 @@ function EvidenceLookup({ pitch, question, run, busy }: { pitch: PitchRow; quest
     if (await run('POST', pitchPath(pitch.id) + '/evidence', { version: pitch.version, subquestion_id: question.id, ...(url.trim() ? { url: url.trim() } : {}) },
       { success: '已安排自动查找。取得原文后会重新核对范围与大纲。' })) setUrl('');
   }}>
-    <p className={muted}>系统查找并读取公开资料，补齐这一题的回答依据。无需自己找链接。</p>
+    <p className={muted}>系统查找并读取公开资料，补齐这一题的回答依据。取得资料后会重新拟定大纲，可能调用模型并产生费用。</p>
     <Button type="submit" size="sm" disabled={busy || !valid}>自动查找这一题</Button>
     <details>
       <summary className={disclosure}>我有参考链接（选填）</summary>
@@ -341,7 +344,7 @@ function Coverage({ pitch, v2, run, busy, editable, pendingPlan = false }: { pit
   </div>;
 }
 
-function EditPlan({ v2, inclusion }: { v2: V2; inclusion?: { included: boolean[]; toggle: (index: number) => void; busy: boolean } }) {
+function EditPlan({ v2, inclusion }: { v2: V2; inclusion?: { included: boolean[]; headings: string[]; setHeading: (index: number, value: string) => void; toggle: (index: number) => void; busy: boolean } }) {
   const keeps = v2.edit_plan.filter(edit => edit.op === 'keep');
   const changes = changeEntries(v2);
   return <div className="space-y-3">
@@ -357,6 +360,9 @@ function EditPlan({ v2, inclusion }: { v2: V2; inclusion?: { included: boolean[]
           <input type="checkbox" checked={inclusion.included[i]} disabled={inclusion.busy} onChange={() => inclusion.toggle(i)} aria-label={'保留改动：' + heading} />
           本次纳入
         </label>}
+        {inclusion && <Input aria-label={'第 ' + (i + 1) + ' 处改动的小节标题'} maxLength={200}
+          disabled={inclusion.busy || !inclusion.included[i]} value={inclusion.headings[i]}
+          onChange={event => inclusion.setHeading(i, event.target.value)} />}
         {edit.paragraph && <p className={muted}>{edit.op === 'insert_after' ? '插入在原文之后：' : '改写原文：'}{edit.paragraph}</p>}
         <p className="text-sm">买家问题：{question?.zh || question?.en || '未返回对应问题'}</p>
         {edit.reason && <p className={muted}>修改理由：{edit.reason}</p>}
@@ -517,7 +523,8 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
           toggle={id => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])} />
       </div>}
 
-      {panel === 2 && <div className="order-2">{v2 ? <EditPlan v2={v2} inclusion={{ included: outline.map(section => section.include), busy,
+      {panel === 2 && <div className="order-2">{v2 ? <EditPlan v2={v2} inclusion={{ included: outline.map(section => section.include), headings: outline.map(section => section.heading), busy,
+        setHeading: (index, heading) => setOutline(items => items.map((item, i) => i === index ? { ...item, heading } : item)),
         toggle: index => setOutline(items => items.map((item, i) => i === index ? { ...item, include: !item.include } : item)) }} /> : <div className="space-y-3">
         <h3 className="text-sm font-semibold">将生成的大纲</h3>
         <p className={muted}>系统已准备章节。可选择保留范围，章节名可选编辑。</p>
@@ -605,10 +612,60 @@ function ReviewText({ children }: { children: string }) {
   return <p className="whitespace-pre-wrap text-sm leading-6 [overflow-wrap:anywhere]">{children}</p>;
 }
 
+function FactInputs({ pitch, prep, onPending }: { pitch: PitchRow; prep: Prep; onPending: (pending: boolean) => void }) {
+  const { run, busy } = useAdminAction();
+  const [facts, setFacts] = useState<OperatorFact[]>(prep.operator_facts ?? []);
+  const editable = (fact: OperatorFact) => ({ ...(fact.id ? { id: fact.id } : {}), ...(fact.subquestion_id ? { subquestion_id: fact.subquestion_id } : {}),
+    statement: fact.statement, attribution: fact.attribution, url: fact.url ?? '', quote: fact.quote ?? '', ...(fact.article_id ? { article_id: fact.article_id } : {}) });
+  const saved = prep.operator_facts ?? [];
+  const changed = JSON.stringify(facts.map(editable)) !== JSON.stringify(saved.map(editable));
+  useEffect(() => onPending(changed || busy), [changed, busy, onPending]);
+  const valid = facts.every(fact => fact.statement.trim() && fact.attribution.trim() && (!fact.url?.trim() || httpUrl(fact.url.trim())));
+  const update = (index: number, values: Partial<OperatorFact>) => setFacts(items => items.map((fact, i) => i === index ? { ...fact, ...values } : fact));
+  return <Card title="补充与更正事实" right={<Badge tone="muted">已保存 {saved.length} 条</Badge>}>
+    <details>
+      <summary className={disclosure}>我有原始资料或需要更正的事实</summary>
+      <p className="my-3 text-sm leading-6 text-ink-3">填入具体事实和出处，保存后可随时回来继续。已取得的原文可直接核对；个人补充会保留为待核资料。保存只更新资料，重新备料由你单独启动。</p>
+      <form className="space-y-4" onSubmit={event => {
+        event.preventDefault();
+        if (!busy && changed && valid) void run('POST', pitchPath(pitch.id) + '/facts', { version: pitch.version, facts: facts.map(editable) },
+          { success: '事实已保存。旧大纲已标为待更新；尚未调用模型。' });
+      }}>
+        {facts.map((fact, index) => <fieldset key={fact.id ?? index} disabled={busy} className={inset}>
+          <legend className="text-sm font-semibold">事实 {index + 1}</legend>
+          <p className="text-xs text-ink-3">{JSON.stringify(editable(fact)) !== JSON.stringify(saved[index] && editable(saved[index])) ? '有未保存的修改'
+            : fact.verification === 'source_verified' ? '已与所选原文逐字核对' : '用户补充 · 待核对'}</p>
+          <Field label="事实内容" hint="保留日期、单位和适用条件。若要逐字核对，请填写原文中的说法。">
+            <Textarea aria-label={'事实内容 ' + (index + 1)} rows={2} maxLength={2000} value={fact.statement} onChange={event => update(index, { statement: event.target.value })} />
+          </Field>
+          <Field label="事实出处"><Input aria-label={'事实出处 ' + (index + 1)} maxLength={300} placeholder="例如：厂家规格书、工程师原回复" value={fact.attribution} onChange={event => update(index, { attribution: event.target.value })} /></Field>
+          <details>
+            <summary className={disclosure}>绑定已有原文或补链接（选填）</summary>
+            <div className="mt-3 space-y-3">
+              <Field label="已有原文"><Select aria-label={'已有原文 ' + (index + 1)} value={fact.article_id ?? ''} onChange={event => update(index, { article_id: event.target.value || undefined })}>
+                <option value="">尚未绑定原文</option>{prep.materials.map(material => <option key={material.id} value={material.id}>{material.title}</option>)}
+              </Select></Field>
+              <Field label="引用原句"><Textarea aria-label={'引用原句 ' + (index + 1)} rows={2} maxLength={300} value={fact.quote ?? ''} onChange={event => update(index, { quote: event.target.value })} /></Field>
+              <Field label="来源链接"><Input aria-label={'来源链接 ' + (index + 1)} type="url" maxLength={2000} value={fact.url ?? ''} onChange={event => update(index, { url: event.target.value })} placeholder="https://" /></Field>
+            </div>
+          </details>
+          <Button type="button" size="sm" onClick={() => setFacts(items => items.filter((_, i) => i !== index))}>移除事实 {index + 1}</Button>
+        </fieldset>)}
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" disabled={busy || facts.length >= 20} onClick={() => setFacts(items => [...items, { statement: '', attribution: '' }])}>添加事实</Button>
+          <Button type="submit" tone="primary" disabled={busy || !changed || !valid}>保存事实，不调用模型</Button>
+          {changed && <Button type="button" disabled={busy} onClick={() => setFacts(saved)}>放弃本次修改</Button>}
+        </div>
+        {changed && <p className={muted}>修改尚未保存。保存后，当前大纲和选择需要按更新后的事实重新核对。</p>}
+      </form>
+    </details>
+  </Card>;
+}
+
 function ResearchChoices({ pitch, prep, run, busy }: { pitch: PitchRow; prep: Prep; run: Run; busy: boolean }) {
   const research = prep.research;
   return <div className="space-y-4">
-    <p className="text-sm leading-6">系统会继续查找原文。也可以先选择一个有依据、能解决具体问题的范围。</p>
+    <p className="text-sm leading-6">系统会继续查找原文。也可以先选择一个有依据、能解决具体问题的范围。自动查找和更换范围会重新拟定大纲，可能调用模型并产生费用。</p>
     {research && <p className={muted}>本轮已取得 {research.imported} 份原文。{research.state === 'unavailable' ? '本轮公开检索未取得可用结果。' : research.state === 'partial' ? '部分资料未能读取，已保留成功结果。' : '原文已进入核对；取得资料不代表每个结论已获支持。'}</p>}
     <Button tone="primary" disabled={busy} onClick={() => void run('POST', pitchPath(pitch.id) + '/evidence', { version: pitch.version }, { success: '已安排继续自动查找，完成后会更新可选范围。' })}>继续自动查找资料</Button>
     {(prep.scope_options ?? []).map(option => <section key={option.id} className={inset}>
@@ -814,12 +871,22 @@ export default function StudioPitch({ loaderData }: Route.ComponentProps) {
         <PitchContext pitch={pitch} />
         <div className="order-4 min-w-0"><History rows={history} activeId={pitch.id} /></div>
       </aside>
-      <div className="order-2 min-w-0 lg:order-none"><PitchWork key={pitch.id} pitch={pitch} /></div>
+      <PitchWorkspace key={pitch.id} pitch={pitch} />
     </div> : <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] lg:items-start">
       <div className="min-w-0 lg:col-start-2 lg:row-start-1"><NewPitch key={questionId ?? ''} question={question} missing={!!questionId && !question} /></div>
       <div className="min-w-0 lg:col-start-1 lg:row-start-1"><History rows={history} /></div>
     </div>}
   </AdminPage>;
+}
+
+function PitchWorkspace({ pitch }: { pitch: Pitch }) {
+  const [factsPending, setFactsPending] = useState(false);
+  return <div className="order-2 min-w-0 space-y-4 lg:order-none">
+    {pitch.prep && !pitch.task_id && pitch.status !== 'preparing' && pitch.status !== 'confirmed' && pitch.prep.model_outcome !== 'unknown' &&
+      <FactInputs key={pitch.id + ':' + pitch.version} pitch={pitch} prep={pitch.prep} onPending={setFactsPending} />}
+    {factsPending && <p role="status" className={warning}>事实修改尚未保存。先保存或放弃修改，再继续备料与成稿。</p>}
+    <fieldset disabled={factsPending} className="min-w-0"><PitchWork pitch={pitch} /></fieldset>
+  </div>;
 }
 
 function BriefSummary({ pitch }: { pitch: Pitch }) {

@@ -138,9 +138,9 @@ test('WordPress push only writes approved English to one draft, with safe recove
  const push=(id:string,version:number,kind='guide',section='components-ics',withCsrf=true)=>
    app.inject({method:'POST',url:`/api/admin/studio/drafts/${id}/wordpress`,headers:{cookie,...(withCsrf?{'x-csrf-token':csrf}:{})},payload:{version,kind,section}});
  const detail=(id:string)=>app.inject({url:`/api/admin/studio/drafts/${id}`,headers:{cookie}});
- type Post={id:number;slug:string;status:string;categories:number[];tags:number[];featured_media:number};
+ type Post={id:number;slug:string;status:string;title:{raw:string};content:{raw:string};categories:number[];tags:number[];featured_media:number};
  type Write={id:number|null;title:string;content:string;status:string;slug?:string;categories:number[];tags:number[];featured_media?:number};
- const unrelated:Post={id:999,slug:'unrelated-latest-post',status:'draft',categories:[29],tags:[],featured_media:0};
+ const unrelated:Post={id:999,slug:'unrelated-latest-post',status:'draft',title:{raw:'Unrelated'},content:{raw:''},categories:[29],tags:[],featured_media:0};
  const posts=new Map<number,Post>([[unrelated.id,unrelated]]);
  const writes:Write[]=[];
  let nextId=100, shortReady=false, mode:'ok'|'fail'|'disconnect'='ok', mismatchedRead=false, redirect=false;
@@ -156,7 +156,7 @@ test('WordPress push only writes approved English to one draft, with safe recove
    const data=JSON.parse(req.body);
    writes.push({id,...data});
    if(mode==='fail')return new Reply(503,{message:'synthetic-wp-secret'});
-   const post:Post={id:id??nextId++,slug:data.slug??posts.get(id!)?.slug,status:data.status,categories:data.categories,tags:data.tags,featured_media:data.featured_media??0};
+   const post:Post={id:id??nextId++,slug:data.slug??posts.get(id!)?.slug,status:data.status,title:{raw:data.title},content:{raw:data.content},categories:data.categories,tags:data.tags,featured_media:data.featured_media??0};
    posts.set(post.id,post);
    return post;
  });
@@ -247,12 +247,12 @@ test('WordPress push only writes approved English to one draft, with safe recove
  assert.equal(writes.at(-1)?.slug,lostResponse.recoveryKey);
  const afterLost=writes.length;
  mode='ok';mismatchedRead=true;
- assert.match((await push(lost.id,lostVersion,'brief','consumer-near-eye')).json().detail,/无法确认/);
+ assert.equal((await push(lost.id,lostVersion,'brief','consumer-near-eye')).json().state,'unknown');
  assert.equal(writes.length,afterLost);
  mismatchedRead=false;
  const recovered=(await push(lost.id,lostVersion,'brief','consumer-near-eye')).json();
  assert.equal(recovered.state,'pushed');assert.equal(recovered.postId,101);
- assert.equal(writes.at(-1)?.id,101);assert.deepEqual(writes.at(-1)?.categories,[72]);assert.deepEqual(writes.at(-1)?.tags,[12]);
+ assert.equal(writes.length,afterLost,'recovery only reads the existing draft');assert.deepEqual(posts.get(101)?.categories,[72]);assert.deepEqual(posts.get(101)?.tags,[12]);
  assert.match(writes.at(-1)!.content,/class="cs-brief"/);
  assert.equal(recovered.media,'not_configured');
  assert.ok(calls.every(call=>call.url.startsWith('https://wp.invalid/subsite/wp-json/wp/v2/')&&call.init?.redirect==='manual'));
@@ -475,7 +475,7 @@ test('approval freezes source precision and offset, and legacy approvals must be
   const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
   const approve=async()=>{
    let d=(await studioDraft(row.id))!;
-   if(d.status==='approved'){await reviewStudioDraft(d.id,{version:d.version,action:'return',note:'重新核对来源日期'},actor);d=(await studioDraft(row.id))!;}
+   if(d.status==='approved'){await saveStudioDraft(d.id,{...response.drafts[0],version:d.version},actor);d=(await studioDraft(row.id))!;}
    await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(row.id))!;
    await reviewStudioDraft(d.id,{version:d.version,action:'approve',confirmations:d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);
   };
@@ -540,7 +540,9 @@ test('withdrawing one confirmation from an approved draft revokes approval and e
  const {task,response}=await input();await receiveStudioTask(task.id,response,actor);const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
  let d=(await studioDraft(row.id))!;await reviewStudioDraft(d.id,{version:d.version,action:'submit'},actor);d=(await studioDraft(d.id))!;
  const confirmations=d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}));await reviewStudioDraft(d.id,{version:d.version,action:'approve',confirmations},actor);d=(await studioDraft(d.id))!;
- for(let i=0;i<21;i++){await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations},actor);d=(await studioDraft(row.id))!;}
+ const approvedVersion=d.version;
+ for(let i=0;i<21;i++){await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations:[...confirmations].reverse(),note:i===20?'已再次核对':''},actor);d=(await studioDraft(row.id))!;}
+ assert.equal(d.version,approvedVersion);assert.equal(d.status,'approved');assert.equal(d.reviewed_by,actor);
  assert.ok(await exportStudioDraft(d.id,'json'));
  await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations:confirmations.slice(1)},actor);d=(await studioDraft(d.id))!;
  assert.equal(d.status,'in_review');assert.equal(d.reviewed_by,null);await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);

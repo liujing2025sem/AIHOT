@@ -6,8 +6,9 @@ import { questionSchema } from '../packages/backend/src/admin/studio-questions.t
 import { questionKeywords, keywordMatch } from '../packages/backend/src/admin/studio-question-match.ts';
 import {discoverPitchEvidence} from '../packages/backend/src/studio/studio-pitch-research.ts';
 import {editorialChoicesSchema,pitchSchema} from '../scripts/editorial-pitch-lib.ts';
-import {answerEvidence} from '../packages/backend/src/studio/studio-pitch-fragments.ts';
-import {confirmedFragmentPlan} from '../packages/backend/src/studio/studio-pitch-v2.ts';
+import {answerEvidence,assembleFragments} from '../packages/backend/src/studio/studio-pitch-fragments.ts';
+import {confirmedFragmentPlan,checkedOperatorFacts} from '../packages/backend/src/studio/studio-pitch-v2.ts';
+import {validatePitchEvidence,type Prep} from '../packages/backend/src/studio/studio-pitch.ts';
 import {fetchDetail} from '../packages/backend/src/sources/web-list.ts';
 import type {SourceRow} from '../packages/backend/src/sources/types.ts';
 import {config} from '../packages/backend/src/config.ts';
@@ -224,4 +225,41 @@ test('zero-evidence sections cannot use the new single-source confirmation allow
   const prep={workflow_version:2 as const,version:1,status:'ready' as const,question:'提货前如何核对仓库文件',output_type:'guide' as const,existing_url:'',links:[],started_at:new Date().toISOString(),conclusion:'upgrade',paragraphs:[],facts:[],subquestions:[],edit_plan:[{op:'insert_after',paragraph:'start',subquestion:'q1',reason:'Checklist',facts:[]}]};
   const pitch=pitchSchema.parse({question:prep.question,output_type:'guide',existing_url:'',selected_title:'Pickup checklist',primary_article_id:'body',outline:[{id:'change-0',heading:'Pickup documents',evidence:[]}],engineer:{mode:'conservative',name:'',reply:'',answers:[]},withheld_numbers:[]});
   assert.throws(()=>confirmedFragmentPlan(prep,{article_ids:['body'],outline:[{id:'change-0',include:true}]},pitch),/尚无可引用事实/);
+});
+
+test('operator facts require saved body quotes, and never turn notes or link titles into verified evidence',()=>{
+  const material={id:'body',body_status:'ok',body_text:'Check the pickup notice before warehouse collection.',title:'Title-only delivery promise',url:'https://example.com/pickup',revision:3};
+  const prep={materials:[material]} as Prep;
+  const rows=checkedOperatorFacts(prep,[
+    {statement:material.body_text,attribution:'Source document',article_id:'body',quote:material.body_text},
+    {statement:material.title,attribution:'Source page',article_id:'body',quote:material.title},
+    {statement:'Operator observation, not verified',attribution:'Operator',url:material.url},
+  ]);
+  assert.deepEqual(rows.map(f=>f.verification),['source_verified','operator_supplied','operator_supplied']);
+  assert.equal(rows[0].revision,3);assert.equal(rows[1].article_id,undefined);assert.equal(rows[2].article_id,undefined);
+  const saved={...prep,operator_facts:rows};
+  const again=checkedOperatorFacts(saved,rows.map(({verification,revision,...input})=>input));
+  assert.deepEqual(again.map(f=>f.id),rows.map(f=>f.id));
+  assert.throws(()=>checkedOperatorFacts(prep,[{statement:'Fact',attribution:'Operator',url:'javascript:alert(1)'}]),/公开网页/);
+  const noBody={materials:[{...material,body_status:'missing',body_text:null}]} as Prep;
+  assert.equal(checkedOperatorFacts(noBody,[{statement:material.title,attribution:'Link',article_id:'body',quote:material.title}])[0].verification,'operator_supplied');
+});
+
+test('title matches without readable body cannot support selected evidence',()=>{
+  const material={id:'body',body_status:'ok',body_text:'A different source sentence.',title:'Title-only delivery promise'};
+  const plan={output_type:'guide' as const,outline:[{id:'s1',heading:'Check',evidence:[{article_id:'body',quote:material.title}],gap:'',action:''}],titles:[{title:'Buyer title',anchor:'source',article_id:'body',quote:material.title}],hooks:[],engineer_questions:[]};
+  assert.throws(()=>validatePitchEvidence(plan as Parameters<typeof validatePitchEvidence>[0],[material] as Parameters<typeof validatePitchEvidence>[1]),/事实锚点/);
+  assert.equal(plan.outline[0].evidence.length,0);
+});
+
+test('saved section choices reach the executable fragment plan and omitted changes never become fragments',()=>{
+  const prep={workflow_version:2 as const,version:1,status:'ready' as const,question:'提货前如何核对文件',output_type:'guide' as const,existing_url:'',links:[],started_at:new Date().toISOString(),conclusion:'upgrade',paragraphs:[{id:'p1',html:'<p>Keep the original page.</p>',text:'Keep the original page.'}],source_html:'<p>Keep the original page.</p>',original_title:'Original title',
+    facts:[{id:'f1',kind:'source',statement:'Check the pickup notice.',quote:'Check the pickup notice.',article_id:'body',attribution:'Source'}],subquestions:[{id:'q1',zh:'提货文件',en:'Pickup documents',need:'reference',answer_shape:'steps',terms:['pickup','notice']}],edit_plan:[{op:'revise',paragraph:'p1',subquestion:'q1',facts:['f1']},{op:'insert_after',paragraph:'p1',subquestion:'q1',heading:'Old heading',reason:'Answer the buyer document question',facts:['f1']},{op:'insert_after',paragraph:'p1',subquestion:'q1',heading:'Not included',reason:'Not selected',facts:['f1']}]};
+  const pitch=pitchSchema.parse({question:prep.question,output_type:'guide',existing_url:'',selected_title:'Chosen buyer title',primary_article_id:'body',outline:[{id:'change-1',heading:'Chosen section heading',evidence:[{article_id:'body',quote:'Check the pickup notice.'}]}],engineer:{mode:'conservative',name:'',reply:'',answers:[]},withheld_numbers:[]});
+  const plan=confirmedFragmentPlan(prep as Prep,{article_ids:['body'],outline:[{id:'change-0',include:false},{id:'change-1',include:true},{id:'change-2',include:false}]},pitch);
+  assert.deepEqual(plan.edit_plan.map(e=>e.op),['keep','insert_after']);
+  assert.equal(plan.edit_plan[1].heading,'Chosen section heading');
+  const assembled=assembleFragments(plan.paragraphs,plan.edit_plan,[{op_index:1,html_en:'<h2>Chosen section heading</h2><p>Check the pickup notice.</p>',zh_review:'核对提货单',used_facts:['f1']}]);
+  assert.match(assembled.html_en,/Keep the original page/);assert.match(assembled.html_en,/Chosen section heading/);assert.equal(assembled.html_en.includes('Not included'),false);
+  assert.throws(()=>confirmedFragmentPlan(prep as Prep,{article_ids:['other'],outline:[{id:'change-1',include:true}]},pitch),/找不到事实/);
 });

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 type FixtureRevision = { status: string; version: number; goals: string[]; note: string; receipt_id?: number; error?: string };
 
@@ -71,6 +73,35 @@ function reviewFixture() {
   });
   return { api, draft, writes, setRevision, get reads() { return reads; } };
 }
+
+test('an older unknown delivery can be checked from an unapproved current draft without resending', async () => {
+  const fixture = reviewFixture();
+  Object.assign(fixture.draft.wordpress, { recoveryReady: true, currentVersion: 7, approvedVersion: 6, syncedVersion: 4, currentSynced: false,
+    receipt: { version: 6, kind: 'guide', section: 'industry', state: 'unknown', editUrl: 'https://example.test/wp-admin/post.php?post=123&action=edit', recoveryKey: 'fixture-only' } });
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await page.route('**/*', route => new URL(route.request().url()).origin === web.origin ? route.continue() : route.abort());
+    await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
+    const versions = page.getByLabel('稿件版本对应');
+    await expect(versions).toContainText('版本 7');
+    await expect(versions).toContainText('版本 6');
+    await expect(versions).toContainText('版本 4');
+    await expect(page.getByRole('button', { name: '推送WordPress草稿', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: '核对上次送达结果', exact: true }).click();
+    await expect(page.getByRole('button', { name: '核对上次送达结果', exact: true })).toBeEnabled();
+    assert.deepEqual(fixture.writes, [{ path: '/api/admin/studio/drafts/review-fixture/wordpress', body: { version: 6, kind: 'guide', section: 'industry', recoverOnly: true } }]);
+    await page.reload();
+    await expect(page.getByText('上次送稿结果待核对', { exact: false })).toBeVisible();
+    assert.equal(fixture.writes.length, 1, 'reload neither sends nor repeats recovery');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    if (process.env.AIHOT_VISUAL_DIR) {
+      mkdirSync(process.env.AIHOT_VISUAL_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.AIHOT_VISUAL_DIR, 'delivery-390.png'), fullPage: true });
+    }
+  } finally { await browser?.close(); await web.stop(); }
+});
 
 for (const width of [1440, 390]) test('review workbench locates evidence and submits only explicit approval at ' + width, async () => {
   const fixture = reviewFixture();

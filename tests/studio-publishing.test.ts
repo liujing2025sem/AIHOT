@@ -299,7 +299,7 @@ test('a read-only shadow preflight failure releases its reservation without retr
     if (!init?.body) return Response.json(u.pathname.endsWith('/posts/9000') ? shadow : shadow ? [shadow] : []);
     writes++;
     const body = JSON.parse(init.body as string);
-    shadow = { ...shadow, ...body, id: 9000, featured_media: body.featured_media ?? 0 };
+    shadow = { ...shadow, ...body, id: 9000, title: { raw: body.title }, content: { raw: body.content }, featured_media: body.featured_media ?? 0 };
     if (loseWrite) throw Error('simulated lost acknowledgement');
     return Response.json(shadow);
   });
@@ -316,5 +316,5 @@ test('a read-only shadow preflight failure releases its reservation without retr
   const recovered = await pushStudioWordPressDraft(id, input, actor);
   assert.equal(recovered?.state, 'pushed');
   assert.equal(recovered?.postId, 9000);
-  assert.equal(writes, 2, 'the known shadow is updated after recovery, no second shadow is created');
+  assert.equal(writes, 1, 'recovery only reads the existing shadow and never repeats a post mutation');
 });

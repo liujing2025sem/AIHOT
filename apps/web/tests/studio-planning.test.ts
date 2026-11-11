@@ -4,6 +4,7 @@ import { chromium, expect } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { mkdirSync } from 'node:fs';
 
 for(const width of [1440,390])test(`editorial cards show the change and missing evidence above the fold at ${width}`,async()=>{
   let bound=false,adopted=false;
@@ -47,6 +48,54 @@ for(const width of [1440,390])test(`editorial cards show the change and missing 
     await page.waitForURL('**/admin/studio/planning');await expect(first.getByText('旧页正文 ✓',{exact:true})).toBeVisible();
     assert.equal(bound,true);assert.equal(adopted,false,'evidence binding does not adopt or create a task');assert.deepEqual(errors,[]);
   }finally{await browser?.close();await web.stop();}
+});
+
+for (const width of [1440, 390]) test('operator facts persist on reload without starting research or generation at ' + width, async () => {
+  const id = 'facts-fixture', endpoint = '/api/admin/studio/pitches/' + id;
+  const writes: { path: string; body: any }[] = [];
+  let version = 2;
+  let facts: Record<string, unknown>[] = [];
+  const api = fakeApi(async (url, _res, req) => {
+    if (url.pathname === '/api/admin/me') return { name: 'Synthetic operator', csrf: 'fixture', dev: false };
+    if (url.pathname === '/api/admin/studio/pitches') return { rows: [] };
+    if (url.pathname === endpoint + '/facts') {
+      let text = ''; for await (const chunk of req) text += chunk;
+      const body = JSON.parse(text); writes.push({ path: url.pathname, body });
+      assert.equal(body.version, version);
+      facts = body.facts.map((fact: Record<string, unknown>, index: number) => ({ ...fact, id: fact.id ?? 'operator-' + index, verification: 'operator_supplied' }));
+      return { id, version: ++version, status: 'insufficient', facts, model_calls: 0 };
+    }
+    if (url.pathname === endpoint) return { id, title: 'LED 尺寸核对', version, task_id: null, status: 'insufficient', prep: {
+      workflow_version: 2, question: 'LED 尺寸核对', output_type: 'guide', existing_url: '', links: [], materials: [], operator_facts: facts,
+    } };
+  });
+  const web = await startWebServer(api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await page.route('**/*', route => new URL(route.request().url()).origin === web.origin ? route.continue() : route.abort());
+    await visit(page, web.origin + '/admin/studio/pitch?id=' + id);
+    await page.getByText('我有原始资料或需要更正的事实', { exact: true }).click();
+    await page.getByRole('button', { name: '添加事实', exact: true }).click();
+    await page.getByRole('textbox', { name: '事实内容 1', exact: true }).fill('此型号宽度 960 mm，需以最终安装图为准。');
+    await page.getByRole('textbox', { name: '事实出处 1', exact: true }).fill('合成工程回复，仅用于测试');
+    await expect(page.getByRole('button', { name: '继续自动查找资料', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: '保存事实，不调用模型', exact: true }).click();
+    await expect(page.getByText('已保存 1 条', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '继续自动查找资料', exact: true })).toBeEnabled();
+    await page.reload();
+    await page.getByText('我有原始资料或需要更正的事实', { exact: true }).click();
+    await expect(page.getByRole('textbox', { name: '事实内容 1', exact: true })).toHaveValue('此型号宽度 960 mm，需以最终安装图为准。');
+    await expect(page.getByText('用户补充 · 待核对', { exact: true })).toBeVisible();
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].path, endpoint + '/facts');
+    assert.equal(writes[0].body.facts[0].verification, undefined);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    if (process.env.AIHOT_VISUAL_DIR) {
+      mkdirSync(process.env.AIHOT_VISUAL_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.AIHOT_VISUAL_DIR, 'facts-' + width + '.png'), fullPage: true });
+    }
+  } finally { await browser?.close(); await web.stop(); }
 });
 
 test('manual editorial card uses the saved question version, binds dated evidence and reopens the rejected card without generation',async()=>{
@@ -511,22 +560,26 @@ test('pitch v2 saves padded default headings consistently and only retries the c
     await page.getByText('原样保留 1 段',{exact:true}).click();
     await expect(keep).toBeVisible();
     await page.getByRole('checkbox',{name:'保留改动：额外的换算附录'}).uncheck();
+    const chosenHeading = '下单前的实际尺寸核对';
+    await page.getByRole('textbox',{name:'第 1 处改动的小节标题',exact:true}).fill(chosenHeading);
     await page.getByRole('radio',{name:/Billboard Size Guide/}).check();
     await page.getByRole('checkbox',{name:'增加条件对照表',exact:true}).check();
     await expect(page.getByRole('textbox',{name:'补充逻辑（选填）',exact:true})).toHaveValue('');
     assert.equal(writes.length,1,'selecting a direction, outline and additions does not create a task or call a writer');
     await page.getByRole('button',{name:'保存选择，稍后生成',exact:true}).click();
+    await expect(page.getByText('选择已保存，刷新后可继续。',{exact:true})).toBeVisible();
     assert.deepEqual(writes[1],{path:url+'/choices',body:{version:8,choice_revision:0,article_ids:['page','reference'],selected_title:'Billboard Size Guide',
-      outline:[{id:'change-0',heading:change[1].heading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],additions:['comparison'],note:''}});
+      outline:[{id:'change-0',heading:chosenHeading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],additions:['comparison'],note:''}});
     await page.reload();
     await expect(page.getByRole('checkbox',{name:'增加条件对照表',exact:true})).toBeChecked();
     await expect(page.getByRole('checkbox',{name:'保留改动：额外的换算附录'})).not.toBeChecked();
+    await expect(page.getByRole('textbox',{name:'第 1 处改动的小节标题',exact:true})).toHaveValue(chosenHeading);
     assert.equal(writes.length,2,'saving and reloading choices do not generate a draft');
     await page.getByRole('button',{name:'确认大纲并生成全文',exact:true}).click();
     const generate=page.getByRole('button',{name:'生成英文稿',exact:true});
     await expect(generate).toHaveCount(0);
     assert.deepEqual(writes[2],{path:url+'/confirm',body:{version:8,choice_revision:1,article_ids:['page','reference'],selected_title:'Billboard Size Guide',output_type:'update',
-      outline:[{id:'change-0',heading:change[1].heading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],
+      outline:[{id:'change-0',heading:chosenHeading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],
       engineer:{mode:'conservative',name:'',reply:'',answers:[]}}});
     await expect(page.getByRole('heading',{name:/额外的换算附录/})).toHaveCount(0);
 

@@ -19,6 +19,7 @@ const pushSchema = z.object({
   version: idSchema,
   kind: z.enum(['brief', 'guide']),
   section: z.enum(CATEGORIES.map(({ key }) => key)),
+  recoverOnly: z.boolean().optional(),
 }).strict();
 type Push = z.infer<typeof pushSchema>;
 type Publication = NonNullable<Awaited<ReturnType<typeof lockStudioPublication>>>;
@@ -27,12 +28,14 @@ class DraftPreflightFailure extends Error {
   constructor(error: unknown) { super('WordPress draft preflight failed before any mutation'); this.error = error; }
 }
 type Receipt = { site: string; version: number; kind: Push['kind']; section: Push['section'];
+  expected?: { title: string; content_sha256: string; categories: number[]; tags: number[]; featured_media?: number; metaDescription: string };
   delivery?: 'shadow_draft'; target_post_id?: number; target_existing_url?: string; baseline_sha256?: string | null;
   changes?: NonNullable<ReturnType<typeof studioUpgradeContext>>['changes']; notice?: string;
   figures?: PublishedFigure[]; issues?: PublicationIssue[];
 } & (
   { state: 'pending' | 'not_sent' } |
   { state: 'unknown'; postId?: number; httpStatus?: number } |
+  { state: 'mismatch'; postId: number; reason: 'content_mismatch' | 'snapshot_unavailable' } |
   { state: 'blocked'; postId: number } |
   { state: 'pushed'; postId: number; media: 'set' | 'not_configured' | 'not_applied'; metaDescription: string }
 );
@@ -76,18 +79,38 @@ function receiptView(receipt: Receipt, target: Settings, draftId: string) {
   return { ...result, editUrl, recoveryKey: !postId && (receipt.state === 'pending' || receipt.state === 'unknown') ? slugOf(draftId) : null };
 }
 export async function studioWordPressDetail(id: string) {
-  const target = settings();
-  if (!target.ready) return { ready: false, message: target.message, receipt: null };
+  const target = settings(false);
+  const [draft] = await sql<{ version: number }[]>`SELECT version FROM studio_drafts WHERE id=${id}`;
+  const [approval] = await sql<{ after: { version?: number } }[]>`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`}
+    AND action='studio.draft.approve' ORDER BY id DESC LIMIT 1`;
+  const [synced] = await sql<{ after: Receipt }[]>`SELECT after FROM audit_log WHERE subject=${subjectOf(id)}
+    AND action=${auditAction} AND after->>'state'='pushed' AND after ? 'expected' ORDER BY id DESC LIMIT 1`;
+  const versions = { currentVersion: draft?.version ?? null, approvedVersion: approval?.after.version ?? null,
+    syncedVersion: target.ready && synced?.after.site === target.base.href ? synced.after.version : null };
+  const state = { ...versions, currentSynced: versions.currentVersion !== null && versions.currentVersion === versions.syncedVersion };
+  if (!target.ready) return { ...state, ready: false, recoveryReady: false, message: target.message, receipt: null };
   const receipt = await latest(id);
   if (receipt && receipt.state !== 'not_sent' && receipt.site !== target.base.href) {
-    return { ready: false, message: '此稿已绑定另一 WordPress 站点，请让维护人核对站点配置。', receipt: null };
+    return { ...state, currentSynced: false, ready: false, recoveryReady: false, message: '此稿已绑定另一 WordPress 站点，请让维护人核对站点配置。', receipt: null };
   }
-  return { ready: true, message: null, receipt: receipt && receipt.state !== 'not_sent' ? receiptView(receipt, target, id) : null };
+  return { ...state, currentSynced: state.currentSynced && receipt?.state === 'pushed' && receipt.version === versions.currentVersion,
+    ready: config.wpDraftPushEnabled, recoveryReady: !!receipt && (['pending', 'unknown'].includes(receipt.state) || receipt.state === 'pushed' && !receipt.expected),
+    message: config.wpDraftPushEnabled ? null : 'WordPress 草稿推送尚未开启。',
+    receipt: receipt && receipt.state !== 'not_sent' ? receiptView(receipt, target, id) : null };
 }
 
-const postFields = 'id,slug,status,categories,tags,featured_media';
+const postFields = 'id,slug,status,title,content,categories,tags,featured_media';
 const postSchema = z.object({ id: idSchema, slug: z.string(), status: z.string(),
+  title: z.object({ raw: z.string() }), content: z.object({ raw: z.string() }),
   categories: z.array(idSchema), tags: z.array(idSchema), featured_media: z.number().int().nonnegative() });
+const postIdentity = postSchema.pick({ id: true, slug: true });
+const contentHash = (value: string) => createHash('sha256').update(value.replace(/\r\n?/g, '\n').trim()).digest('hex');
+function matchesExpected(post: z.infer<typeof postSchema>, expected: NonNullable<Receipt['expected']>) {
+  return post.title.raw === expected.title && contentHash(post.content.raw) === expected.content_sha256 &&
+    post.categories.length === expected.categories.length && expected.categories.every(id => post.categories.includes(id)) &&
+    post.tags.length === expected.tags.length && expected.tags.every(id => post.tags.includes(id)) &&
+    (expected.featured_media === undefined || post.featured_media === expected.featured_media);
+}
 const termsSchema = z.array(z.object({ id: idSchema, slug: z.string() }));
 export class WordPressError extends Error {
   readonly status?: number;
@@ -169,10 +192,10 @@ async function readPost(request: Request, postId: number) {
   }
 }
 async function recoverDraft(request: Request, slug: string) {
-  const parsed = z.array(postSchema).safeParse(await request('posts', { context: 'edit', status: 'draft', slug, _fields: postFields }));
+  const parsed = z.array(postSchema).safeParse(await request('posts', { context: 'edit', status: 'any', slug, _fields: postFields }));
   if (!parsed.success) throw new WordPressError();
   const matches = parsed.data.filter(post => post.slug === slug);
-  return matches.length === 1 && matches[0]?.status === 'draft' ? matches[0].id : undefined;
+  return matches.length === 1 ? matches[0]?.id : undefined;
 }
 
 /** One safe HTML projection for reviewed export and WP. No theme-wide CSS, scripts or event handlers. */
@@ -190,16 +213,22 @@ export function sanitizeReviewedHtml(html: string) {
 }
 
 export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: string) {
-  const configured = settings();
+  const { recoverOnly, ...input } = pushSchema.parse(raw);
+  const configured = settings(!recoverOnly);
   if (!configured.ready) invalid(configured.message);
   const target: Settings = configured;
-  const input = pushSchema.parse(raw);
   const site = target.base.href;
   const version = input.version;
   const receiptBase = { site, ...input };
   const slug = slugOf(id);
   const save = (tx: Tx, before: Receipt | undefined, after: Receipt) =>
     audit(actor, auditAction, subjectOf(id), null, before, after, { db: tx });
+  async function unconfirmed(tx: Tx, before: Receipt, error?: WordPressError) {
+    const receipt: Receipt = { ...before, state: 'unknown', postId: 'postId' in before ? before.postId : undefined,
+      ...(error?.status !== undefined ? { httpStatus: error.status } : {}) };
+    await save(tx, before, receipt);
+    return receiptView(receipt, target, id);
+  }
 
   async function preflight(request: Request, publication: Publication, postId?: number) {
     const upgrade = studioUpgradeContext(publication.packet);
@@ -230,28 +259,33 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
           content, slug, parent: postId ?? 0, publishedHashes: [], allowFallback: false })
         : { content, featured: undefined, issues: [], figures: [] };
       const featured = media.featured ?? placement.media;
-      Object.assign(base, { figures: media.figures, issues: media.issues });
+      const expected = { title: publicStudioTitle(publication.title), content_sha256: contentHash(media.content),
+        categories: [placement.category], tags: placement.tags, featured_media: featured,
+        metaDescription: publication.meta_description.replace(/\s+/g, ' ').trim() };
+      Object.assign(base, { figures: media.figures, issues: media.issues, expected });
+      receipt = { ...base, expected, state: 'unknown', postId };
+      // Commit the exact outgoing identity before the POST, independently of the draft lock transaction.
+      // If the process/DB acknowledgement is lost after WordPress commits, recovery can still prove this version.
+      await audit(actor, auditAction, subjectOf(id), null, before, receipt);
       const response = await request(postId ? `posts/${postId}` : 'posts', { _fields: postFields }, {
         status: 'draft', title: publicStudioTitle(publication.title), content: media.content, ...(postId ? {} : { slug }),
         categories: [placement.category], tags: placement.tags,
         ...(featured ? { featured_media: featured } : {}),
       });
-      const saved = postSchema.safeParse(response);
+      const saved = postIdentity.safeParse(response);
       if (saved.success && (postId ? postId === saved.data.id : saved.data.slug === slug)) {
-        const post = saved.data;
-        receipt = { ...base, state: 'unknown', postId: post.id };
-        if (post.status !== 'draft') receipt = { ...base, state: 'blocked', postId: post.id };
-        else if (post.categories.length === 1 && post.categories[0] === placement.category &&
-          post.tags.length === placement.tags.length && placement.tags.every(tag => post.tags.includes(tag))) {
-          receipt = { ...base, state: 'pushed', postId: post.id,
-            media: !featured ? 'not_configured' : post.featured_media === featured ? 'set' : 'not_applied',
-            metaDescription: publication.meta_description.replace(/\s+/g, ' ').trim() };
-        }
+        receipt = { ...base, expected, state: 'unknown', postId: saved.data.id };
+        const post = await readPost(request, saved.data.id);
+        if (post && post.status !== 'draft') receipt = { ...base, expected, state: 'blocked', postId: post.id };
+        else if (post && matchesExpected(post, expected)) {
+          receipt = { ...base, expected, state: 'pushed', postId: post.id,
+            media: !featured ? 'not_configured' : 'set', metaDescription: expected.metaDescription };
+        } else if (post) receipt = { ...base, expected, state: 'mismatch', postId: post.id, reason: 'content_mismatch' };
       }
     } catch (error) {
       if (!(error instanceof WordPressError)) throw error;
       // Even an HTTP error can arrive after WordPress creates the post (for example when setting terms).
-      receipt = { ...base, state: 'unknown', postId, httpStatus: error.status };
+      receipt = { ...receipt, state: 'unknown', postId: 'postId' in receipt ? receipt.postId : postId, httpStatus: error.status };
     }
     await save(tx, before, receipt);
     return receiptView(receipt, target, id);
@@ -259,10 +293,53 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
 
   try {
     const first = await sql.begin(async tx => {
-      const publication = await lockStudioPublication(id, version, tx);
-      if (!publication) return { kind: 'done' as const, result: null };
+      // Recovery is a read of the saved attempt. It must also work after an editor saves a newer, unapproved draft.
+      const [draft] = await tx<{ id: string; version: number; status: string }[]>`SELECT id,version,status FROM studio_drafts WHERE id=${id} FOR UPDATE`;
+      if (!draft) return { kind: 'done' as const, result: null };
       const before = await latest(id, tx);
       const request = client(target);
+      if (before && before.state !== 'not_sent' && before.site !== site) throw new Conflict('此稿已绑定另一 WordPress 站点，请让维护人核对站点配置。');
+      if (before && (recoverOnly || before.state === 'unknown' || before.state === 'pending')) {
+        const knownId = 'postId' in before ? before.postId : undefined;
+        let post;
+        try {
+          const recoveredId = knownId ?? await recoverDraft(request, slug);
+          post = recoveredId ? await readPost(request, recoveredId) : null;
+          if (post && !knownId && post.slug !== slug) throw new WordPressError();
+        } catch (error) {
+          if (!(error instanceof WordPressError)) throw error;
+          return { kind: 'done' as const, result: await unconfirmed(tx, before, error) };
+        }
+        if (!post) return { kind: 'done' as const, result: await unconfirmed(tx, before) };
+        let expected = before.expected;
+        // Older receipts had no content identity. Rebuild it only from the very same, still-approved version.
+        // Figures require their saved upload identity; never generate or upload them on a recovery request.
+        if (!expected && draft.version === before.version && draft.status === 'approved' && before.kind === input.kind) {
+          try {
+            const publication = await lockStudioPublication(id, before.version, tx);
+            if (publication && !publication.draft.figures?.length && !publication.packet.brief) {
+              const placement = await resolvePlacement(request, before);
+              const ready = await preflight(request, publication, post.id);
+              expected = { title: publicStudioTitle(publication.title), content_sha256: contentHash(ready.content),
+                categories: [placement.category], tags: placement.tags, featured_media: placement.media,
+                metaDescription: publication.meta_description.replace(/\s+/g, ' ').trim() };
+            }
+          } catch (error) {
+            if (error instanceof WordPressError) return { kind: 'done' as const, result: await unconfirmed(tx, before, error) };
+            if (!(error instanceof Conflict) && !(error instanceof Error && 'statusCode' in error && error.statusCode === 400)) throw error;
+          }
+        }
+        let recovered: Receipt = { ...before, state: 'unknown', postId: post.id };
+        if (post.status !== 'draft' || post.id === before.target_post_id) recovered = { ...before, state: 'blocked', postId: post.id };
+        else if (expected && matchesExpected(post, expected)) recovered = { ...before, expected, state: 'pushed', postId: post.id,
+          media: expected.featured_media ? 'set' : 'not_configured', metaDescription: expected.metaDescription };
+        else recovered = { ...before, state: 'mismatch', postId: post.id, reason: expected ? 'content_mismatch' : 'snapshot_unavailable' };
+        await save(tx, before, recovered);
+        return { kind: 'done' as const, result: receiptView(recovered, target, id) };
+      }
+      if (recoverOnly) return { kind: 'done' as const, result: before ? receiptView(before, target, id) : null };
+      const publication = await lockStudioPublication(id, version, tx);
+      if (!publication) return { kind: 'done' as const, result: null };
       if (!before || before.state === 'not_sent') {
         const placement = await resolvePlacement(request, input);
         const reservation: Receipt = { ...receiptBase, state: 'pending' };
@@ -270,12 +347,22 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
         await save(tx, before, reservation);
         return { kind: 'create' as const, reservation, placement };
       }
-      if (before.site !== site) throw new Conflict('此稿已绑定另一 WordPress 站点，请让维护人核对站点配置。');
       const knownId = 'postId' in before ? before.postId : undefined;
       const postId = knownId ?? await recoverDraft(request, slug);
       if (!postId) return { kind: 'done' as const, result: receiptView(before, target, id) };
-      const placement = await resolvePlacement(request, input);
-      const current = await readPost(request, postId);
+      let placement;
+      try { placement = await resolvePlacement(request, input); }
+      catch (error) {
+        if (!(error instanceof WordPressError)) throw error;
+        return { kind: 'done' as const, result: await unconfirmed(tx, before, error) };
+      }
+      let current;
+      try { current = await readPost(request, postId); }
+      catch (error) {
+        if (!(error instanceof WordPressError)) throw error;
+        return { kind: 'done' as const, result: await unconfirmed(tx, before, error) };
+      }
+      if (!current) return { kind: 'done' as const, result: await unconfirmed(tx, before) };
       if (!knownId && current?.slug !== slug) return { kind: 'done' as const, result: receiptView(before, target, id) };
       if (current?.status !== 'draft') {
         const blocked: Receipt = { ...receiptBase, state: 'blocked', postId };

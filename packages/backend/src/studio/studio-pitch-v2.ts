@@ -13,7 +13,7 @@ import {importLink,type Prep} from './studio-pitch.ts';
 import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from './studio.ts';
 import {companyFactRules} from './studio-company-facts.ts';
 import {discoverPitchEvidence} from './studio-pitch-research.ts';
-import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,editorialAdditions,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
+import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,editorialAdditions,operatorFactInputSchema,type OperatorFact,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
 import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
 import {writingPolicyBundle} from './writing-policy-bundle.ts';
 import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,revisionCharacterLimit,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
@@ -26,6 +26,40 @@ type Fragment={op_index:number;status:'pending'|'running'|'done'|'unknown'|'fail
 type V2=Prep & {workflow_version:2;reuse_questions?:boolean;research_question_id?:string;subquestions?:Array<Question&{coverage:Coverage;demand:{queries:Record<string,unknown>[];inquiries:number}}>;paragraphs?:Paragraph[];source_html?:string;original_title?:string;facts?:Fact[];edit_plan?:EditOperation[];weak_material_ids?:string[];conclusion?:string;fragments?:Fragment[];assembled?:Record<string,unknown>};
 const cardFor=async(id:string)=>{const [row]=await sql`SELECT * FROM studio_recommendations WHERE id=${id}`;return row;};
 const savePrep=async(id:string,prep:V2)=>sql`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${sql.json(prep as never)}),updated_at=now() WHERE id=${id} AND (document->'prep'->>'version')::int=${prep.version}`;
+
+/** Only an exact statement and quote in a saved readable body count as source evidence. */
+export function checkedOperatorFacts(prep:Prep,input:unknown):OperatorFact[]{
+  const rows=z.array(operatorFactInputSchema).max(20).parse(input);
+  const ids=new Set<string>();
+  return rows.map(row=>{
+    const id=row.id??`operator-${randomUUID()}`;
+    if(ids.has(id))invalid('事实编号重复，请刷新后保存。');ids.add(id);
+    if(row.id&&!prep.operator_facts?.some(f=>f.id===row.id))invalid('事实编号不在当前输入中，请刷新后保存。');
+    if(row.url){if(!normalizeUrl(row.url))invalid('事实出处链接必须是公开网页地址。');const u=new URL(row.url);if(u.username||u.password)invalid('事实出处链接必须是公开网页地址。');}
+    const material=(prep.materials??[]).find(m=>row.article_id?m.id===row.article_id:row.url&&canonical(m.url)===canonical(row.url));
+    if(row.article_id&&!material)invalid('事实所选资料不在本次备料中。');
+    const verified=!!material&&material.body_status==='ok'&&!!row.quote&&!!material.body_text?.includes(row.quote)&&row.quote.includes(row.statement);
+    const {article_id,...supplied}=row;
+    return verified?{...row,id,verification:'source_verified',article_id:material!.id,revision:material!.revision,url:material!.url}:{...supplied,id,verification:'operator_supplied'};
+  });
+}
+
+export async function savePitchFacts(id:string,input:unknown,actor:string){
+  const b=z.object({version:z.number().int(),facts:z.array(operatorFactInputSchema).max(20)}).strict().parse(input);
+  return sql.begin(async tx=>{
+    const [card]=await tx`SELECT * FROM studio_recommendations WHERE id=${id} FOR UPDATE`;
+    if(!card)return null;const old=card.document.prep as V2;
+    if(!old||old.version!==b.version||card.task_id||old.status==='preparing')throw new Conflict('此备料卡暂不能修改事实，请刷新或在原稿件继续。');
+    if(old.model_outcome==='unknown')invalid('已有备料调用结果待核对，请先保留当前版本；未重新调用。');
+    const facts=checkedOperatorFacts(old,b.facts);
+    if(facts.some(f=>f.subquestion_id&&!old.subquestions?.some(q=>q.id===f.subquestion_id)))invalid('事实关联的买家问题已变化，请刷新。');
+    const prep:V2={...old,operator_facts:facts,version:old.version+1,status:'insufficient',error:'已保存事实输入；旧计划已失效。请明确选择重新备料，保存本身没有调用模型。'};
+    delete prep.editorial_choices;delete prep.edit_plan;delete prep.outline;delete prep.titles;delete prep.hooks;delete prep.engineer_questions;delete prep.conclusion;delete prep.fragments;delete prep.assembled;delete prep.scope_options;
+    await tx`UPDATE studio_recommendations SET document=jsonb_set(document,'{prep}',${tx.json(prep as never)}),updated_by=${actor},updated_at=now() WHERE id=${id}`;
+    await audit(actor,'studio.pitch.facts',`studio-recommendation:${id}`,'保存实际事实与出处，旧计划失效；未调用模型',null,{previous_version:old.version,previous_choices:old.editorial_choices,previous_facts:old.operator_facts??[],facts,version:prep.version},{db:tx});
+    return {id,version:prep.version,status:prep.status,facts,model_calls:0};
+  });
+}
 
 /** A saved answer is always replayed; a missing answer is never silently repurchased. */
 async function call<S extends z.ZodType>(options:ChatJsonOptions<S>,replay=false){
@@ -102,7 +136,8 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     const questions=decomposition.subquestions;
     if(new Set(questions.map(q=>q.id)).size!==questions.length)invalid('子问题编号重复，需检查保存的回答。');
     const candidates=reuseInputs?(prep.materials??[]):await searchPitchMaterials([...new Set(questions.flatMap(q=>q.terms))],50);
-    const materials:NonNullable<Prep['materials']>=[...linked,...candidates.filter(m=>!linked.some(l=>l.id===m.id))];
+    const suppliedSources=(prep.materials??[]).filter(m=>prep.operator_facts?.some(f=>f.verification==='source_verified'&&f.article_id===m.id));
+    const materials:NonNullable<Prep['materials']>=[...linked,...suppliedSources.filter(m=>!linked.some(l=>l.id===m.id)),...candidates.filter(m=>![...linked,...suppliedSources].some(l=>l.id===m.id))];
     let htmls=await sql`SELECT id,body_html,revision FROM articles WHERE id=ANY(${materials.map(m=>m.id)})`;
     let evidence=answerEvidence(questions,materials.map(m=>({...m,body_html:m.existing_page?sourceHtml:
       htmls.find(h=>h.id===m.id&&h.revision===m.revision)?.body_html})));
@@ -119,6 +154,13 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     }
     const facts:Fact[]=[];
     const addFact=(value:Omit<Fact,'id'>)=>{const f={...value,id:`f${facts.length+1}`} as Fact;facts.push(f);return f;};
+    const operatorFacts=(prep.operator_facts??[]).map(f=>{
+      const m=materials.find(m=>m.id===f.article_id&&m.revision===f.revision);
+      const verified=f.verification==='source_verified'&&m?.body_status==='ok'&&!!f.quote&&!!m.body_text?.includes(f.quote)&&f.quote.includes(f.statement);
+      return {...f,verification:verified?'source_verified' as const:'operator_supplied' as const,...(!verified?{article_id:undefined,revision:undefined}:{})};
+    });
+    prep.operator_facts=operatorFacts;
+    for(const f of operatorFacts.filter(f=>f.verification==='source_verified'))facts.push({...f,kind:'source'});
     const demand=await demandFor(questions,prep.existing_url);
     const subquestions:NonNullable<V2['subquestions']>=questions.map(q=>{
       const matched=evidence.by_question[q.id]??[];
@@ -126,6 +168,7 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
         const m=materials.find(m=>m.id===e.article_id)!;const quote=answerQuote(e,m?.body_text??'');if(!quote)return [];
         return [addFact({kind:m.existing_page?'page':'source',statement:quote,quote,article_id:m.id,revision:m.revision,date:m.publication_time??null,attribution:m.existing_page?'Chipshow page':m.source_name,url:m.url}).id];
       });
+      ids.push(...operatorFacts.filter(f=>f.verification==='source_verified'&&f.subquestion_id===q.id).map(f=>f.id));
       let status:Coverage['status']=ids.length?'direct':q.need==='company'?'engineer':'missing';
       if(q.need==='calc'&&q.calculation){
         const basis=q.calculation.basis;
@@ -161,15 +204,16 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     const user=JSON.stringify(oldPage?{
       subquestions:subquestions.map(q=>({id:q.id,en:q.en,need:q.need,coverage:q.coverage.status,evidence:q.coverage.evidence,
         demand:{queries:q.demand.queries.slice(0,3).map(r=>({query:r.query,impressions:r.impressions,position:r.position})),inquiries:q.demand.inquiries}})),
-      facts:facts.map(f=>({id:f.id,kind:f.kind,statement:f.statement,attribution:f.attribution})),
+      facts:facts.map(f=>({id:f.id,kind:f.kind,statement:f.statement,attribution:f.attribution,verification:f.verification})),
+      operator_supplied:operatorFacts.filter(f=>f.verification==='operator_supplied'),operator_input_policy:'用户补充待核内容不是已验证来源，不得当作可引用facts；不可通过改写把它升级为事实。',
       paragraphs:paragraphs.map(p=>[p.id,p.text.replace(/\s+/g,' ').slice(0,Math.min(excerptLength,100))]),company_rules,
-    }:{question:prep.question,output_type:prep.output_type,subquestions,facts,paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,excerptLength)})),company_rules});
+    }:{question:prep.question,output_type:prep.output_type,subquestions,facts,operator_supplied:operatorFacts.filter(f=>f.verification==='operator_supplied'),operator_input_policy:'用户补充待核内容不是已验证来源，不得当作可引用facts；不可通过改写把它升级为事实。',paragraphs:paragraphs.map(p=>({id:p.id,text:p.text.slice(0,excerptLength)})),company_rules});
     const remainingMs=90000-Math.round(performance.now()-start);
     if(!replay&&remainingMs<1000)invalid('本轮备料已用完90秒，已保存拆题与检索结果，未发送第二段。');
     const options={model:'default',purpose:'studio_prep_edit_plan',subject:`studio-pitch:${id}:${version}`,promptVersion:sha256(system2),system:system2,user,maxTokens:3500,timeoutMs:replay?90000:remainingMs,sessionId:id,...(retry?{attemptTag:`edit-plan-after-${retry.retryEditPlanReceiptId}`}:{})};
     const result=oldPage
       ?await call({...options,schema:pageUpdatePlanSchema,maxTokens:1800,maxTotalTokens:4096},replay).then(r=>({
-        ...r,data:{...r.data,titles:[{title:oldPage.title.slice(0,60),anchor:'沿用旧页标题',article_id:oldPage.id,quote:oldPage.title.slice(0,60)}],hooks:[]},
+        ...r,data:{...r.data,titles:[{title:oldPage.title.slice(0,60),anchor:'沿用旧页标题',article_id:oldPage.id,quote:facts.find(f=>f.article_id===oldPage.id&&f.quote)?.quote??shortQuote(oldPage.body_text??'',oldPage.body_text??'')}],hooks:[]},
       }))
       :await call({...options,schema:editPlanSchema},replay);
     receipts.push({id:result.receiptId,usage:result.usage,model:result.model});
@@ -179,7 +223,7 @@ export async function preparePitchV2(id:string,version:number,actor:string,mode:
     editPlan.push(...plan.edits.filter(e=>e.op==='insert_after'));
     const errors=validateEditPlan(paragraphs,editPlan,questions,facts);if(errors.length)invalid(errors.join('；'));
     const {titles,hooks}=plan;
-    for(const t of [...titles,...hooks])if(!materials.some(m=>m.id===t.article_id&&(m.body_text?.includes(t.quote)||m.title.includes(t.quote))))invalid('标题/钩子的逐字出处未匹配。');
+    for(const t of [...titles,...hooks])if(!t.quote.trim()||!materials.some(m=>m.id===t.article_id&&m.body_status==='ok'&&m.body_text?.includes(t.quote)))invalid('标题/钩子的逐字出处未匹配。');
     for(const q of plan.engineer_questions)if(!q.options[0]?.conservative||q.options[0].id!=='A'||/\d/.test(q.options[0].label+q.options[0].instruction))invalid('工程题A须为无数字的保守写法。');
     for(const q of subquestions){
       const c=plan.coverage.find(c=>c.id===q.id);if(!c)invalid(`缺少子问题 ${q.id} 的覆盖判断。`);
@@ -206,7 +250,7 @@ export function confirmedFragmentPlan(raw:Prep,input:{article_ids:string[];outli
   const prep=raw as V2;
   if(prep.conclusion==='no_change')invalid('旧页无需升级；请保留原页，不重复出稿。');
   let index=0;
-  const plan=prep.edit_plan!.flatMap(e=>{if(e.op==='keep')return [e];const sectionId=`change-${index++}`;const included=input.outline.find(s=>s.id===sectionId)?.include;return included?[e]:e.op==='revise'?[{op:'keep' as const,paragraph:e.paragraph,facts:[]}]:[];});
+  const plan=prep.edit_plan!.flatMap(e=>{if(e.op==='keep')return [e];const sectionId=`change-${index++}`;const included=input.outline.find(s=>s.id===sectionId)?.include;const section=pitch.outline.find(s=>s.id===sectionId);return included?[{...e,...(section?{heading:section.heading}: {})}]:e.op==='revise'?[{op:'keep' as const,paragraph:e.paragraph,facts:[]}]:[];});
   if(!plan.some(e=>e.op!=='keep'))invalid('没有保留任何改动，不需要成稿。');
   if(plan.some(e=>e.op!=='keep'&&!e.facts?.length))invalid('所选小节尚无可引用事实，请选择已有证据的小节或继续自动查找。');
   const facts=prep.facts!.filter(f=>!f.article_id||input.article_ids.includes(f.article_id));
@@ -222,7 +266,7 @@ export async function upgradePitch(id:string,input:unknown,actor:string){
     if(!card)return null;const old=card.document.prep as V2;
     if(old.version!==b.version)throw new Conflict('命题已变化，请刷新。');
     if(old.workflow_version===2)invalid('已经是片段采编，请使用现有任务。');
-    const prep:V2={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:old.output_type,existing_url:old.existing_url,links:old.links,started_at:new Date().toISOString()};
+    const prep:V2={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:old.output_type,existing_url:old.existing_url,links:old.links,started_at:new Date().toISOString(),operator_facts:old.operator_facts,materials:old.materials};
     await tx`UPDATE studio_recommendations SET task_id=NULL,status='pending',document=${tx.json({...card.document,previous_attempts:[...(card.document.previous_attempts??[]),{task_id:card.task_id,prep:old}],prep} as never)},updated_by=${actor},updated_at=now() WHERE id=${id}`;
     await enqueue(QUEUES.studioPrep,{cardId:id,version:prep.version,actor,phase:'prepare'},{singletonKey:`${id}:${prep.version}`,retryLimit:0},tx);
     await audit(actor,'studio.pitch.fragment-upgrade',`studio-recommendation:${id}`,'按用户批准的PRDv2新建片段流程，原未知调用保留，不重试',null,{version:prep.version,previous_task_id:card.task_id},{db:tx});
@@ -305,7 +349,7 @@ export async function generatePitchFragments(id:string,actor:string,options:{fra
       target:target.text.slice(0,600), target_tag:target.html.match(/^\s*<([a-z][a-z0-9]*)\b/i)?.[1]?.toLowerCase(),
       max_visible_chars_per_language:revisionCharacterLimit(target),
     }:{};
-    const user=JSON.stringify({operation:op.op,heading:op.op==='insert_after'?op.heading:undefined,
+    const user=JSON.stringify({operation:op.op,heading:op.heading,selected_title:packet.pitch!.selected_title,
       editorial_reason:op.reason,question:question?.en,...revision,context:{before,after},facts,
       engineer:packet.pitch!.engineer,withheld_numbers:packet.pitch!.withheld_numbers,
       editorial_choices:packet.pitch!.editorial_choices?{additions:packet.pitch!.editorial_choices.additions.map(id=>editorialAdditions[id]),note:packet.pitch!.editorial_choices.note,instruction:'这些是结构与表达要求，不是事实证据。只使用本次提供的facts；无法支持的比较项和数值不写。'}:undefined,

@@ -14,6 +14,8 @@ import { stopBoss } from '@aihot/backend/jobs/queue';
 import { englishReviewHash } from '@aihot/backend/studio/studio-review-edits';
 import type { RevisionRequest } from '@aihot/backend/studio/studio-revision-edits';
 import { responseSchema, sha256 } from '../scripts/editorial-pilot-lib.ts';
+import {getPitch,savePitchChoices,confirmPitch,type Prep} from '../packages/backend/src/studio/studio-pitch.ts';
+import {savePitchFacts,generatePitchFragments} from '../packages/backend/src/studio/studio-pitch-v2.ts';
 
 const actor='test:planning',suffix=tag();
 const doc={question:`户外招牌电费怎么计算-${suffix}？`,roles:['终端业主/广告媒体主'],scenario:'户外招牌',dimension:'费用',keywords:['电费','用电','power']};
@@ -199,4 +201,59 @@ test('queued revision rejects submit and confirm without advancing the draft ver
   for(const action of ['submit','confirm'] as const)await assert.rejects(reviewStudioDraft(fixture.id,{version:fixture.version,action},actor),/修订尚未结束/);
   assert.deepEqual((await sql`SELECT document,version,status FROM studio_drafts WHERE id=${fixture.id}`)[0],before);
   assert.equal(await revisionReceiptCount(fixture.id),0);
+});
+
+async function pitchChoiceFixture(){
+  const key=`pitch-input-${tag()}`,source=`${key}-source`,article=`${key}-article`,quote='Check the pickup notice before warehouse collection.';
+  await sql`INSERT INTO sources(id,name,kind,enabled) VALUES(${source},'Synthetic pickup source','web_list',false)`;
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,body_status,body_text)
+    VALUES(${article},${source},${article},${`https://example.com/${article}`},'Title-only promise',now(),now(),'ok',${quote})`;
+  const [m]=await sql`SELECT a.id,a.title,a.url,a.source_id,a.revision,a.body_status,a.body_text FROM articles a WHERE id=${article}`;
+  const prep={workflow_version:2,version:1,status:'ready',question:'提货之前需要核对哪些文件',output_type:'guide',existing_url:'',links:[],started_at:new Date().toISOString(),finished_at:new Date().toISOString(),materials:[{...m,source_name:'Synthetic source',hit_count:1,first_party:false,snippet:quote}],
+    facts:[{id:'f1',kind:'source',statement:quote,quote,article_id:article,revision:m!.revision,attribution:'Synthetic source'}],paragraphs:[],source_html:'',original_title:'',
+    subquestions:[{id:'q1',zh:'提货文件',en:'Pickup documents',need:'reference',answer_shape:'steps',terms:['pickup','notice'],coverage:{status:'direct',page_paragraphs:[],evidence:['f1']},demand:{queries:[],inquiries:0}}],
+    conclusion:'upgrade',edit_plan:[{op:'insert_after',paragraph:'start',subquestion:'q1',heading:'Old heading',reason:'Answer the buyer document question',facts:['f1']},{op:'insert_after',paragraph:'start',subquestion:'q1',heading:'Omitted heading',reason:'Not selected',facts:['f1']}],
+    outline:[{id:'change-0',heading:'Original heading',evidence:[{article_id:article,quote}],gap:'',action:''},{id:'change-1',heading:'Omitted heading',evidence:[{article_id:article,quote}],gap:'',action:''}],
+    titles:[{title:'Chosen pickup checklist',anchor:'pickup document',article_id:article,quote}],hooks:[],engineer_questions:[]};
+  await sql`INSERT INTO studio_recommendations(id,input_key,document,updated_by) VALUES(${key},${key},${sql.json({title:prep.question,prep} as never)},${actor})`;
+  return {id:key,article,quote,prep};
+}
+
+test('fact input persists without model calls, preserves materials, invalidates the plan and retains old choices in audit',async()=>{
+  const f=await pitchChoiceFixture();
+  const choices={version:1,choice_revision:0,selected_title:'Chosen pickup checklist',article_ids:[f.article],outline:[{id:'change-0',heading:'Chosen heading',include:true},{id:'change-1',heading:'Omitted heading',include:false}],additions:['checklist'],note:'Use a concise checklist.'};
+  await savePitchChoices(f.id,choices,actor);
+  const before=(await sql`SELECT count(*)::int AS n FROM receipts`)[0].n;
+  const saved=await savePitchFacts(f.id,{version:1,facts:[{statement:f.quote,attribution:'Saved source',article_id:f.article,quote:f.quote},{statement:'User supplied timing, still unchecked',attribution:'Operator note',url:'https://example.com/not-imported'}]},actor);
+  assert.equal(saved?.version,2);assert.equal(saved?.status,'insufficient');assert.equal(saved?.model_calls,0);
+  const loaded=(await getPitch(f.id))!;
+  assert.deepEqual(loaded.prep!.operator_facts,saved!.facts);
+  assert.deepEqual(saved!.facts.map(row=>row.verification),['source_verified','operator_supplied']);
+  assert.equal(loaded.prep!.materials?.[0].id,f.article);assert.equal(loaded.prep!.editorial_choices,undefined);assert.equal(loaded.prep!.outline,undefined);
+  assert.equal((loaded.prep as Prep&{edit_plan?:unknown}).edit_plan,undefined);
+  const [record]=await sql`SELECT after FROM audit_log WHERE subject=${`studio-recommendation:${f.id}`} AND action='studio.pitch.facts'`;
+  assert.equal(record.after.previous_choices.selected_title,choices.selected_title);assert.equal(record.after.previous_choices.outline[0].heading,'Chosen heading');
+  assert.equal((await sql`SELECT count(*)::int AS n FROM receipts`)[0].n,before);
+  await assert.rejects(savePitchFacts(f.id,{version:1,facts:[]},actor),/刷新/);
+  const again=await savePitchFacts(f.id,{version:2,facts:saved!.facts.map(({verification,revision,...row})=>row)},actor);
+  assert.deepEqual(again!.facts.map(row=>row.id),saved!.facts.map(row=>row.id));
+});
+
+test('chosen title, section and additions enter the actual fragment request; omitted sections never run',async()=>{
+  const f=await pitchChoiceFixture();
+  const outline=[{id:'change-0',heading:'Chosen buyer document heading',include:true},{id:'change-1',heading:'Omitted heading',include:false}];
+  const choices={version:1,choice_revision:0,selected_title:'Chosen pickup checklist',article_ids:[f.article],outline,additions:['checklist'],note:'Use a concise checklist.'};
+  await savePitchChoices(f.id,choices,actor);
+  const confirmed=await confirmPitch(f.id,{version:1,choice_revision:1,article_ids:[f.article],selected_title:choices.selected_title,output_type:'guide',outline,engineer:{mode:'conservative'}},actor);
+  const [task]=await sql`SELECT request FROM studio_tasks WHERE id=${confirmed!.task_id}`;
+  assert.equal(task.request.pitch.selected_title,choices.selected_title);assert.equal(task.request.pitch.fragments_plan.edit_plan.length,1);
+  const requests:Record<string,any>[]=[];
+  await generatePitchFragments(f.id,actor,{},async options=>{
+    requests.push(JSON.parse(String(options.user)));
+    throw new Error('Synthetic capture: no model called.');
+  });
+  assert.equal(requests.length,1);assert.equal(requests[0].selected_title,choices.selected_title);assert.equal(requests[0].heading,outline[0].heading);
+  assert.match(requests[0].editorial_choices.additions[0],/核对清单/);assert.equal(requests[0].editorial_choices.note,choices.note);
+  assert.deepEqual(requests[0].facts.map((row:{article_id:string})=>row.article_id),[f.article]);
+  await assert.rejects(savePitchFacts(f.id,{version:1,facts:[]},actor),/原稿件/);
 });

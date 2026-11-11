@@ -12,7 +12,7 @@ import { chatJson, type ChatJsonOptions, type ChatJsonResult } from '../provider
 import { createStudioTask, extractStudioMaterial, generateStudioTask, studioMaterial, studioGenerationStatus } from './studio.ts';
 import { redactPitch, normalizePitch, searchPitchMaterials } from './studio-pitch-evidence.ts';
 import { companyFactRules } from './studio-company-facts.ts';
-import { pitchType, pitchPlanSchema, pitchKeywordsSchema, pitchSchema, editorialChoicesSchema, type EditorialChoices, type Pitch } from '../../../../scripts/editorial-pitch-lib.ts';
+import { pitchType, pitchPlanSchema, pitchKeywordsSchema, pitchSchema, editorialChoicesSchema, type EditorialChoices, type Pitch, type OperatorFact } from '../../../../scripts/editorial-pitch-lib.ts';
 import type { ResearchReport, discoverPitchEvidence } from './studio-pitch-research.ts';
 
 function invalid(message:string):never {throw Object.assign(new Error(message),{statusCode:400});}
@@ -26,6 +26,7 @@ export type Prep=Omit<Partial<z.infer<typeof pitchPlanSchema>>,'output_type'>&{
   started_at:string;finished_at?:string;question_en?:string;keywords?:string[];entities?:string[];materials?:Material[];
   related_pages?:{title:string;url:string}[];blacklist?:{configured:boolean;blocked:number;pending:number};
   research?:ResearchReport;editorial_choices?:EditorialChoices;
+  operator_facts?:OperatorFact[];
   scope_options?:{id:string;question:string;includes:string[];omits:string[];subquestion_ids:string[]}[];
   scope?:{original_question:string;question:string;omitted_questions:string[]};
   error?:string;link_errors?:{url:string;reason:string}[];metrics?:{preparation_ms:number|null;replayed?:boolean;replay_ms?:number;confirmation_elapsed_ms?:number;receipts:{id:number;usage:unknown;model:string}[]};
@@ -86,7 +87,7 @@ export async function revisePitch(id:string,input:unknown,actor:string){
     if(card.task_id)invalid('已经建立成稿任务，请在原任务继续。');
     if(old.status==='preparing')invalid('备料正在进行，请等待结果。');
     if(old.model_outcome==='unknown')invalid('已有备料调用结果待核对，不会用重新备料重复发送。');
-    const prep:Prep={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString(),...(old.scope?{scope:old.scope}:{})};
+    const prep:Prep={workflow_version:2,version:old.version+1,status:'preparing',question:old.question,output_type:b.output_type,existing_url:b.existing_url,links:b.links,started_at:new Date().toISOString(),...(old.scope?{scope:old.scope}:{}),...(old.operator_facts?{operator_facts:old.operator_facts,materials:old.materials}:{})};
     await tx`UPDATE studio_recommendations SET document=${tx.json({...card.document,existing_url:b.existing_url,prep} as never)},updated_by=${actor},updated_at=now() WHERE id=${id}`;
     await enqueue(QUEUES.studioPrep,{cardId:id,version:prep.version,actor,phase:'prepare'},{singletonKey:`${id}:${prep.version}`,retryLimit:0},tx);
     return {id,status:prep.status,version:prep.version};
@@ -118,7 +119,7 @@ async function linkedMaterial(id:string,existingUrl:string):Promise<Material>{
 }
 
 export function validatePitchEvidence(plan:z.infer<typeof pitchPlanSchema>,materials:Material[]){
-  const supports=(id:string,quote:string)=>materials.some(m=>m.id===id&&(m.body_text?.includes(quote)||m.title.includes(quote)));
+  const supports=(id:string,quote:string)=>!!quote.trim()&&materials.some(m=>m.id===id&&m.body_status==='ok'&&m.body_text?.includes(quote));
   for(const s of plan.outline){
     s.evidence=s.evidence.filter(e=>supports(e.article_id,e.quote));
     if(!s.evidence.length&&!s.gap){s.gap='未找到可核对的原文句子';s.action='补链接或删除本节';}

@@ -263,7 +263,10 @@ export async function studioDraft(id: string) {
   const task=await studioTask(row.task_id);
   const packet=packetSchema.parse(task.request);
   const state=await draftReviewState(row,packet);
-  return { ...row, ...state, suggestions:reviewEditSuggestions(packet,storedDraft(row.document),state.issues),
+  const [approval]=await sql<{after:{version?:number}}[]>`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`}
+    AND action='studio.draft.approve' ORDER BY id DESC LIMIT 1`;
+  return { ...row, ...state, currentVersion:row.version, approvedVersion:approval?.after.version??null,
+    suggestions:reviewEditSuggestions(packet,storedDraft(row.document),state.issues),
     review_sync:row.document.review_sync??null, upgrade_context:studioUpgradeContext(packet),
     revision_request:row.document.revision_request??null,
     editorial_context:{question:packet.pitch?.scope?.original_question??packet.pitch?.question??packet.editorial_plan?.question??packet.writing?.reader_task??row.document.title_zh,
@@ -370,7 +373,7 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
       return {id,status:'draft',version:nextVersion,revision_request:revision,queued:true};
     }
     let confirmations: EditorialConfirmation[] = [];
-    let fullyConfirmed = false;
+    let unchangedConfirmations = false;
     let sourceDate: { publicationTime: string | null; utcOffset: string } | undefined;
     let briefDates: Awaited<ReturnType<typeof checkBriefDates>>|undefined;
     {
@@ -382,7 +385,8 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
       const gate=await currentDraftGate(packet,doc,id,tx,row.document.review_sync?.status==='stale');
       if(b.action==='approve'&&gate.blocked)invalid('存在否决项，必须修改内容后重新审核：'+gate.findings.filter(f=>f.severity==='BLOCK').map(f=>f.ruleId+' '+f.quote).join('；'));
       const issues=buildEditorialIssues(packet,doc,gate);
-      const checked=validateEditorialConfirmations(issues,{confirmations:b.confirmations},b.action==='confirm'?[]:await priorConfirmations(id,issues,tx));
+      const prior=await priorConfirmations(id,issues,tx);
+      const checked=validateEditorialConfirmations(issues,{confirmations:b.confirmations},b.action==='confirm'?[]:prior);
       if (checked.errors.length) invalid('逐项确认已失效或对象不符，请刷新后核对。');
       if (b.action==='approve'&&!checked.canApprove) invalid(`请逐项确认风险提示及逐字检查后再审核通过；尚缺${checked.missingIssueIds.length}项。`);
       if (b.action==='approve') {
@@ -395,14 +399,16 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
         catch(error) { invalid('来源日期无法确认，请先修复素材再审稿：'+(error instanceof Error?error.message:String(error))); }
       }
       confirmations=checked.confirmed;
-      fullyConfirmed=checked.canApprove;
+      const confirmationKeys=(items:EditorialConfirmation[])=>JSON.stringify(items.map(item=>JSON.stringify([item.issueId,item.fingerprint])).sort());
+      unchangedConfirmations=b.action==='confirm'&&confirmationKeys(confirmations)===confirmationKeys(prior);
       for (const e of doc.evidence) if (!(packet.brief||packet.pitch?packet.articles:[article]).some(a=>a.body_text?.includes(e.quote)||a.title.includes(e.quote))) invalid('证据引用不在原文中，请重新核对。');
     }
-    const status = b.action === 'confirm' ? row.status==='approved'&&!fullyConfirmed?'in_review':row.status : b.action === 'submit' ? 'in_review' : b.action === 'approve' ? 'approved' : 'draft';
-    await tx`UPDATE studio_drafts SET status=${status},version=version+1,updated_by=${actor},updated_at=now(),
+    const status = unchangedConfirmations ? row.status : b.action === 'confirm' ? row.status==='approved'?'in_review':row.status : b.action === 'submit' ? 'in_review' : b.action === 'approve' ? 'approved' : 'draft';
+    const nextVersion=unchangedConfirmations?row.version:row.version+1;
+    if(!unchangedConfirmations)await tx`UPDATE studio_drafts SET status=${status},version=version+1,updated_by=${actor},updated_at=now(),
       reviewed_by=${b.action === 'approve' ? actor : b.action === 'confirm'&&status==='approved' ? row.reviewed_by : null},reviewed_at=${b.action === 'approve' ? new Date() : b.action === 'confirm'&&status==='approved' ? row.reviewed_at : null} WHERE id=${id}`;
-    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: row.version + 1, document_hash:documentIdentity(row.document),confirmations,...(b.english_reviewed?{english_reviewed_hash:englishReviewHash(row.document)}:{}),...(sourceDate?{source_date:sourceDate}:{}),...(briefDates?{brief_source_dates:briefDates}:{}) }, { db: tx });
-    return { id, status, version: row.version + 1 };
+    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: nextVersion, document_hash:documentIdentity(row.document),confirmations,...(b.english_reviewed?{english_reviewed_hash:englishReviewHash(row.document)}:{}),...(sourceDate?{source_date:sourceDate}:{}),...(briefDates?{brief_source_dates:briefDates}:{}) }, { db: tx });
+    return { id, status, version: nextVersion };
   });
 }
 
@@ -521,7 +527,7 @@ async function approvedDraft(row: DraftRow, tx: Db) {
     if(review.gate.blocked)invalid('当前稿件存在否决项，请修改并重新审稿。');
     const d = storedDraft(row.document);
     const [approved]=await tx`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`} AND action='studio.draft.approve' ORDER BY created_at DESC,id DESC LIMIT 1`;
-    if(!approved||approved.after?.document_hash!==documentIdentity(row.document)||!Number.isInteger(approved.after?.version)||approved.after.version<1||approved.after.version>row.version||!validateEditorialConfirmations(review.issues,{confirmations:review.confirmed_issues}).canApprove)invalid('当前规则需要补充逐项人工风险确认，请重新审稿。');
+    if(!approved||approved.after?.document_hash!==documentIdentity(row.document)||approved.after?.version!==row.version||!validateEditorialConfirmations(review.issues,{confirmations:review.confirmed_issues}).canApprove)invalid('当前版本尚无有效批准，或需要补充逐项人工风险确认，请重新审稿。');
     const sourceDate=approved.after.source_date;
     if(!sourceDate||sourceDate.publicationTime!==material.publication_time||sourceDate.utcOffset!==material.source_utc_offset)throw new Conflict('来源日期精度或时区与批准记录不一致，请重新审稿。');
     if(packet.brief&&JSON.stringify(approved.after.brief_source_dates)!==JSON.stringify(await checkBriefDates(packet,tx)))throw new Conflict('短讯各来源日期与批准记录不一致，请重新审稿。');

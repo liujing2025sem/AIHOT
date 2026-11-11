@@ -13,6 +13,7 @@ export type Fact = {
   date?: string | null;
   attribution: string;
   url?: string;
+  verification?: 'operator_supplied' | 'source_verified';
   calculation?: unknown;
 };
 export type CalculationName = 'pixels' | 'feet_to_meters' | 'aspect_ratio';
