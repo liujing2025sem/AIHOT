@@ -224,6 +224,9 @@ export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: 
   const save = (tx: Tx, before: Receipt | undefined, after: Receipt) =>
     audit(actor, auditAction, subjectOf(id), null, before, after, { db: tx });
   async function unconfirmed(tx: Tx, before: Receipt, error?: WordPressError) {
+    // A duplicate can read pending between reservation commit and the creator's second transaction.
+    // No remote evidence must not cancel that reservation before its owner can send it.
+    if (before.state === 'pending') return receiptView(before, target, id);
     const receipt: Receipt = { ...before, state: 'unknown', postId: 'postId' in before ? before.postId : undefined,
       ...(error?.status !== undefined ? { httpStatus: error.status } : {}) };
     await save(tx, before, receipt);

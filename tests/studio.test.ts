@@ -144,13 +144,24 @@ test('WordPress push only writes approved English to one draft, with safe recove
  const posts=new Map<number,Post>([[unrelated.id,unrelated]]);
  const writes:Write[]=[];
  let nextId=100, shortReady=false, mode:'ok'|'fail'|'disconnect'='ok', mismatchedRead=false, redirect=false;
- const wp=await stub((_hit,req)=>{
+ let reservationHold:{entered:ReturnType<typeof gate<void>>;release:ReturnType<typeof gate<void>>}|null=null;
+ let recoveryBeforeCreate=false;
+ const wp=await stub(async(_hit,req)=>{
    const url=new URL(req.url,'http://loopback.invalid'), slug=url.searchParams.get('slug');
-   if(url.pathname.endsWith('/categories'))return slug==='choose-guides'?[{id:29,slug}]:shortReady&&slug==='industry-news'?[{id:72,slug}]:[];
+   if(url.pathname.endsWith('/categories')){
+     const hold=reservationHold;if(hold){reservationHold=null;hold.entered.open();await hold.release.promise;}
+     return slug==='choose-guides'?[{id:29,slug}]:shortReady&&slug==='industry-news'?[{id:72,slug}]:[];
+   }
    if(url.pathname.endsWith('/tags'))return slug==='consumer-display'?[{id:12,slug}]:[];
    const match=/\/posts\/(\d+)$/.exec(url.pathname), id=match?Number(match[1]):null;
    if(!req.body){
-     if(id===null)return [...posts.values()]; // The site may ignore filters and return unrelated recent posts first.
+     if(id===null){
+       if(!writes.length&&slug){
+         const [receipt]=await sql`SELECT after FROM audit_log WHERE subject=${`studio-draft:${draft.id}`} AND action='studio.draft.wordpress' ORDER BY id DESC LIMIT 1`;
+         recoveryBeforeCreate=receipt?.after.state==='pending'&&!receipt.after.expected;
+       }
+       return [...posts.values()]; // The site may ignore filters and return unrelated recent posts first.
+     }
      return mismatchedRead?unrelated:posts.get(id)??new Reply(404,{code:'rest_post_invalid_id'});
    }
    const data=JSON.parse(req.body);
@@ -200,8 +211,25 @@ test('WordPress push only writes approved English to one draft, with safe recove
  assert.equal(calls.length,beforeRedirect+1);
  redirect=false;
 
- const [first,second]=await Promise.all([push(id,version),push(id,version)]);
- assert.ok([first,second].some(res=>res.statusCode===200&&res.json().state==='pushed'));
+ const hold={entered:gate<void>(),release:gate<void>()};reservationHold=hold;
+ const firstPush=push(id,version);
+ await hold.entered.promise;
+ const secondPush=push(id,version);
+ try{
+   // Queue the second request on the first transaction's row lock before the reservation commits.
+   // It must then recover pending before the creator can enter its second transaction.
+   let queued=false;
+   for(let i=0;i<200;i++){
+     const waiting=await sql`SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()
+       AND wait_event_type='Lock' AND query LIKE 'SELECT id,version,status FROM studio_drafts WHERE id=%FOR UPDATE%'`;
+     if(waiting.length){queued=true;break;}
+     await new Promise(resolve=>setTimeout(resolve,10));
+   }
+   assert.equal(queued,true,'the duplicate request must wait for the reservation transaction');
+ }finally{hold.release.open();}
+ const [first,second]=await Promise.all([firstPush,secondPush]);
+ assert.equal(recoveryBeforeCreate,true,'recovery must inspect pending before any remote post write');
+ assert.ok([first,second].some(res=>res.statusCode===200&&res.json().state==='pushed'),JSON.stringify([first.json(),second.json()]));
  assert.equal(writes.filter(write=>write.id===null).length,1);
  const saved=(await detail(id)).json().wordpress.receipt;
  assert.equal(saved.state,'pushed');assert.equal(saved.postId,100);assert.equal(saved.media,'set');
