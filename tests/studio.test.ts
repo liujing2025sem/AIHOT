@@ -1,6 +1,6 @@
 import { tag, stub, gate, Reply } from './setup.ts';
 import http from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -8,10 +8,13 @@ import { after, before, test } from 'node:test';
 import Fastify from 'fastify';
 import sharp from 'sharp';
 import { unzipSync, strFromU8 } from 'fflate';
+import { chromium, expect } from '@playwright/test';
 import { sql, closeDb } from '@aihot/backend/db';
 import { config } from '@aihot/backend/config';
 import { passwordLogin, SESSION_COOKIE, sessionPrincipal } from '@aihot/backend/admin/auth';
 import { registerAdminStudio } from '../apps/api/src/routes/admin-studio.ts';
+import { buildApp } from '../apps/api/src/app.ts';
+import { startWebServer, visit } from '../apps/web/tests/web-server.ts';
 import { createStudioTask, exportStudioTask, receiveStudioTask, generateStudioTask, studioGenerationStatus, studioDraft, saveStudioDraft, applyStudioReviewEdit, reviewStudioDraft, exportStudioDraft, extractStudioMaterial, studioMaterial, studioOverview } from '@aihot/backend/studio/studio';
 import { studioReviewMetrics, recordStudioReview, setStudioReviewPolicy } from '@aihot/backend/studio/studio-review';
 import { updateChannel } from '@aihot/backend/providers/channel';
@@ -46,6 +49,29 @@ before(async()=>{config.adminPassword='studio-test-admin-long-password';config.d
 });
 after(async()=>{await app.close();await new Promise<void>(resolve=>materialPage.close(()=>resolve()));config.adminPassword=original.password;config.devAdmin=original.dev;config.allowPrivateNetworkFetch=original.privateNetwork;await stopBoss();await closeDb()});
 async function input(pitch?:unknown){const task=await createStudioTask({article_ids:[article],...(pitch?{pitch}:{})},actor);const pack=(await exportStudioTask(task.id))!;const a=pack.request.articles[0];return {task,pack,response:{task_id:task.id,run_id:`run-${suffix}`,producer:{agent_id:'test-agent',model:null,input_files:['request.json']},decisions:[{article_id:article,decision:'KEEP',reason_zh:'直接涉及LED驱动器'}],drafts:[{source:a.binding,title_zh:'LED驱动器样品计划',review_zh:'厂商表示将于第四季度送样，刷新率须保留扫描条件。',title_en:'LED driver sample plan',body_en:`Samples are expected in Q4. Source: ${a.binding.url}`,evidence:[{claim:'送样尚未完成',quote:'Samples are expected in Q4.'}],questions_zh:['核实当前送样阶段'],keyword_hypothesis:'LED display driver',meta_description_en:'Driver sample timing and scan conditions.'}]}}}
+async function fragmentInput(){
+ const keep='<p>Keep this original paragraph and its installation context.</p>';
+ const fixture=await input({question:'When are driver samples expected?',output_type:'update',existing_url:`https://example.com/${article}`,selected_title:'LED driver sample plan',primary_article_id:article,
+  outline:[{id:'schedule',heading:'Sample schedule',evidence:[{article_id:article,quote:'Samples are expected in Q4.'}],gap:'',action:''}],
+  engineer:{mode:'conservative',name:'',reply:'',answers:[]},withheld_numbers:[],fragments_plan:{
+   paragraphs:[{id:'p1',html:'<div class="source-wrapper">\n<p>The manufacturer expects samples, with timing still subject to the sample plan.</p>\n</div>',text:'The manufacturer expects samples, with timing still subject to the sample plan.'},{id:'p2',html:keep,text:'Keep this original paragraph and its installation context.'}],
+   facts:[{id:'f1',kind:'source',statement:'Samples are expected in Q4.',quote:'Samples are expected in Q4.',article_id:article,revision:1,attribution:'LED source'}],subquestions:[],
+   edit_plan:[{op:'revise',paragraph:'p1',facts:['f1']},{op:'keep',paragraph:'p2',facts:[]},{op:'insert_after',paragraph:'p2',facts:['f1']}],
+   fragments:[{op_index:0,html_en:'<p>Samples are expected in Q4.</p>',zh_review:'送样仍是计划。',used_facts:['f1']},{op_index:2,html_en:'<p>Confirm the sample schedule with the manufacturer.</p>',zh_review:'向厂商核对计划。',used_facts:['f1']}],
+   source_html:'<div class="source-wrapper">\n<p>The manufacturer expects samples, with timing still subject to the sample plan.</p>\n</div>'+keep,original_title:'LED driver sample plan',method_rule_ids:[]}});
+ const plan=fixture.pack.request.pitch!.fragments_plan!;
+ fixture.response.drafts[0].body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+ return {...fixture,keep};
+}
+async function storedDraftState(id:string,taskId:string){
+ const [draft,task,history,receipts]=await Promise.all([
+  sql`SELECT * FROM studio_drafts WHERE id=${id}`,
+  sql`SELECT * FROM studio_tasks WHERE id=${taskId}`,
+  sql`SELECT * FROM audit_log WHERE subject IN (${`studio-draft:${id}`},${`studio-task:${taskId}`}) ORDER BY id`,
+  sql`SELECT count(*)::int AS count FROM receipts`,
+ ]);
+ return {draft:[...draft],task:[...task],history:[...history],receipts:[...receipts]};
+}
 test('admin session and CSRF protect workspace and all mutations',async()=>{
  assert.equal((await app.inject('/api/admin/studio')).statusCode,401);
  const {token}=await passwordLogin(config.adminPassword!,'/admin','test');const cookie=`${SESSION_COOKIE}=${token}`,p=(await sessionPrincipal(cookie))!;
@@ -70,17 +96,7 @@ test('receive, edit, review and export persist; duplicate receives do not overwr
  await saveStudioDraft(d.id,{...edit,version:d.version,title_zh:'再次修改'},actor);assert.equal((await studioDraft(d.id))!.status,'draft');await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
 });
 for(const previouslySaved of [false,true])test(`manual fragment PATCH can be reviewed and exported after refresh, previously saved: ${previouslySaved}`,async()=>{
- const keep='<p>Keep this original paragraph and its installation context.</p>';
- const {task,pack,response}=await input({question:'When are driver samples expected?',output_type:'update',existing_url:`https://example.com/${article}`,selected_title:'LED driver sample plan',primary_article_id:article,
-  outline:[{id:'schedule',heading:'Sample schedule',evidence:[{article_id:article,quote:'Samples are expected in Q4.'}],gap:'',action:''}],
-  engineer:{mode:'conservative',name:'',reply:'',answers:[]},withheld_numbers:[],fragments_plan:{
-   paragraphs:[{id:'p1',html:'<div class="source-wrapper">\n<p>The manufacturer expects samples, with timing still subject to the sample plan.</p>\n</div>',text:'The manufacturer expects samples, with timing still subject to the sample plan.'},{id:'p2',html:keep,text:'Keep this original paragraph and its installation context.'}],
-   facts:[{id:'f1',kind:'source',statement:'Samples are expected in Q4.',quote:'Samples are expected in Q4.',article_id:article,revision:1,attribution:'LED source'}],subquestions:[],
-   edit_plan:[{op:'revise',paragraph:'p1',facts:['f1']},{op:'keep',paragraph:'p2',facts:[]},{op:'insert_after',paragraph:'p2',facts:['f1']}],
-   fragments:[{op_index:0,html_en:'<p>Samples are expected in Q4.</p>',zh_review:'送样仍是计划。',used_facts:['f1']},{op_index:2,html_en:'<p>Confirm the sample schedule with the manufacturer.</p>',zh_review:'向厂商核对计划。',used_facts:['f1']}],
-   source_html:'<div class="source-wrapper">\n<p>The manufacturer expects samples, with timing still subject to the sample plan.</p>\n</div>'+keep,original_title:'LED driver sample plan',method_rule_ids:[]}});
- const plan=pack.request.pitch!.fragments_plan!;
- response.drafts[0].body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+ const {task,pack,response,keep}=await fragmentInput();
  const received=await receiveStudioTask(task.id,response,actor);
  assert.equal(received?.state,'received',JSON.stringify(received));
  const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
@@ -89,14 +105,25 @@ for(const previouslySaved of [false,true])test(`manual fragment PATCH can be rev
  const url=`/api/admin/studio/drafts/${row.id}`;
  const read=async()=>{const result=await app.inject({url,headers});assert.equal(result.statusCode,200,result.body);return result.json();};
  let draft=await read();
+ assert.equal(draft.manual_edit_recovery,null,'an unchanged fragment plan needs no recovery');
  const edited=response.drafts[0].body_en.replace('Samples are expected','Samples remain expected').replace('Confirm the sample schedule','Check the sample schedule');
- if(previouslySaved)await sql`UPDATE studio_drafts SET document=jsonb_set(document,'{body_en}',${sql.json(edited)}) WHERE id=${row.id}`;
+ if(previouslySaved){
+  await sql`UPDATE studio_drafts SET document=jsonb_set(document,'{body_en}',${sql.json(edited)}) WHERE id=${row.id}`;
+  const before=await storedDraftState(row.id,task.id);
+  const legacy=await read();
+  assert.deepEqual(legacy.manual_edit_recovery,{available:true});
+  assert.equal(legacy.document.body_en,edited);
+  assert.equal(legacy.gate.blocked,true,'reading only advertises recovery; it does not repair or approve');
+  await read();
+  assert.deepEqual(await storedDraftState(row.id,task.id),before,'GET leaves the stored draft, task, audit and model receipts unchanged');
+ }
  const payload={...response.drafts[0],version:draft.version,body_en:edited};
  const [receiptsBefore]=await sql`SELECT count(*)::int AS count FROM receipts`;
  const saved=await app.inject({method:'PATCH',url,headers,payload});
  assert.equal(saved.statusCode,200,saved.body);
  draft=await read();
  assert.equal(draft.document.body_en,edited);
+ assert.equal(draft.manual_edit_recovery,null,'successful version-bound save clears the recovery capability');
  assert.equal(draft.gate.blocked,false,JSON.stringify(draft.gate.findings));
  assert.equal(draft.review_sync.status,'stale');
  assert.equal(draft.status,'draft');
@@ -124,6 +151,7 @@ for(const previouslySaved of [false,true])test(`manual fragment PATCH can be rev
  const approved=await app.inject({method:'POST',url:url+'/review',headers,payload:{version:draft.version,action:'approve',english_reviewed:true,confirmations:draft.issues.items.filter((item:{confirmable:boolean})=>item.confirmable).map((item:{id:string;fingerprint:string})=>({issueId:item.id,fingerprint:item.fingerprint}))}});
  assert.equal(approved.statusCode,200,approved.body);
  draft=await read();
+ assert.equal(draft.manual_edit_recovery,null);
  const exported=await app.inject({url:url+`/export?format=html&version=${draft.version}`,headers});
  assert.equal(exported.statusCode,200,exported.body);
  assert.match(exported.body,/Samples remain expected in Q4/);
@@ -136,6 +164,151 @@ for(const previouslySaved of [false,true])test(`manual fragment PATCH can be rev
  assert.equal((await app.inject({url:url+`/export?format=html&version=${draft.version}`,headers})).statusCode,400);
  assert.equal((await sql`SELECT count(*)::int AS count FROM receipts`)[0].count,receiptsBefore.count);
  assert.equal((await sql`SELECT count(*)::int AS count FROM audit_log WHERE subject=${`studio-draft:${row.id}`} AND action IN ('studio.draft.wordpress','studio.draft.publish')`)[0].count,0);
+});
+test('draft detail recovery excludes protected, ambiguous, approved and brief snapshots',async t=>{
+ const {task,pack,response,keep}=await fragmentInput();
+ await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id,document FROM studio_drafts WHERE task_id=${task.id}`;
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','fragment-capability-test');
+ const headers={cookie:`${SESSION_COOKIE}=${token}`};
+ const edited=response.drafts[0].body_en.replace('Samples are expected','Samples remain expected');
+ const adjacent=structuredClone(pack.request),plan=adjacent.pitch!.fragments_plan!;
+ plan.edit_plan.push({op:'insert_after',paragraph:'p2',facts:['f1']});
+ plan.fragments!.push({op_index:3,html_en:'<p>Ask the manufacturer about sample availability.</p>',zh_review:'核对样品安排。',used_facts:['f1']});
+ const ambiguous=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en.replace('Confirm the sample','Check the sample').replace('Ask the manufacturer','Consult the manufacturer');
+ const brief=structuredClone(pack.request);
+ brief.brief={schema:'aihot-brief-selection/1',events:Array.from({length:5},(_,index)=>({article_id:article,event_id:`event-${index}`,section:'components-ics',publication_time:null,source_utc_offset:'+00:00',date_basis:'observed_version',observed_version_at:pack.request.created_at})),pages:[]};
+ for(const scenario of [
+  {name:'safe stored change in draft',body:edited,status:'draft',request:pack.request,available:true},
+  {name:'safe stored change in review',body:edited,status:'in_review',request:pack.request,available:true},
+  {name:'protected original paragraph changed',body:edited.replace(keep,'<p>Rewritten original.</p>'),status:'draft',request:pack.request,available:false},
+  {name:'adjacent fragment ownership is ambiguous',body:ambiguous,status:'draft',request:adjacent,available:false},
+  {name:'already approved stored change',body:edited,status:'approved',request:pack.request,available:false},
+  {name:'brief request with inherited fragment metadata',body:edited,status:'draft',request:brief,available:false},
+ ])await t.test(scenario.name,async()=>{
+  await sql`UPDATE studio_tasks SET request=${sql.json(scenario.request as never)} WHERE id=${task.id}`;
+  await sql`UPDATE studio_drafts SET document=${sql.json({...row.document,body_en:scenario.body})},status=${scenario.status} WHERE id=${row.id}`;
+  const before=await storedDraftState(row.id,task.id);
+  const result=await app.inject({url:`/api/admin/studio/drafts/${row.id}`,headers});
+  assert.equal(result.statusCode,200,result.body);
+  assert.deepEqual(result.json().manual_edit_recovery,scenario.available?{available:true}:null);
+  assert.equal(result.json().gate.blocked,true,'the capability never clears the existing gate');
+  assert.deepEqual(await storedDraftState(row.id,task.id),before);
+ });
+});
+test('an ordinary numeric D1 block does not advertise fragment recovery',async()=>{
+ const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ await sql`UPDATE studio_drafts SET document=jsonb_set(document,'{body_en}',${sql.json(`Our screen reaches 9000 nits. Source: ${response.drafts[0].source.url}`)}) WHERE id=${row.id}`;
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','numeric-gate-test');
+ const before=await storedDraftState(row.id,task.id);
+ const result=await app.inject({url:`/api/admin/studio/drafts/${row.id}`,headers:{cookie:`${SESSION_COOKIE}=${token}`}});
+ assert.equal(result.statusCode,200,result.body);
+ const draft=result.json();
+ assert.ok(draft.gate.findings.some((finding:{ruleId:string;severity:string})=>finding.ruleId==='D1'&&finding.severity==='BLOCK'));
+ assert.equal(draft.manual_edit_recovery,null);
+ assert.deepEqual(await storedDraftState(row.id,task.id),before);
+});
+test('production browser recovers a legacy saved fragment through real API and PostgreSQL, then approves and downloads its confirmed package',async t=>{
+ const {task,pack,response,keep}=await fragmentInput();
+ await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id,version FROM studio_drafts WHERE task_id=${task.id}`;
+ const edited=response.drafts[0].body_en.replace('Samples are expected','Samples remain expected').replace('Confirm the sample schedule','Check the sample schedule');
+ await sql`UPDATE studio_drafts SET document=jsonb_set(document,'{body_en}',${sql.json(edited)}) WHERE id=${row.id}`;
+ const originalModelCalls=config.modelCallsEnabled,originalDelivery=process.env.STUDIO_DELIVERY_MODE;
+ config.modelCallsEnabled=false;process.env.STUDIO_DELIVERY_MODE='manual';
+ t.after(()=>{config.modelCallsEnabled=originalModelCalls;if(originalDelivery===undefined)delete process.env.STUDIO_DELIVERY_MODE;else process.env.STUDIO_DELIVERY_MODE=originalDelivery;});
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','real-browser-recovery');
+ const principal=(await sessionPrincipal(`${SESSION_COOKIE}=${token}`))!;
+ const [receiptsBefore]=await sql`SELECT count(*)::int AS count FROM receipts`;
+ const api=await buildApp();
+ let web:Awaited<ReturnType<typeof startWebServer>>|undefined,browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;
+ try{
+  await api.ready();
+  // The shared web runner receives the real API server here. No route interception or fake API is used.
+  web=await startWebServer(api.server,{STUDIO_DELIVERY_MODE:'manual',MODEL_CALLS_ENABLED:'false',COLLECT_ENABLED:'false'});
+  browser=await chromium.launch();
+  const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+  await context.addCookies([{name:SESSION_COOKIE,value:token,url:web.origin,httpOnly:true,sameSite:'Lax'}]);
+  const page=await context.newPage(),endpoint=`/api/admin/studio/drafts/${row.id}`;
+  const errors:string[]=[],writes:{method:string;url:string}[]=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{if(['POST','PATCH','DELETE'].includes(request.method())&&new URL(request.url()).pathname.startsWith('/api/admin/studio'))writes.push({method:request.method(),url:new URL(request.url()).pathname});});
+  const read=async()=>{const result=await context.request.get(web!.origin+endpoint);assert.equal(result.status(),200,await result.text());return result.json();};
+  const before=await storedDraftState(row.id,task.id);
+  await visit(page,web.origin+`/admin/studio/drafts/${row.id}`);
+  await expect(page.getByRole('button',{name:'重新核对已存修改',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'保存修改',exact:true})).toBeDisabled();
+  assert.deepEqual(await storedDraftState(row.id,task.id),before,'opening the actual page must not repair the stored plan');
+  const sent=page.waitForRequest(request=>request.method()==='PATCH'&&new URL(request.url()).pathname===endpoint);
+  await page.getByRole('button',{name:'重新核对已存修改',exact:true}).click();
+  const payload=(await sent).postDataJSON();
+  assert.equal(payload.body_en,edited,'the recovery action resubmits the unchanged saved wording');
+  assert.equal(payload.version,row.version);
+  await expect(page.getByRole('button',{name:'重新核对已存修改',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'提交审稿',exact:true})).toBeEnabled();
+  let draft=await read();
+  assert.equal(draft.version,row.version+1);assert.equal(draft.status,'draft');assert.equal(draft.gate.blocked,false);
+  assert.equal(draft.manual_edit_recovery,null);assert.equal(draft.document.body_en,edited);
+  const [savedTask]=await sql`SELECT request,response FROM studio_tasks WHERE id=${task.id}`;
+  const plan=savedTask.request.pitch.fragments_plan;
+  assert.equal(assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments).html_en,edited);
+  assert.deepEqual(plan.paragraphs,pack.request.pitch!.fragments_plan!.paragraphs);
+  assert.equal(savedTask.response.drafts[0].body_en,response.drafts[0].body_en,'the model response history is not rewritten');
+  const recovered=await storedDraftState(row.id,task.id);
+  const stale=await context.request.patch(web.origin+endpoint,{headers:{'x-csrf-token':principal.csrf},data:payload});
+  assert.equal(stale.status(),409,await stale.text());
+  assert.deepEqual(await storedDraftState(row.id,task.id),recovered,'a repeated old version cannot overwrite the recovered document');
+  await page.getByRole('button',{name:'提交审稿',exact:true}).click();
+  await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeVisible();
+  draft=await read();
+  for(const issue of draft.issues.items){
+   assert.equal(issue.confirmable,true,JSON.stringify(issue));
+   const checkbox=page.getByRole('checkbox',{name:'确认 '+issue.title,exact:true});
+   if(!await checkbox.isVisible())await page.getByRole('button',{name:/其他待确认/}).click();
+   await checkbox.check();
+  }
+  await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeDisabled();
+  await page.getByRole('checkbox',{name:'已按当前英文主稿核对',exact:true}).check();
+  await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'确认审核通过',exact:true}).click();
+  await expect(page.getByRole('button',{name:'继续配封面',exact:true})).toBeVisible();
+  draft=await read();assert.equal(draft.status,'approved');
+  const approvedVersion=draft.version;
+  await page.getByRole('button',{name:'继续配封面',exact:true}).click();
+  const image=await sharp({create:{width:600,height:340,channels:3,background:'#224fbe'}}).png().toBuffer();
+  await page.getByLabel('封面图片文件',{exact:true}).setInputFiles({name:'recovered-cover.png',mimeType:'image/png',buffer:image});
+  await page.getByLabel('封面英文替代文字',{exact:true}).fill('LED cabinet drawing for the recovered article');
+  await page.getByLabel('封面英文图注',{exact:true}).fill('A test illustration for manual delivery.');
+  await page.getByRole('button',{name:'上传为候选',exact:true}).click();
+  await expect(page.getByRole('button',{name:'采用这张',exact:true})).toBeEnabled();
+  let covers=(await studioCovers(row.id))!;
+  assert.equal(covers.candidates.length,1);assert.equal(covers.selectedHash,null);assert.equal(covers.confirmed,false);
+  await page.getByRole('button',{name:'采用这张',exact:true}).click();
+  await expect(page.getByRole('button',{name:'当前采用',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'继续手工交付',exact:true}).click();
+  await page.getByRole('button',{name:'确认当前成品',exact:true}).click();
+  await expect(page.getByRole('link',{name:'下载交付包',exact:true})).toBeVisible();
+  covers=(await studioCovers(row.id))!;
+  assert.equal(covers.confirmed,true);assert.equal(covers.confirmedVersion,approvedVersion);
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('link',{name:'下载交付包',exact:true}).click();
+  const download=await downloadPromise,downloadPath=await download.path();
+  assert.ok(downloadPath);assert.equal(await download.failure(),null);
+  const files=unzipSync(await readFile(downloadPath));
+  const html=strFromU8(files['article.html']),manifest=JSON.parse(strFromU8(files['delivery.json']));
+  assert.match(html,/Samples remain expected in Q4/);assert.match(html,/Check the sample schedule/);assert.ok(html.includes(keep));
+  assert.equal(manifest.draft_id,row.id);assert.equal(manifest.version,approvedVersion);assert.equal(manifest.cover_revision,covers.revision);
+  assert.equal(manifest.published,false);assert.equal(manifest.state,'manual_upload_required');
+  assert.deepEqual(Buffer.from(files['cover.png']),await studioCoverAsset(row.id,covers.selectedHash!));
+  assert.equal(JSON.parse(strFromU8(files['seo.json'])).cover.alt_en,'LED cabinet drawing for the recovered article');
+  draft=await read();assert.equal(draft.status,'approved');assert.equal(draft.version,approvedVersion);assert.equal(draft.document.body_en,edited);
+  assert.equal(writes.filter(write=>write.method==='PATCH'&&write.url===endpoint).length,1);
+  assert.ok(writes.every(write=>!/(?:generate|wordpress|publish)/.test(write.url)));
+  assert.equal((await sql`SELECT count(*)::int AS count FROM receipts`)[0].count,receiptsBefore.count);
+  assert.equal((await sql`SELECT count(*)::int AS count FROM audit_log WHERE subject=${`studio-draft:${row.id}`} AND action IN ('studio.draft.wordpress','studio.draft.publish')`)[0].count,0);
+  assert.deepEqual(errors,[]);assert.equal(web.logs(),'');
+ }finally{await browser?.close();await web?.stop();await api.close();}
 });
 test('manual package binds approved content and adopted cover; candidate uploads never approve or publish',async()=>{
  const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
