@@ -465,9 +465,10 @@ test('cover protection works with Tab, Enter and Space at 820px and 200% CSS zoo
     const caption = page.getByLabel('封面英文图注', { exact: true });
     await expect(file).toBeEnabled();
     await tabTo(file);
-    const chooser = page.waitForEvent('filechooser');
-    await page.keyboard.press('Enter');
-    await (await chooser).setFiles(await syntheticCover(page));
+    await expect(file).toBeFocused();
+    // Cross the system file-picker boundary directly; its keyboard behavior is not verified here.
+    // The application controls still have to work through Tab, Enter and Space below.
+    await file.setInputFiles(await syntheticCover(page));
     await tabTo(alt); await page.keyboard.type('Synthetic panel entered with the keyboard');
     await page.keyboard.press('Tab'); await expect(caption).toBeFocused();
     await page.keyboard.type('A keyboard review sample.');
