@@ -24,6 +24,7 @@ import {generatePitchFragments,preparePitchV2,supplementPitchEvidence,choosePitc
 import {ReceiptUnknownError} from '@aihot/backend/providers/receipts';
 import { studioCovers, studioCoverAsset, uploadStudioCover, selectStudioCover, removeStudioCover, confirmStudioDelivery } from '@aihot/backend/studio/studio-covers';
 import { exportStudioManualPackage } from '@aihot/backend/studio/studio-manual-package';
+import { assembleFragments } from '@aihot/backend/studio/studio-pitch-fragments';
 const suffix=tag(),source=`studio-${suffix}`,article=`studio-item-${suffix}`,actor='test:studio';
 const original={password:config.adminPassword,dev:config.devAdmin,privateNetwork:config.allowPrivateNetworkFetch};
 const repairSource=`studio-repair-${suffix}`;
@@ -44,7 +45,7 @@ before(async()=>{config.adminPassword='studio-test-admin-long-password';config.d
  await sql`INSERT INTO sources(id,name,kind,enabled,config) VALUES (${repairSource},'Manufacturer repair','web_list',false,${sql.json({url:materialBase,detail:{publishedAtSelector:'.news-date',publishedAtAuthoritative:true}})})`;
 });
 after(async()=>{await app.close();await new Promise<void>(resolve=>materialPage.close(()=>resolve()));config.adminPassword=original.password;config.devAdmin=original.dev;config.allowPrivateNetworkFetch=original.privateNetwork;await stopBoss();await closeDb()});
-async function input(){const task=await createStudioTask({article_ids:[article]},actor);const pack=(await exportStudioTask(task.id))!;const a=pack.request.articles[0];return {task,pack,response:{task_id:task.id,run_id:`run-${suffix}`,producer:{agent_id:'test-agent',model:null,input_files:['request.json']},decisions:[{article_id:article,decision:'KEEP',reason_zh:'直接涉及LED驱动器'}],drafts:[{source:a.binding,title_zh:'LED驱动器样品计划',review_zh:'厂商表示将于第四季度送样，刷新率须保留扫描条件。',title_en:'LED driver sample plan',body_en:`Samples are expected in Q4. Source: ${a.binding.url}`,evidence:[{claim:'送样尚未完成',quote:'Samples are expected in Q4.'}],questions_zh:['核实当前送样阶段'],keyword_hypothesis:'LED display driver',meta_description_en:'Driver sample timing and scan conditions.'}]}}}
+async function input(pitch?:unknown){const task=await createStudioTask({article_ids:[article],...(pitch?{pitch}:{})},actor);const pack=(await exportStudioTask(task.id))!;const a=pack.request.articles[0];return {task,pack,response:{task_id:task.id,run_id:`run-${suffix}`,producer:{agent_id:'test-agent',model:null,input_files:['request.json']},decisions:[{article_id:article,decision:'KEEP',reason_zh:'直接涉及LED驱动器'}],drafts:[{source:a.binding,title_zh:'LED驱动器样品计划',review_zh:'厂商表示将于第四季度送样，刷新率须保留扫描条件。',title_en:'LED driver sample plan',body_en:`Samples are expected in Q4. Source: ${a.binding.url}`,evidence:[{claim:'送样尚未完成',quote:'Samples are expected in Q4.'}],questions_zh:['核实当前送样阶段'],keyword_hypothesis:'LED display driver',meta_description_en:'Driver sample timing and scan conditions.'}]}}}
 test('admin session and CSRF protect workspace and all mutations',async()=>{
  assert.equal((await app.inject('/api/admin/studio')).statusCode,401);
  const {token}=await passwordLogin(config.adminPassword!,'/admin','test');const cookie=`${SESSION_COOKIE}=${token}`,p=(await sessionPrincipal(cookie))!;
@@ -67,6 +68,63 @@ test('receive, edit, review and export persist; duplicate receives do not overwr
  await reviewStudioDraft(d.id,{version:d.version,action:'approve',english_reviewed:true,note:'已核对原文',confirmations:d.issues.items.filter(i=>i.confirmable).map(i=>({issueId:i.id,fingerprint:i.fingerprint}))},actor);d=(await studioDraft(row.id))!;
  assert.equal(d.status,'approved');assert.match((await exportStudioDraft(d.id,'html'))!.body,/LED driver sample plan/);assert.doesNotMatch((await exportStudioDraft(d.id,'html'))!.body,/人工改过/);assert.match((await exportStudioDraft(d.id,'review'))!.body,/人工改过/);
  await saveStudioDraft(d.id,{...edit,version:d.version,title_zh:'再次修改'},actor);assert.equal((await studioDraft(d.id))!.status,'draft');await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
+});
+for(const previouslySaved of [false,true])test(`manual fragment PATCH can be reviewed and exported after refresh, previously saved: ${previouslySaved}`,async()=>{
+ const keep='<p>Keep this original paragraph and its installation context.</p>';
+ const {task,pack,response}=await input({question:'When are driver samples expected?',output_type:'update',existing_url:`https://example.com/${article}`,selected_title:'LED driver sample plan',primary_article_id:article,
+  outline:[{id:'schedule',heading:'Sample schedule',evidence:[{article_id:article,quote:'Samples are expected in Q4.'}],gap:'',action:''}],
+  engineer:{mode:'conservative',name:'',reply:'',answers:[]},withheld_numbers:[],fragments_plan:{
+   paragraphs:[{id:'p1',html:'<div class="source-wrapper">\n<p>The manufacturer expects samples, with timing still subject to the sample plan.</p>\n</div>',text:'The manufacturer expects samples, with timing still subject to the sample plan.'},{id:'p2',html:keep,text:'Keep this original paragraph and its installation context.'}],
+   facts:[{id:'f1',kind:'source',statement:'Samples are expected in Q4.',quote:'Samples are expected in Q4.',article_id:article,revision:1,attribution:'LED source'}],subquestions:[],
+   edit_plan:[{op:'revise',paragraph:'p1',facts:['f1']},{op:'keep',paragraph:'p2',facts:[]},{op:'insert_after',paragraph:'p2',facts:['f1']}],
+   fragments:[{op_index:0,html_en:'<p>Samples are expected in Q4.</p>',zh_review:'送样仍是计划。',used_facts:['f1']},{op_index:2,html_en:'<p>Confirm the sample schedule with the manufacturer.</p>',zh_review:'向厂商核对计划。',used_facts:['f1']}],
+   source_html:'<div class="source-wrapper">\n<p>The manufacturer expects samples, with timing still subject to the sample plan.</p>\n</div>'+keep,original_title:'LED driver sample plan',method_rule_ids:[]}});
+ const plan=pack.request.pitch!.fragments_plan!;
+ response.drafts[0].body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+ const received=await receiveStudioTask(task.id,response,actor);
+ assert.equal(received?.state,'received',JSON.stringify(received));
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','manual-fragment-test');
+ const cookie=`${SESSION_COOKIE}=${token}`,headers={cookie,'x-csrf-token':(await sessionPrincipal(cookie))!.csrf};
+ const url=`/api/admin/studio/drafts/${row.id}`;
+ const read=async()=>{const result=await app.inject({url,headers});assert.equal(result.statusCode,200,result.body);return result.json();};
+ let draft=await read();
+ const edited=response.drafts[0].body_en.replace('Samples are expected','Samples remain expected').replace('Confirm the sample schedule','Check the sample schedule');
+ if(previouslySaved)await sql`UPDATE studio_drafts SET document=jsonb_set(document,'{body_en}',${sql.json(edited)}) WHERE id=${row.id}`;
+ const payload={...response.drafts[0],version:draft.version,body_en:edited};
+ const [receiptsBefore]=await sql`SELECT count(*)::int AS count FROM receipts`;
+ const saved=await app.inject({method:'PATCH',url,headers,payload});
+ assert.equal(saved.statusCode,200,saved.body);
+ draft=await read();
+ assert.equal(draft.document.body_en,edited);
+ assert.equal(draft.gate.blocked,false,JSON.stringify(draft.gate.findings));
+ assert.equal(draft.review_sync.status,'stale');
+ assert.equal(draft.status,'draft');
+ assert.equal(draft.document.body_en.split('class="source-wrapper"').length,2,'the original wrapper occurs exactly once');
+ assert.ok(draft.document.body_en.includes(keep));
+ const stale=await app.inject({method:'PATCH',url,headers,payload});
+ assert.equal(stale.statusCode,409,stale.body);
+ const [requestBefore]=await sql`SELECT request FROM studio_tasks WHERE id=${task.id}`;
+ const auditCount=draft.history.length;
+ const protectedEdit=await app.inject({method:'PATCH',url,headers,payload:{...payload,version:draft.version,body_en:edited.replace(keep,'<p>Rewritten original.</p>')}});
+ assert.equal(protectedEdit.statusCode,409,protectedEdit.body);
+ const unchanged=await read();
+ assert.equal(unchanged.version,draft.version);
+ assert.equal(unchanged.document.body_en,edited);
+ assert.equal(unchanged.history.length,auditCount);
+ assert.deepEqual((await sql`SELECT request FROM studio_tasks WHERE id=${task.id}`)[0],requestBefore);
+ const submit=await app.inject({method:'POST',url:url+'/review',headers,payload:{version:draft.version,action:'submit'}});
+ assert.equal(submit.statusCode,200,submit.body);
+ draft=await read();
+ const approved=await app.inject({method:'POST',url:url+'/review',headers,payload:{version:draft.version,action:'approve',english_reviewed:true,confirmations:draft.issues.items.filter((item:{confirmable:boolean})=>item.confirmable).map((item:{id:string;fingerprint:string})=>({issueId:item.id,fingerprint:item.fingerprint}))}});
+ assert.equal(approved.statusCode,200,approved.body);
+ draft=await read();
+ const exported=await app.inject({url:url+`/export?format=html&version=${draft.version}`,headers});
+ assert.equal(exported.statusCode,200,exported.body);
+ assert.match(exported.body,/Samples remain expected in Q4/);
+ assert.match(exported.body,/Check the sample schedule/);
+ assert.equal((await sql`SELECT count(*)::int AS count FROM receipts`)[0].count,receiptsBefore.count);
+ assert.equal((await sql`SELECT count(*)::int AS count FROM audit_log WHERE subject=${`studio-draft:${row.id}`} AND action IN ('studio.draft.wordpress','studio.draft.publish')`)[0].count,0);
 });
 test('manual package binds approved content and adopted cover; candidate uploads never approve or publish',async()=>{
  const {task,response}=await input();await receiveStudioTask(task.id,response,actor);

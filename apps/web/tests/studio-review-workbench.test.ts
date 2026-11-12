@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chromium, expect } from '@playwright/test';
+import { chromium, expect, type Page } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -56,6 +56,16 @@ function reviewFixture() {
       let text = ''; for await (const chunk of req) text += chunk;
       const input: Record<string, unknown> = text ? JSON.parse(text) : {};
       writes.push({ path: url.pathname, body: input });
+      if (url.pathname === '/api/admin/studio/drafts/review-fixture' && req.method === 'PATCH') {
+        if (input.version !== draft.version) {
+          _res.statusCode = 409;
+          return { code: 'conflict', detail: '这篇稿件已被修改，请刷新查看最新版本后再保存。' };
+        }
+        const { version: _, ...fields } = input;
+        Object.assign(draft.document, fields);
+        draft.status = 'draft';
+        draft.version++;
+      }
       if (url.pathname.endsWith('/review') && (input.action === 'approve' || input.action === 'submit')) {
         draft.status = input.action === 'approve' ? 'approved' : 'in_review';
         draft.version++;
@@ -75,6 +85,131 @@ function reviewFixture() {
   });
   return { api, draft, writes, setRevision, get reads() { return reads; } };
 }
+
+async function openEnglishDraft(page: Page) {
+  await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审正文', exact: true })).toHaveAttribute('aria-current', 'step');
+  const expand = page.getByRole('button', { name: '展开完整稿件', exact: true });
+  if (await expand.isVisible()) await expand.click();
+  await page.getByRole('tab', { name: '英文交付', exact: true }).click();
+  return page.getByLabel('English body · Markdown', { exact: true });
+}
+
+test('dirty step navigation keeps local text across another page saving and an outdated save', async () => {
+  const fixture = reviewFixture();
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const local = await context.newPage(), remote = await context.newPage();
+    const url = web.origin + '/admin/studio/drafts/review-fixture?stage=review';
+    await visit(local, url); await visit(remote, url);
+    const localBody = await openEnglishDraft(local), remoteBody = await openEnglishDraft(remote);
+    const localText = 'My unsaved cabinet installation note.';
+    const remoteText = 'The other operator saved this cabinet installation note.';
+    await localBody.fill(localText);
+    await remoteBody.fill(remoteText);
+    await remote.getByRole('button', { name: '保存修改', exact: true }).click();
+    await expect.poll(() => fixture.draft.version).toBe(8);
+    await expect(remote.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+    assert.equal(fixture.draft.document.body_en, remoteText);
+
+    const dialogs: string[] = [];
+    let discard = false;
+    local.on('dialog', async dialog => {
+      dialogs.push(dialog.message());
+      await (discard ? dialog.accept() : dialog.dismiss());
+    });
+    const flow = local.getByRole('navigation', { name: '当前稿件流程' });
+    for (const step of ['配封面', '手工交付']) {
+      const before = dialogs.length;
+      await flow.getByRole('button', { name: step, exact: true }).click();
+      await expect.poll(() => dialogs.length).toBe(before + 1);
+      await expect(localBody).toHaveValue(localText);
+      await expect(flow.getByRole('button', { name: '审正文', exact: true })).toHaveAttribute('aria-current', 'step');
+      await expect(local).toHaveURL(url);
+    }
+    await local.getByRole('button', { name: '保存修改', exact: true }).click();
+    await expect(local.getByText('这篇稿件已被修改，请刷新查看最新版本后再保存。', { exact: true })).toBeVisible();
+    await expect(localBody).toHaveValue(localText);
+    assert.equal(fixture.draft.document.body_en, remoteText);
+    assert.equal(fixture.draft.version, 8);
+    assert.equal(fixture.writes.length, 2, 'only the remote save and rejected local save reach the API');
+    assert.equal(fixture.writes[1].body.version, 7, 'the rejected buffer retains its original version');
+
+    discard = true;
+    await flow.getByRole('button', { name: '配封面', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '配封面', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await expect(await openEnglishDraft(local)).toHaveValue(remoteText);
+    assert.equal(dialogs.length, 3, 'only dirty transitions ask for a discard decision');
+    assert.equal(fixture.writes.length, 2, 'discarding and switching steps do not save or publish');
+  } finally { await browser?.close(); await web.stop(); }
+});
+
+test('discarding dirty step navigation restores the saved text without changing its version', async () => {
+  const fixture = reviewFixture();
+  const savedText = fixture.draft.document.body_en;
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await visit(page, web.origin + '/admin/studio/drafts/review-fixture?stage=review');
+    const body = await openEnglishDraft(page);
+    await body.fill('An unsaved note that the operator decides to discard.');
+    const dialogs: string[] = [];
+    let discard = false;
+    page.on('dialog', async dialog => {
+      dialogs.push(dialog.message());
+      await (discard ? dialog.accept() : dialog.dismiss());
+    });
+    const flow = page.getByRole('navigation', { name: '当前稿件流程' });
+    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
+    await expect.poll(() => dialogs.length).toBe(1);
+    await expect(body).toHaveValue('An unsaved note that the operator decides to discard.');
+    discard = true;
+    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await expect(await openEnglishDraft(page)).toHaveValue(savedText);
+    assert.equal(dialogs.length, 2, 'returning after explicit discard is clean');
+    assert.equal(fixture.draft.version, 7);
+    assert.equal(fixture.writes.length, 0, 'discard does not write an unchanged document');
+
+    const newText = 'A deliberately saved cabinet installation note.';
+    await body.fill(newText);
+    await page.getByRole('button', { name: '保存修改', exact: true }).click();
+    await expect.poll(() => fixture.draft.version).toBe(8);
+    await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+    await flow.getByRole('button', { name: '配封面', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '配封面', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await expect(await openEnglishDraft(page)).toHaveValue(newText);
+    assert.equal(dialogs.length, 2, 'a saved draft switches steps without asking to discard');
+    assert.equal(fixture.writes.length, 1);
+  } finally { await browser?.close(); await web.stop(); }
+});
+
+test('clicking the active draft step keeps unsaved text when the server has a newer version', async () => {
+  const fixture = reviewFixture();
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await visit(page, web.origin + '/admin/studio/drafts/review-fixture?stage=review');
+    const body = await openEnglishDraft(page);
+    const localText = 'Keep this local note while reviewing the same step.';
+    await body.fill(localText);
+    fixture.draft.version++;
+    fixture.draft.document.body_en = 'A newer server version.';
+    const dialogs: string[] = [];
+    page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审正文', exact: true }).click();
+    await page.waitForLoadState('networkidle');
+    await expect(body).toHaveValue(localText);
+    assert.equal(dialogs.length, 0, 'the active step does not ask to leave itself');
+    assert.equal(fixture.writes.length, 0);
+  } finally { await browser?.close(); await web.stop(); }
+});
 
 test('five-event evidence keeps each canonical source and never guesses the first source for unresolved multi-source quotes', async () => {
   const fixture = reviewFixture();
