@@ -156,7 +156,12 @@ function coverInputFixture() {
     if (url.pathname === '/api/admin/nav-counts') return {};
     if (url.pathname === '/api/admin/studio/capabilities') return { delivery };
     if (url.pathname === '/api/admin/studio/pitches') return { rows: [] };
-    if (url.pathname === '/api/admin/studio') return { delivery, rows: [], total: 0, page: 1, stats: {}, sources: [], tasks: [], generation: { ready: false, reason: '隔离测试不调用模型。' }, drafts: drafts.map(d => ({ ...d, title_zh: d.document.title_zh, title_en: d.document.title_en })) };
+    if (request.method === 'GET' && url.pathname === '/api/admin/studio/review-metrics') return {
+      tier: 30, tierStartedAt: null, backtestConfirmed: false, totalDrafts: drafts.length, observedDrafts: 0, unobservedDrafts: drafts.length,
+      substantiveDrafts: 0, interventionRate: null, observedInterventionRate: null, zeroMissStreak: 0, eligible20: false, eligible10: false,
+      mandatoryAlways: ['认证资质', '价格交期质保', '客户案例', '新领域首篇'], trend: [], note: '封面保护隔离样本，尚无人工观察记录。',
+    };
+    if (url.pathname === '/api/admin/studio') return { delivery, rows: [], total: 0, page: 1, stats: {}, sources: [], tasks: [], generation: { ready: false, reason: '隔离测试不调用模型。' }, drafts: drafts.map(d => ({ id: d.id, title_zh: d.document.title_zh, title_en: d.document.title_en, status: d.status, updated_at: d.updated_at, version: d.version })) };
     const index = drafts.findIndex(d => url.pathname === '/api/admin/studio/drafts/' + d.id || url.pathname.startsWith('/api/admin/studio/drafts/' + d.id + '/'));
     if (index < 0) return;
     const draft = drafts[index], state = covers[index], endpoint = '/api/admin/studio/drafts/' + draft.id;
