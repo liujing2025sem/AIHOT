@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useBeforeUnload, useBlocker, useRevalidator, useSearchParams } from 'react-router';
 import { ExternalLink, FileCheck2, FileText, History, Link2, LocateFixed, MessageSquareText, Save, ShieldAlert } from 'lucide-react';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
@@ -249,7 +249,12 @@ function Editor({ row }: { row: Detail }) {
   useBeforeUnload(event => { if (hasUnsavedInput) { event.preventDefault(); event.returnValue = ''; } });
   const blocker = useBlocker(({ currentLocation, nextLocation }) => hasUnsavedInput &&
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
+  const handledBlocker = useRef<typeof blocker | null>(null);
   useEffect(() => {
+    if (blocker.state !== 'blocked') { handledBlocker.current = null; return; }
+    // Clearing inputs can render before the router commits proceeding. Decide once per attempt.
+    if (handledBlocker.current === blocker) return;
+    handledBlocker.current = blocker;
     if (blocker.state === 'blocked') {
       if (coverEdit.busy) {
         blocker.reset();

@@ -221,7 +221,13 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     const dialogs: string[] = []; let discard = false;
-    page.on('dialog', async dialog => { dialogs.push(dialog.type()); await (discard ? dialog.accept() : dialog.dismiss()); });
+    let refreshDismissed: Promise<void> | undefined;
+    page.on('dialog', async dialog => {
+      dialogs.push(dialog.type());
+      const decision = discard ? dialog.accept() : dialog.dismiss();
+      if (dialog.type() === 'beforeunload') refreshDismissed = decision;
+      await decision;
+    });
     await visit(page, web.origin + '/admin/workbench');
     await page.getByRole('link', { name: /封面保护样本一/ }).click();
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
@@ -252,7 +258,13 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
       await navigate(); await expect.poll(() => dialogs.length).toBe(before + 1); await expectRetained();
     }
     const beforeReload = dialogs.length;
-    await page.reload().catch(error => { assert.match(String(error), /ERR_ABORTED|cancelled|canceled/i); });
+    // Trigger a real reload, but wait for its cancelled beforeunload decision, not a load that must not occur.
+    await Promise.all([
+      page.waitForEvent('dialog', { predicate: dialog => dialog.type() === 'beforeunload', timeout: 5000 }),
+      page.evaluate(() => window.location.reload()),
+    ]);
+    assert.ok(refreshDismissed, 'the native beforeunload prompt must be dismissed');
+    await refreshDismissed;
     await expect.poll(() => dialogs.length).toBe(beforeReload + 1);
     assert.equal(dialogs.at(-1), 'beforeunload');
     await expectRetained();

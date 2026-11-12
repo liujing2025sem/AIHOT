@@ -28,6 +28,8 @@ import {ReceiptUnknownError} from '@aihot/backend/providers/receipts';
 import { studioCovers, studioCoverAsset, uploadStudioCover, selectStudioCover, removeStudioCover, confirmStudioDelivery } from '@aihot/backend/studio/studio-covers';
 import { exportStudioManualPackage } from '@aihot/backend/studio/studio-manual-package';
 import { assembleFragments } from '@aihot/backend/studio/studio-pitch-fragments';
+import { briefGenerationSchema, buildBriefResponse } from '@aihot/backend/studio/studio-brief-content';
+import { packetSchema } from '../scripts/editorial-pilot-lib.ts';
 const suffix=tag(),source=`studio-${suffix}`,article=`studio-item-${suffix}`,actor='test:studio';
 const original={password:config.adminPassword,dev:config.devAdmin,privateNetwork:config.allowPrivateNetworkFetch};
 const repairSource=`studio-repair-${suffix}`;
@@ -184,17 +186,60 @@ test('draft detail recovery excludes protected, ambiguous, approved and brief sn
   {name:'protected original paragraph changed',body:edited.replace(keep,'<p>Rewritten original.</p>'),status:'draft',request:pack.request,available:false},
   {name:'adjacent fragment ownership is ambiguous',body:ambiguous,status:'draft',request:adjacent,available:false},
   {name:'already approved stored change',body:edited,status:'approved',request:pack.request,available:false},
-  {name:'brief request with inherited fragment metadata',body:edited,status:'draft',request:brief,available:false},
+  {name:'invalid brief selection cannot inherit a fragment pitch',body:edited,status:'draft',request:brief,available:false},
  ])await t.test(scenario.name,async()=>{
   await sql`UPDATE studio_tasks SET request=${sql.json(scenario.request as never)} WHERE id=${task.id}`;
   await sql`UPDATE studio_drafts SET document=${sql.json({...row.document,body_en:scenario.body})},status=${scenario.status} WHERE id=${row.id}`;
   const before=await storedDraftState(row.id,task.id);
   const result=await app.inject({url:`/api/admin/studio/drafts/${row.id}`,headers});
+  if(scenario.request.brief){
+   assert.equal(result.statusCode,400,result.body);
+   assert.equal(result.json().code,'invalid_request');
+   assert.match(result.json().detail,/Brief selection must bind every distinct source and cannot also be a pitch/);
+   assert.deepEqual(await storedDraftState(row.id,task.id),before,'invalid inherited metadata is refused without changing the stored records');
+   return;
+  }
   assert.equal(result.statusCode,200,result.body);
   assert.deepEqual(result.json().manual_edit_recovery,scenario.available?{available:true}:null);
   assert.equal(result.json().gate.blocked,true,'the capability never clears the existing gate');
   assert.deepEqual(await storedDraftState(row.id,task.id),before);
  });
+});
+test('a valid five-source brief has no manual fragment recovery and detail remains read-only',async()=>{
+ const ids=Array.from({length:5},(_,index)=>`recovery-brief-${index}-${suffix}`);
+ for(const [index,id] of ids.entries()){
+  const title=`Maker ${index+1} describes an LED driver`,body=`Maker ${index+1} describes an LED driver for display modules and asks buyers to confirm sample availability.`;
+  await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,body_status,body_text)
+   VALUES (${id},${source},${id},${`https://example.com/${id}`},${title},now(),now(),'ok',${body})`;
+ }
+ const task=await createStudioTask({article_ids:ids},actor),pack=(await exportStudioTask(task.id))!;
+ const request=packetSchema.parse({...pack.request,brief:{schema:'aihot-brief-selection/1',events:pack.request.articles.map((item,index)=>({
+  article_id:item.binding.article_id,event_id:`brief-event-${index}`,section:'components-ics',publication_time:null,
+  source_utc_offset:'+00:00',date_basis:'observed_version',observed_version_at:pack.request.created_at,
+ })),pages:[]}});
+ assert.equal(request.pitch,undefined);
+ await sql`UPDATE studio_tasks SET request=${sql.json(request as never)} WHERE id=${task.id}`;
+ const generated=briefGenerationSchema.parse({decision:'draft',title_en:'LED driver announcements',title_zh:'驱动器件动态',
+  in_5_seconds:request.articles.slice(0,3).map((item,index)=>({event_key:`driver-${index}`,text_en:item.title})),
+  items:request.articles.map((item,index)=>({event_key:`driver-${index}`,article_ids:[item.binding.article_id],primary_article_id:item.binding.article_id,
+   section:'components-ics',title_en:item.title,title_zh:'厂商驱动器介绍',body_en:item.body_text,review_zh:'厂商介绍显示模组驱动器，送样安排需核对。',
+   news_status:'reported',hook_anchor_quote:item.title,evidence:[{article_id:item.binding.article_id,claim:'Manufacturer driver announcement.',quote:item.body_text}],
+  })),questions_zh:[],keyword_hypothesis:'LED driver announcements',meta_description_en:'Five manufacturer announcements with their original sources.'});
+ if(generated.decision!=='draft')throw Error('Invalid synthetic brief fixture');
+ // Use the original renderer and receiver with source-backed copy; no model or template placeholders.
+ const response=buildBriefResponse(request,generated,{agent_id:'brief-recovery-test',model:null,input_files:['synthetic sources']},`brief-recovery-${suffix}`);
+ const received=await receiveStudioTask(task.id,response,actor);
+ assert.equal(received?.state,'received',JSON.stringify(received));
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','brief-recovery-exclusion-test');
+ const headers={cookie:`${SESSION_COOKIE}=${token}`},before=await storedDraftState(row.id,task.id);
+ const result=await app.inject({url:`/api/admin/studio/drafts/${row.id}`,headers});
+ assert.equal(result.statusCode,200,result.body);
+ const draft=result.json();
+ assert.equal(draft.document.brief.items.length,5);assert.equal(draft.status,'in_review');
+ assert.equal(draft.manual_edit_recovery,null);
+ assert.deepEqual(await storedDraftState(row.id,task.id),before);
+ assert.equal((await app.inject({url:`/api/admin/studio/drafts/${row.id}/export?format=html&version=${draft.version}`,headers})).statusCode,400);
 });
 test('an ordinary numeric D1 block does not advertise fragment recovery',async()=>{
  const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
