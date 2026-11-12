@@ -6,6 +6,7 @@ import type { Route } from './+types/studio-draft';
 import { adminGet } from '../../lib/admin.server';
 import { scrollBehavior } from '../../lib/motion';
 import { useAdminAction } from '../../features/admin/action';
+import { toast } from '../../features/admin/toast';
 import { AdminPage, Card, Button, Badge, Field, Input, Select, Textarea, Time } from '../../features/admin/ui';
 import { DirectPublish } from '../../features/admin/publishing';
 import { useDelivery, type DeliveryCapability } from '../../features/admin/delivery';
@@ -44,6 +45,7 @@ type Detail = {
   source_snapshots?: SourceSnapshot[];
   suggestions?: {id:string;issueId:string;fingerprint:string;field:string;before:string;after:string;label:string;explanation:string}[];
   review_sync?: {status:'stale';english_hash:string}|null;
+  manual_edit_recovery?: { available: boolean } | null;
   upgrade_context?: {target_existing_url:string;target_post_id:number|null;baseline_sha256:string|null;changes:{operation:string;paragraph:string;reason:string}[];notice:string}|null;
   engineer_review?: {mode:'conservative'|'engineer';name:string;reply:string;answers:{question_id:string;choice:string;note?:string}[]}|null;
   source_snapshot: { body_text: string | null; title: string };
@@ -209,9 +211,11 @@ function Editor({ row }: { row: Detail }) {
   const [metadataOpen, setMetadataOpen] = useState('');
   const [recoveryWait, setRecoveryWait] = useState<{ version: number; until: number; request: string } | null>(null);
   const [recoveryTimedOut, setRecoveryTimedOut] = useState(false);
+  const [coverEdit, setCoverEdit] = useState({ dirty: false, busy: false });
+  const [coverReset, setCoverReset] = useState(0);
   const { run, busy: actionBusy, pending } = useAdminAction();
   const revisionActive = ['queued', 'running', 'unknown'].includes(row.revision_request?.status ?? '');
-  const busy = actionBusy || revisionActive || recoveryWait !== null;
+  const busy = actionBusy || revisionActive || recoveryWait !== null || coverEdit.busy;
   const { revalidate, state: revalidationState } = useRevalidator();
   const revisionSnapshot = JSON.stringify(row.revision_request ?? null);
   useEffect(() => {
@@ -241,18 +245,35 @@ function Editor({ row }: { row: Detail }) {
     void revalidate();
   };
   const dirty = JSON.stringify(editableDocument(d)) !== JSON.stringify(editableDocument(row.document));
-  useBeforeUnload(event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty &&
+  const hasUnsavedInput = dirty || coverEdit.dirty || coverEdit.busy;
+  useBeforeUnload(event => { if (hasUnsavedInput) { event.preventDefault(); event.returnValue = ''; } });
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => hasUnsavedInput &&
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
   useEffect(() => {
     if (blocker.state === 'blocked') {
-      if (window.confirm('稿件还有未保存的修改。确定放弃修改并继续？')) {
+      if (coverEdit.busy) {
+        blocker.reset();
+        toast('封面操作尚未完成，请稍候再切换。', 'info');
+        return;
+      }
+      const message = dirty && coverEdit.dirty ? '正文或封面还有未保存的修改。确定放弃修改并继续？'
+        : coverEdit.dirty ? '封面还有未上传的图片或说明。确定放弃这些输入并继续？'
+        : '稿件还有未保存的修改。确定放弃修改并继续？';
+      if (window.confirm(message)) {
         setD(row.document);
+        setCoverEdit({ dirty: false, busy: false });
+        setCoverReset(value => value + 1);
         blocker.proceed();
       }
       else blocker.reset();
     }
-  }, [blocker, row.document]);
+  }, [blocker, row.document, dirty, coverEdit]);
+  const approvalHold = busy ? '正在处理当前稿件，请稍候。'
+    : dirty ? '保存修改后再核对并审核。'
+    : row.gate.blocked ? '先处理上方需要修改的问题。'
+    : !allConfirmed ? '还有待确认的问题，全部核对后可审核。'
+    : row.review_sync?.status === 'stale' && !englishReviewed ? '请先勾选“已按当前英文主稿核对”，再确认审核通过。'
+    : null;
   const locate = (f: Finding) => {
     setStage('review');
     setFulltextOpen(true);
@@ -469,6 +490,10 @@ function Editor({ row }: { row: Detail }) {
         <Card title="当前动作">
           <Button tone={dirty ? 'primary' : 'secondary'} className="w-full" disabled={busy || !dirty} onClick={() => void run('PATCH', '/api/admin/studio/drafts/' + row.id, { version: row.version, ...editableDocument(d) }, { success: '已保存为待编辑稿。' })}><Save aria-hidden="true" />保存修改</Button>
           <p className="my-2 text-xs leading-5 text-ink-3">{dirty ? '有修改尚未保存。保存后将按新版本重新审核。' : '当前版本已保存。'}</p>
+          {['draft', 'in_review'].includes(row.status) && row.manual_edit_recovery?.available && <div className="my-3 space-y-2">
+            <p className="text-xs leading-6 text-ink-3">已保存的修改需要重新核对。正文保持不变，完成后请继续审稿。</p>
+            <Button className="w-full" disabled={busy || dirty} onClick={() => void run('PATCH', '/api/admin/studio/drafts/' + row.id, { version: row.version, ...editableDocument(row.document) }, { success: '已重新保存，请继续核对并提交审稿。' })}>重新核对已存修改</Button>
+          </div>}
           <fieldset disabled={busy || dirty} className="my-4 space-y-2">
             <legend className="mb-2 text-sm font-semibold">让系统怎样修改（可多选）</legend>
             <p className="text-xs leading-6 text-ink-3">选择修改目标，系统据此修订。补充意见可留空，修订后仍需审核。</p>
@@ -480,10 +505,10 @@ function Editor({ row }: { row: Detail }) {
           {row.review_sync?.status==='stale'&&<label className="mb-3 flex items-start gap-2 text-xs leading-6"><Checkbox checked={englishReviewed} onCheckedChange={value=>setEnglishReviewed(value===true)} disabled={busy||dirty} aria-label="已按当前英文主稿核对" className="mt-1" />已按当前英文主稿核对，未以旧中文代替审稿</label>}
           <div className="flex flex-wrap gap-2">
             {row.status === 'draft' && <Button tone="primary" className="w-full" disabled={busy || dirty} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'submit', note }, { success: '已提交审稿。' })}>提交审稿</Button>}
-            {row.status === 'in_review' && <Button tone="primary" className="w-full" disabled={busy || dirty || row.gate.blocked || !allConfirmed || (row.review_sync?.status==='stale'&&!englishReviewed)} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'approve', note, confirmations,...(row.review_sync?.status==='stale'?{english_reviewed:englishReviewed}:{}) }, { success: '审核通过，可以导出。' })}>确认审核通过</Button>}
+            {row.status === 'in_review' && <Button tone="primary" className="w-full" disabled={approvalHold !== null} aria-describedby="approval-hint" onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'approve', note, confirmations,...(row.review_sync?.status==='stale'?{english_reviewed:englishReviewed}:{}) }, { success: '审核通过，可以导出。' })}>确认审核通过</Button>}
             <Button className="w-full" disabled={busy || dirty || (!revisionGoals.length && !note.trim()) || row.revision_request?.status === 'queued' || row.revision_request?.status === 'running' || row.revision_request?.status === 'unknown'} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'return', revision_goals: revisionGoals, note }, { success: '已安排按所选目标修订。完成后请重新审稿。' })}>按选择修订</Button>
           </div>
-          {row.status === 'in_review' && <p className="mt-3 text-xs leading-6 text-ink-3">{dirty ? '保存修改后再核对并审核。' : row.gate.blocked ? '先处理上方需要修改的问题。' : !allConfirmed ? '还有待确认的问题，全部核对后可审核。' : '确认审核只记录审稿结果，不会自动公开。'}</p>}
+          {row.status === 'in_review' && <p id="approval-hint" role="status" className="mt-3 text-xs leading-6 text-ink-3">{approvalHold ?? '确认审核只记录审稿结果，不会自动公开。'}</p>}
           {!revisionGoals.length && !note.trim() && <p className="mt-2 text-[11px] text-ink-4">选择至少一个修改目标即可，无需填写意见。</p>}
         </Card>
 
@@ -515,12 +540,12 @@ function Editor({ row }: { row: Detail }) {
     </div>
 
     <section hidden={stage !== 'cover'} aria-label="配封面" className="draft-stage-content space-y-5">
-      {stage === 'cover' && <DraftCovers id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="cover" onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
+      {stage === 'cover' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="cover" onEditStateChange={setCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
       <DraftFigures id={row.id} version={row.version} />
     </section>
 
     <section hidden={stage !== 'delivery'} aria-label="手工交付" className="draft-stage-content space-y-5">
-      {stage === 'delivery' && <DraftCovers id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="delivery" onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
+      {stage === 'delivery' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="delivery" onEditStateChange={setCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
       <Card title="当前稿件与交付版本">
         <dl className="space-y-2 text-sm" aria-label="稿件版本对应">
           <div className="flex justify-between gap-3"><dt>当前稿件</dt><dd>版本 {row.version}{dirty && '，尚有未保存修改'}</dd></div>

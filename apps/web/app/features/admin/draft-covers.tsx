@@ -16,9 +16,10 @@ function readFile(file: File): Promise<string> {
 }
 
 /** Uses the original draft's media state and original session; no parallel draft storage. */
-export function DraftCovers({ id, version, approved, disabled, stage, onDelivery, onReview }: {
+export function DraftCovers({ id, version, approved, disabled, stage, onDelivery, onReview, onEditStateChange }: {
   id: string; version: number; approved: boolean; disabled: boolean;
   stage: 'cover' | 'delivery'; onDelivery: () => void; onReview: () => void;
+  onEditStateChange?: (state: { dirty: boolean; busy: boolean }) => void;
 }) {
   const [state, setState] = useState<CoverState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,19 +29,31 @@ export function DraftCovers({ id, version, approved, disabled, stage, onDelivery
   const [caption, setCaption] = useState('');
   const [reading, setReading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const uploading = useRef(false);
   const mounted = useRef(true);
   const { run, busy: actionBusy } = useAdminAction();
+  const dirty = file !== null || alt.length > 0 || caption.length > 0;
+  const writing = reading || actionBusy;
+  const reportEditState = useRef(onEditStateChange);
+  useEffect(() => {
+    reportEditState.current = onEditStateChange;
+    onEditStateChange?.({ dirty, busy: writing });
+  }, [dirty, writing, onEditStateChange]);
+  useEffect(() => () => { reportEditState.current?.({ dirty: false, busy: false }); }, []);
   const busy = disabled || loading || reading || actionBusy;
   const endpoint = `/api/admin/studio/drafts/${encodeURIComponent(id)}`;
-  const load = useCallback(async (signal?: AbortSignal) => {
+  const load = useCallback(async (signal?: AbortSignal, savedCandidate = false) => {
     setLoading(true);
+    const message = savedCandidate ? '封面候选已保存，列表暂未刷新。请重新读取封面。' : '封面状态暂时无法读取。请重新读取，已保存的正文仍在。';
     try {
       const response = await fetch(endpoint + '/covers', { credentials: 'same-origin', cache: 'no-store', signal });
-      if (!response.ok) throw Error('封面状态暂时无法读取。请刷新重试，已保存的正文仍在。');
+      if (!response.ok) throw Error(message);
       const result: CoverState = await response.json();
       if (mounted.current && !signal?.aborted) { setState(result); setError(''); }
+      return true;
     } catch (reason) {
-      if (mounted.current && !signal?.aborted) setError(reason instanceof Error ? reason.message : '封面状态暂时无法读取，请重试。');
+      if (mounted.current && !signal?.aborted) setError(savedCandidate ? message : reason instanceof Error ? reason.message : message);
+      return false;
     } finally { if (mounted.current && !signal?.aborted) setLoading(false); }
   }, [endpoint]);
   useEffect(() => {
@@ -51,16 +64,24 @@ export function DraftCovers({ id, version, approved, disabled, stage, onDelivery
   }, [load, version]);
 
   async function upload() {
-    if (!file || !state || busy) return;
+    if (!file || !state || busy || uploading.current) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError('请选择 JPG、PNG 或 WebP 图片。'); return; }
     if (file.size > 4 * 1024 * 1024) { setError('图片超过 4 MB，请压缩后重新选择。'); return; }
+    uploading.current = true;
     setReading(true); setError('');
+    let saved: CoverState | null | undefined;
     try {
       const dataUrl = await readFile(file);
-      const saved = await run('POST', endpoint + '/covers', { version, revision: state.revision, fileName: file.name, dataUrl, alt_en: alt.trim(), caption_en: caption.trim() }, { success: '已加入封面候选，请选择是否采用。', revalidate: false });
-      if (saved) { setFile(null); setAlt(''); setCaption(''); if (fileInput.current) fileInput.current.value = ''; await load(); }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '图片上传未完成，请重试。'); }
-    finally { if (mounted.current) setReading(false); }
+      if (!mounted.current) return;
+      saved = await run<CoverState>('POST', endpoint + '/covers', { version, revision: state.revision, fileName: file.name, dataUrl, alt_en: alt.trim(), caption_en: caption.trim() }, { success: '已加入封面候选，请选择是否采用。', revalidate: false });
+      if (!mounted.current) return;
+      if (saved) { setState(saved); setFile(null); setAlt(''); setCaption(''); if (fileInput.current) fileInput.current.value = ''; }
+    } catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : '图片上传未完成，请重试。'); }
+    finally { uploading.current = false; if (mounted.current) setReading(false); }
+    if (saved !== undefined && mounted.current) {
+      const loaded = await load(undefined, !!saved);
+      if (!saved && loaded && mounted.current) setError('本次上传尚未确认，图片和说明已保留。请核对候选后再上传；若稿件已更新，请先核对正文版本。');
+    }
   }
   async function select(hash: string | null) {
     if (!state || busy) return;

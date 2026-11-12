@@ -263,12 +263,16 @@ export async function studioDraft(id: string) {
   if (!row) return null;
   const task=await studioTask(row.task_id);
   const packet=packetSchema.parse(task.request);
+  const draft=storedDraft(row.document);
+  const reconciled=(row.status==='draft'||row.status==='in_review')&&!packet.brief&&!draft.brief&&packet.pitch?.fragments_plan?.fragments?.length
+    ? manuallyEditedFragmentPacket(packet,draft) : null;
   const state=await draftReviewState(row,packet);
   const [approval]=await sql<{after:{version?:number}}[]>`SELECT after FROM audit_log WHERE subject=${`studio-draft:${id}`}
     AND action='studio.draft.approve' ORDER BY id DESC LIMIT 1`;
   const [pitch]=await sql<{id:string}[]>`SELECT id FROM studio_recommendations WHERE task_id=${row.task_id} ORDER BY created_at DESC LIMIT 1`;
   return { ...row, ...state, pitch_id:pitch?.id??null, currentVersion:row.version, approvedVersion:approval?.after.version??null,
-    suggestions:reviewEditSuggestions(packet,storedDraft(row.document),state.issues),
+    manual_edit_recovery:reconciled&&reconciled!==packet?{available:true as const}:null,
+    suggestions:reviewEditSuggestions(packet,draft,state.issues),
     review_sync:row.document.review_sync??null, upgrade_context:studioUpgradeContext(packet),
     revision_request:row.document.revision_request??null,
     editorial_context:{question:packet.pitch?.scope?.original_question??packet.pitch?.question??packet.editorial_plan?.question??packet.writing?.reader_task??row.document.title_zh,
