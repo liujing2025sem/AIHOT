@@ -21,7 +21,7 @@ import { aggregateWritingProfile } from './studio-demand.ts';
 import { pitchMaterialHits } from './studio-pitch-evidence.ts';
 import { editorialDirection, editorialTopic } from '../../../../site/editorial.ts';
 import { publicDraft } from './studio-publication.ts';
-import { applyReviewEdit, englishReviewHash, reviewEditSuggestions } from './studio-review-edits.ts';
+import { applyReviewEdit, englishReviewHash, manuallyEditedFragmentPacket, reviewEditSuggestions } from './studio-review-edits.ts';
 import { applyDraftRevision, revisionGoalSchema, revisionGoalLabels, revisionResultSchema, type RevisionRequest } from './studio-revision-edits.ts';
 import { enqueue, ensureQueue, QUEUES } from '../jobs/queue.ts';
 import { failedReceiptId, failureKind } from '../providers/receipts.ts';
@@ -295,13 +295,19 @@ export async function saveStudioDraft(id: string, input: unknown, actor: string)
     if (row.version !== b.version) throw new Conflict('这篇稿件已被修改，请刷新查看最新版本后再保存。');
     const { version: _, ...fields } = b;
     const draft = storedDraft({ ...row.document, ...fields });
-    const [task]=await tx`SELECT request FROM studio_tasks WHERE id=${row.task_id}`;
-    const changed=englishReviewHash(draft)!==englishReviewHash(row.document)||draft.title_zh!==row.document.title_zh||draft.review_zh!==row.document.review_zh;
-    const gate=await currentDraftGate(packetSchema.parse(task.request),draft,id,tx,changed||!!row.document.review_sync);
+    const [task]=await tx`SELECT request FROM studio_tasks WHERE id=${row.task_id} FOR UPDATE`;
+    const packet=packetSchema.parse(task.request),updatedPacket=manuallyEditedFragmentPacket(packet,draft);
+    if(!updatedPacket)throw new Conflict('修改涉及原文保留段或无法区分的片段边界。请保留原文段落，并逐个片段修改、保存。');
+    const packetChanged=updatedPacket!==packet;
+    const changed=packetChanged||englishReviewHash(draft)!==englishReviewHash(row.document)||draft.title_zh!==row.document.title_zh||draft.review_zh!==row.document.review_zh;
+    const gate=await currentDraftGate(updatedPacket,draft,id,tx,changed||!!row.document.review_sync);
     const document = {...draft,editorial_gate:gate,camos:row.document.camos,
       ...(changed||row.document.review_sync?{review_sync:{status:'stale' as const,english_hash:englishReviewHash(draft)}}:{})};
+    if(packetChanged)await tx`UPDATE studio_tasks SET request=${tx.json(updatedPacket as never)} WHERE id=${row.task_id}`;
     await tx`UPDATE studio_drafts SET document=${tx.json(document as never)},status='draft',version=version+1,updated_by=${actor},updated_at=now(),reviewed_by=NULL,reviewed_at=NULL WHERE id=${id}`;
-    await audit(actor, 'studio.draft.save', `studio-draft:${id}`, null, row.document, document, { db: tx });
+    await audit(actor, 'studio.draft.save', `studio-draft:${id}`, null,
+      packetChanged?{document:row.document,request:packet}:row.document,
+      packetChanged?{document,request:updatedPacket}:document, { db: tx });
     return { id, version: row.version + 1, status: 'draft' };
   });
 }

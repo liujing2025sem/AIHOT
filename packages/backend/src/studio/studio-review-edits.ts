@@ -59,11 +59,11 @@ export function editedFragmentPacket(packet: Packet, draft: EditorialDraft, star
   if (!plan?.fragments) return packet;
   const assembled = assembleFragments(plan.paragraphs, plan.edit_plan, plan.fragments);
   if (!assembled.complete || assembled.html_en !== draft.body_en) return null;
+  let owner: { fragment: (typeof plan.fragments)[number]; from: number; to: number } | null = null;
   let at = 0;
   for (const row of assembled.diff) {
     const next = at + row.after.length;
-    if (start >= at && end <= next) {
-      if (row.op === 'keep') return null;
+    if (row.op !== 'keep' && start >= at && end <= next) {
       const fragment = plan.fragments.find(f => f.op_index === row.op_index);
       if (!fragment || typeof fragment.html_en !== 'string' || !fragment.html_en) return null;
       // reviseHtml keeps the original block's wrapper/edge whitespace outside the raw fragment.
@@ -71,17 +71,89 @@ export function editedFragmentPacket(packet: Packet, draft: EditorialDraft, star
       const inner = row.after.indexOf(fragment.html_en);
       if (inner < 0 || row.after.lastIndexOf(fragment.html_en) !== inner) return null;
       const from = start - at - inner, to = end - at - inner;
-      if (from < 0 || to > fragment.html_en.length) return null;
-      const fragments = plan.fragments.map(f => f.op_index === row.op_index ? { ...f,
-        html_en: fragment.html_en!.slice(0, from) + after + fragment.html_en!.slice(to) } : f);
-      const expected = draft.body_en.slice(0, start) + after + draft.body_en.slice(end);
-      // An empty fragment would be treated as pending by assembly and restore the old paragraph.
-      if (assembleFragments(plan.paragraphs, plan.edit_plan, fragments).html_en !== expected) return null;
-      return { ...packet, pitch: { ...packet.pitch!, fragments_plan: { ...plan, fragments } } };
+      if (from >= 0 && to <= fragment.html_en.length) {
+        if (owner) return null;
+        owner = { fragment, from, to };
+      }
     }
     at = next;
   }
-  return null;
+  if (!owner) return null;
+  const { fragment, from, to } = owner;
+  const fragments = plan.fragments.map(f => f.op_index === fragment.op_index ? { ...f,
+    html_en: fragment.html_en.slice(0, from) + after + fragment.html_en.slice(to) } : f);
+  const expected = draft.body_en.slice(0, start) + after + draft.body_en.slice(end);
+  // An empty fragment would be treated as pending by assembly and restore the old paragraph.
+  if (assembleFragments(plan.paragraphs, plan.edit_plan, fragments).html_en !== expected) return null;
+  return { ...packet, pitch: { ...packet.pitch!, fragments_plan: { ...plan, fragments } } };
+}
+
+export function manuallyEditedFragmentPacket(packet: Packet, draft: EditorialDraft): Packet | null {
+  const plan = packet.pitch?.fragments_plan;
+  if (!plan?.fragments) return packet;
+  const assembled = assembleFragments(plan.paragraphs, plan.edit_plan, plan.fragments);
+  const original = assembled.html_en, submitted = draft.body_en;
+  if (original === submitted) return packet;
+  if (!assembled.complete) return null;
+  const spans: { start: number; end: number; editable: boolean }[] = [];
+  let offset = 0;
+  for (const row of assembled.diff) {
+    const end = offset + row.after.length;
+    if (row.op === 'keep') spans.push({ start: offset, end, editable: false });
+    else {
+      const fragment = plan.fragments.find(f => f.op_index === row.op_index)!;
+      const inner = row.after.indexOf(fragment.html_en);
+      if (inner < 0 || row.after.lastIndexOf(fragment.html_en) !== inner) return null;
+      const start = offset + inner, finish = start + fragment.html_en.length;
+      if (start > offset) spans.push({ start: offset, end: start, editable: false });
+      spans.push({ start, end: finish, editable: true });
+      if (finish < end) spans.push({ start: finish, end, editable: false });
+    }
+    offset = end;
+  }
+  type Edit = { start: number; end: number; after: string };
+  const edits = (start: number, end: number, from: number, to: number): Edit[] | null => {
+    while (start < end && from < to && original[start] === submitted[from]) { start++; from++; }
+    while (start < end && from < to && original[end - 1] === submitted[to - 1]) { end--; to--; }
+    if (start === end && from === to) return [];
+    const owners = spans.filter(span => span.editable && start >= span.start && end <= span.end);
+    if (owners.length === 1) {
+      const replacement = submitted.slice(from, to);
+      let earliest = start;
+      if (start === end) {
+        while (earliest > 0 && original[earliest - 1] === replacement.at(-1 - (start - earliest) % replacement.length)) earliest--;
+      } else if (from === to) {
+        while (earliest > 0 && original[earliest - 1] === original[end - 1 - (start - earliest)]) earliest--;
+      }
+      if (spans.some(span => span.editable && span !== owners[0]
+        && Math.max(earliest, span.start) <= Math.min(start, span.end - (end - start)))) return null;
+      return [{ start, end, after: replacement }];
+    }
+    const before = original.slice(start, end), after = submitted.slice(from, to);
+    for (const span of spans) {
+      if (span.start < start || span.end > end || span.start === span.end) continue;
+      const anchor = original.slice(span.start, span.end);
+      const at = after.indexOf(anchor);
+      if (at < 0 || after.lastIndexOf(anchor) !== at || before.indexOf(anchor) !== before.lastIndexOf(anchor)) continue;
+      const left = edits(start, span.start, from, from + at);
+      if (!left) continue;
+      const right = edits(span.end, end, from + at + anchor.length, to);
+      if (right) return [...left, ...right];
+    }
+    return null;
+  };
+  const changes = edits(0, original.length, 0, submitted.length);
+  if (!changes) return null;
+  let result = packet, current = { ...draft, body_en: original };
+  for (const edit of changes.reverse()) {
+    const next = editedFragmentPacket(result, current, edit.start, edit.end, edit.after);
+    if (!next) return null;
+    result = next;
+    current = { ...current, body_en: current.body_en.slice(0, edit.start) + edit.after + current.body_en.slice(edit.end) };
+  }
+  const updated = result.pitch!.fragments_plan!;
+  const final = assembleFragments(updated.paragraphs, updated.edit_plan, updated.fragments!);
+  return final.complete && final.html_en === submitted ? result : null;
 }
 
 export function reviewEditSuggestions(packet: Packet, draft: EditorialDraft, issues: EditorialIssues): ReviewEdit[] {

@@ -5,6 +5,8 @@ import {evaluateDraft} from '../packages/backend/src/studio/editorial-gate.ts';
 import {buildEditorialIssues} from '../packages/backend/src/studio/editorial-issues.ts';
 import {applyDraftRevision, revisionGoalSchema} from '../packages/backend/src/studio/studio-revision-edits.ts';
 import {briefGenerationSchema,buildBriefResponse} from '../packages/backend/src/studio/studio-brief-content.ts';
+import {editedFragmentPacket,manuallyEditedFragmentPacket} from '../packages/backend/src/studio/studio-review-edits.ts';
+import {assembleFragments} from '../packages/backend/src/studio/studio-pitch-fragments.ts';
 
 test('stale Chinese remains visible history while all current English BLOCKs stay effective',()=>{
   const source={article_id:'language-source',revision:1,content_sha256:'a'.repeat(64),url:'https://maker.example/news',published_at:'2026-11-08T00:00:00Z'};
@@ -30,6 +32,133 @@ function revisionFixture() {
   const draft:Response['drafts'][number]={source,title_zh:'安装检查',review_zh:'安装前核对图纸。',title_en:'Installation checklist',body_en:'Before mounting, check the installation drawing. This guide explains the installation drawing. Source: https://maker.example/news',meta_description_en:'A checklist for installation drawings.',keyword_hypothesis:'installation drawing',questions_zh:[],evidence:[{claim:'Check the drawing',quote:'Check the installation drawing before mounting.'}]};
   return {packet,draft};
 }
+
+function manualFragmentFixture() {
+  const {packet,draft}=revisionFixture();
+  const paragraphs=[
+    {id:'p1',html:'<div class="original-wrapper">\n<p>Before mounting, consult the installation drawing and its original mounting instructions.</p>\n</div>',text:'Before mounting, consult the installation drawing and its original mounting instructions.'},
+    {id:'p2',html:'<p>Keep this original paragraph.</p>',text:'Keep this original paragraph.'},
+  ];
+  packet.pitch={question:'What should a buyer check?',output_type:'update',existing_url:draft.source.url,selected_title:draft.title_en,primary_article_id:draft.source.article_id,
+    outline:[{id:'installation',heading:'Installation checklist',evidence:[{article_id:draft.source.article_id,quote:'Check the installation drawing before mounting.'}],gap:'',action:''}],
+    engineer:{mode:'conservative',name:'',reply:'',answers:[]},withheld_numbers:[],fragments_plan:{paragraphs,
+      facts:[{id:'f1',kind:'source',statement:'Check the installation drawing before mounting.',quote:'Check the installation drawing before mounting.',article_id:draft.source.article_id,revision:1,attribution:'Maker'}],subquestions:[],
+      edit_plan:[{op:'revise',paragraph:'p1',facts:['f1']},{op:'keep',paragraph:'p2',facts:[]},{op:'insert_after',paragraph:'p2',facts:['f1']}],
+      fragments:[{op_index:0,html_en:'<p>Before mounting, check the installation drawing.</p>',zh_review:'安装前核对图纸。',used_facts:['f1']},{op_index:2,html_en:'<p>Confirm the mounting instructions with the maker.</p>',zh_review:'向厂商核对安装说明。',used_facts:['f1']}],
+      source_html:paragraphs.map(p=>p.html).join(''),original_title:draft.title_en,method_rule_ids:[]}};
+  const plan=packet.pitch.fragments_plan!;
+  draft.body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+  return {packet,draft};
+}
+
+test('manual edits in separated fragments preserve wrappers, kept bytes and their original evidence',()=>{
+  const {packet,draft}=manualFragmentFixture(),snapshot=structuredClone(packet);
+  const body=draft.body_en.replace('Before mounting','Before installation').replace('Confirm the mounting','Check the mounting');
+  const updated=manuallyEditedFragmentPacket(packet,{...draft,body_en:body});
+  assert.ok(updated);
+  const before=packet.pitch!.fragments_plan!,after=updated.pitch!.fragments_plan!;
+  assert.equal(assembleFragments(after.paragraphs,after.edit_plan,after.fragments!).html_en,body);
+  assert.deepEqual(after.paragraphs,before.paragraphs);
+  assert.deepEqual(after.facts,before.facts);
+  assert.deepEqual(after.edit_plan,before.edit_plan);
+  assert.deepEqual(after.fragments!.map(({html_en:_,...rest})=>rest),before.fragments!.map(({html_en:_,...rest})=>rest));
+  assert.equal(body.split('class="original-wrapper"').length,2);
+  assert.equal(evaluateDraft(updated,{...draft,body_en:body},{reviewLanguage:'en'}).blocked,false);
+  assert.deepEqual(packet,snapshot);
+  assert.equal(manuallyEditedFragmentPacket(updated,{...draft,body_en:body}),updated,'a consistent save leaves the packet unchanged');
+});
+
+test('an insertion at a kept paragraph boundary belongs to the unique editable raw fragment',()=>{
+  for(const [html,prefix] of [['Check the mounting drawing.','Before installation, '],['<p>Check the mounting drawing.</p>','\n']]){
+    const {packet,draft}=manualFragmentFixture(),plan=packet.pitch!.fragments_plan!;
+    plan.fragments![1].html_en=html;
+    draft.body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+    const snapshot=structuredClone(packet),start=draft.body_en.length-html.length;
+    const body=draft.body_en.slice(0,start)+prefix+html;
+    for(const updated of [
+      editedFragmentPacket(packet,draft,start,start,prefix),
+      manuallyEditedFragmentPacket(packet,{...draft,body_en:body}),
+    ]){
+      assert.ok(updated,`accept the prefix ${JSON.stringify(prefix)} without changing the kept paragraph`);
+      const after=updated.pitch!.fragments_plan!;
+      assert.equal(after.fragments![1].html_en,prefix+html);
+      assert.deepEqual(after.paragraphs,plan.paragraphs);
+      assert.deepEqual(after.fragments![0],plan.fragments![0]);
+      assert.equal(assembleFragments(after.paragraphs,after.edit_plan,after.fragments!).html_en,body);
+    }
+    assert.deepEqual(packet,snapshot);
+  }
+});
+
+test('fragment boundary insertions keep wrapper bytes protected and adjacent editable ownership unambiguous',()=>{
+  const {packet,draft}=manualFragmentFixture(),plan=packet.pitch!.fragments_plan!;
+  const html=plan.fragments![0].html_en,start=draft.body_en.indexOf(html);
+  const inserted=editedFragmentPacket(packet,draft,start,start,'\n');
+  assert.ok(inserted);
+  assert.equal(inserted.pitch!.fragments_plan!.fragments![0].html_en,'\n'+html);
+  assert.equal(editedFragmentPacket(packet,draft,start-1,start,' '),null,'existing wrapper whitespace stays protected');
+  plan.edit_plan.push({op:'insert_after',paragraph:'p2',facts:['f1']});
+  plan.fragments!.push({op_index:3,html_en:'<p>Ask the maker about installation access.</p>',zh_review:'向厂商核对安装通道。',used_facts:['f1']});
+  draft.body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+  const boundary=draft.body_en.length-plan.fragments![2].html_en.length;
+  assert.equal(editedFragmentPacket(packet,draft,boundary,boundary,'\n'),null,'neither adjacent fragment owns the shared insertion boundary');
+  assert.equal(manuallyEditedFragmentPacket(packet,{...draft,body_en:draft.body_en.slice(0,boundary)+'\n'+draft.body_en.slice(boundary)}),null);
+});
+
+test('manual save reconciles already-saved English against the canonical fragments and keeps content gates',()=>{
+  const {packet,draft}=manualFragmentFixture();
+  draft.body_en=draft.body_en.replace('Before mounting','Before installation');
+  assert.equal(evaluateDraft(packet,draft,{reviewLanguage:'en'}).blocked,true);
+  const repaired=manuallyEditedFragmentPacket(packet,draft);
+  assert.ok(repaired);
+  assert.equal(evaluateDraft(repaired,draft,{reviewLanguage:'en'}).blocked,false);
+  const unsafe={...draft,body_en:draft.body_en.replace('check the installation drawing','expect 9000 nits')};
+  const updated=manuallyEditedFragmentPacket(repaired,unsafe);
+  assert.ok(updated,'content problems can still be saved for review');
+  assert.equal(evaluateDraft(updated,unsafe,{reviewLanguage:'en'}).blocked,true,'fragment synchronization does not approve unsupported numbers');
+});
+
+test('manual save rejects changed keep bytes, revised wrappers and an emptied fragment without changing the packet',()=>{
+  const {packet,draft}=manualFragmentFixture(),snapshot=structuredClone(packet);
+  const keep=packet.pitch!.fragments_plan!.paragraphs[1].html;
+  const fragment=packet.pitch!.fragments_plan!.fragments![0].html_en;
+  for(const body of [
+    draft.body_en.replace(keep,'<p>Replace the original paragraph.</p>'),
+    draft.body_en.replace(keep,''),
+    draft.body_en.replace('class="original-wrapper"','class="changed-wrapper"'),
+    draft.body_en.replace(fragment,''),
+  ])assert.equal(manuallyEditedFragmentPacket(packet,{...draft,body_en:body}),null);
+  assert.deepEqual(packet,snapshot);
+});
+
+test('manual save keeps adjacent fragment ownership and refuses ambiguous cross-fragment edits',()=>{
+  const {packet,draft}=manualFragmentFixture();
+  const plan=packet.pitch!.fragments_plan!;
+  plan.edit_plan.push({op:'insert_after',paragraph:'p2',facts:['f1']});
+  plan.fragments!.push({op_index:3,html_en:'<p>Ask the maker about installation access.</p>',zh_review:'向厂商核对安装通道。',used_facts:['f1']});
+  draft.body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+  const snapshot=structuredClone(packet);
+  const one=draft.body_en.replace('Confirm the mounting','Check the mounting');
+  const accepted=manuallyEditedFragmentPacket(packet,{...draft,body_en:one});
+  assert.ok(accepted);
+  assert.deepEqual(accepted.pitch!.fragments_plan!.fragments![2],plan.fragments![2]);
+  const both=one.replace('Ask the maker','Consult the maker');
+  assert.equal(manuallyEditedFragmentPacket(packet,{...draft,body_en:both}),null);
+  assert.deepEqual(packet,snapshot);
+});
+
+test('repeated bytes cannot move an insertion or deletion into a neighboring fragment',()=>{
+  const {packet,draft}=manualFragmentFixture();
+  const plan=packet.pitch!.fragments_plan!;
+  plan.edit_plan.push({op:'insert_after',paragraph:'p2',facts:['f1']});
+  plan.fragments![1].html_en='<p>Check the drawing.</p>';
+  plan.fragments!.push({...plan.fragments![1],op_index:3});
+  draft.body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+  assert.equal(manuallyEditedFragmentPacket(packet,{...draft,body_en:draft.body_en+plan.fragments![1].html_en}),null);
+  plan.fragments![1].html_en='aaaa';plan.fragments![2].html_en='aaaa';
+  draft.body_en=assembleFragments(plan.paragraphs,plan.edit_plan,plan.fragments!).html_en;
+  assert.equal(manuallyEditedFragmentPacket(packet,{...draft,body_en:draft.body_en.slice(0,-1)}),null);
+});
 
 test('chosen revision goals need no free text and bounded edits preserve the original draft and evidence',()=>{
   assert.equal(revisionGoalSchema.parse('shorten'),'shorten');

@@ -100,6 +100,11 @@ for(const previouslySaved of [false,true])test(`manual fragment PATCH can be rev
  assert.equal(draft.gate.blocked,false,JSON.stringify(draft.gate.findings));
  assert.equal(draft.review_sync.status,'stale');
  assert.equal(draft.status,'draft');
+ const saveAudit=draft.history.find((entry:{action:string})=>entry.action==='studio.draft.save');
+ assert.deepEqual(saveAudit.before.request,pack.request);
+ const [savedTask]=await sql`SELECT request,response FROM studio_tasks WHERE id=${task.id}`;
+ assert.deepEqual(saveAudit.after.request,savedTask.request);
+ assert.equal(savedTask.response.drafts[0].body_en,response.drafts[0].body_en,'generation history retains the original wording');
  assert.equal(draft.document.body_en.split('class="source-wrapper"').length,2,'the original wrapper occurs exactly once');
  assert.ok(draft.document.body_en.includes(keep));
  const stale=await app.inject({method:'PATCH',url,headers,payload});
@@ -123,6 +128,12 @@ for(const previouslySaved of [false,true])test(`manual fragment PATCH can be rev
  assert.equal(exported.statusCode,200,exported.body);
  assert.match(exported.body,/Samples remain expected in Q4/);
  assert.match(exported.body,/Check the sample schedule/);
+ const unsafe=await app.inject({method:'PATCH',url,headers,payload:{...payload,version:draft.version,body_en:edited.replace('Samples remain expected in Q4.','Samples reach 9000 nits.')}});
+ assert.equal(unsafe.statusCode,200,unsafe.body);
+ draft=await read();
+ assert.equal(draft.status,'draft','manual edits invalidate the previous approval');
+ assert.equal(draft.gate.blocked,true,'unsupported facts still block delivery after fragment synchronization');
+ assert.equal((await app.inject({url:url+`/export?format=html&version=${draft.version}`,headers})).statusCode,400);
  assert.equal((await sql`SELECT count(*)::int AS count FROM receipts`)[0].count,receiptsBefore.count);
  assert.equal((await sql`SELECT count(*)::int AS count FROM audit_log WHERE subject=${`studio-draft:${row.id}`} AND action IN ('studio.draft.wordpress','studio.draft.publish')`)[0].count,0);
 });

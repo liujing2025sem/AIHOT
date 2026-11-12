@@ -193,7 +193,10 @@ function Editor({ row }: { row: Detail }) {
   const [search, setSearch] = useSearchParams();
   const requestedStage = search.get('stage');
   const stage: DraftStage = requestedStage === 'cover' || requestedStage === 'delivery' ? requestedStage : 'review';
-  const setStage = (value: DraftStage) => setSearch(previous => { const next = new URLSearchParams(previous); next.set('stage', value); return next; }, { replace: true });
+  const setStage = (value: DraftStage) => {
+    if (value === stage) return;
+    setSearch(previous => { const next = new URLSearchParams(previous); next.set('stage', value); return next; }, { replace: true });
+  };
   const [confirmed, setConfirmed] = useState<string[]>(row.confirmed_issues.map(c => c.issueId));
   const confirmations = row.issues.items.filter(i => i.confirmable && confirmed.includes(i.id)).map(i => ({ issueId: i.id, fingerprint: i.fingerprint }));
   const allConfirmed = row.issues.items.every(i => i.confirmable && confirmed.includes(i.id));
@@ -239,13 +242,17 @@ function Editor({ row }: { row: Detail }) {
   };
   const dirty = JSON.stringify(editableDocument(d)) !== JSON.stringify(editableDocument(row.document));
   useBeforeUnload(event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty &&
+    (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
   useEffect(() => {
     if (blocker.state === 'blocked') {
-      if (window.confirm('稿件还有未保存的修改，确认离开？')) blocker.proceed();
+      if (window.confirm('稿件还有未保存的修改。确定放弃修改并继续？')) {
+        setD(row.document);
+        blocker.proceed();
+      }
       else blocker.reset();
     }
-  }, [blocker]);
+  }, [blocker, row.document]);
   const locate = (f: Finding) => {
     setStage('review');
     setFulltextOpen(true);
