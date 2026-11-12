@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, type Ref } from 'react';
-import { Link, useBeforeUnload, useBlocker, useRevalidator, useSearchParams } from 'react-router';
+import { useState, useEffect, useRef, useCallback, type Ref } from 'react';
+import { Link, useBeforeUnload, useBlocker, useRevalidator, useSearchParams, type BlockerFunction } from 'react-router';
 import { ExternalLink, FileCheck2, FileText, History, Link2, LocateFixed, MessageSquareText, Save, ShieldAlert } from 'lucide-react';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import type { Route } from './+types/studio-draft';
@@ -214,6 +214,7 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
   const remaining = row.issues.items.filter(i => !i.confirmable || !confirmed.includes(i.id)).length;
   const [substantive, setSubstantive] = useState(false), [categories, setCategories] = useState<string[]>([]), [minutes, setMinutes] = useState(''), [fullReview, setFullReview] = useState(false);
   const [d, setD] = useState(row.document), [tab, setTab] = useState(row.review_sync?.status==='stale'?'en':'zh'), [note, setNote] = useState('');
+  const documentInput = useRef(row.document);
   const [englishReviewed,setEnglishReviewed]=useState(false);
   const [fulltextOpen, setFulltextOpen] = useState(false);
   const [revisionGoals, setRevisionGoals] = useState<string[]>(['clarify_buyer_answer']);
@@ -221,6 +222,11 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
   const [recoveryWait, setRecoveryWait] = useState<{ version: number; until: number; request: string } | null>(null);
   const [recoveryTimedOut, setRecoveryTimedOut] = useState(false);
   const [coverEdit, setCoverEdit] = useState({ dirty: false, busy: false });
+  const leaveProtection = useRef({ dirty: false, cover: { dirty: false, busy: false } });
+  const reportCoverEdit = useCallback((state: { dirty: boolean; busy: boolean }) => {
+    leaveProtection.current.cover = state;
+    setCoverEdit(state);
+  }, []);
   const [coverReset, setCoverReset] = useState(0);
   const { run, busy: actionBusy, pending } = useAdminAction();
   const revisionActive = ['queued', 'running', 'unknown'].includes(row.revision_request?.status ?? '');
@@ -254,10 +260,17 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
     void revalidate();
   };
   const dirty = JSON.stringify(editableDocument(d)) !== JSON.stringify(editableDocument(row.document));
-  const hasUnsavedInput = dirty || coverEdit.dirty || coverEdit.busy;
-  useBeforeUnload(event => { if (hasUnsavedInput) { event.preventDefault(); event.returnValue = ''; } });
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => hasUnsavedInput &&
-    (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search));
+  // Stable listeners read the synchronous input state, including before router effects catch up.
+  useBeforeUnload(useCallback((event: BeforeUnloadEvent) => {
+    const current = leaveProtection.current;
+    if (current.dirty || current.cover.dirty || current.cover.busy) { event.preventDefault(); event.returnValue = ''; }
+  }, []));
+  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
+    const current = leaveProtection.current;
+    return (current.dirty || current.cover.dirty || current.cover.busy) &&
+      (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search);
+  }, []);
+  const blocker = useBlocker(shouldBlock);
   const handledBlocker = useRef<typeof blocker | null>(null);
   useEffect(() => {
     if (blocker.state !== 'blocked') { handledBlocker.current = null; return; }
@@ -265,23 +278,26 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
     if (handledBlocker.current === blocker) return;
     handledBlocker.current = blocker;
     if (blocker.state === 'blocked') {
-      if (coverEdit.busy) {
+      const current = leaveProtection.current;
+      if (current.cover.busy) {
         blocker.reset();
         toast('封面操作尚未完成，请稍候再切换。', 'info');
         return;
       }
-      const message = dirty && coverEdit.dirty ? '正文或封面还有未保存的修改。确定放弃修改并继续？'
-        : coverEdit.dirty ? '封面还有未上传的图片或说明。确定放弃这些输入并继续？'
+      const message = current.dirty && current.cover.dirty ? '正文或封面还有未保存的修改。确定放弃修改并继续？'
+        : current.cover.dirty ? '封面还有未上传的图片或说明。确定放弃这些输入并继续？'
         : '稿件还有未保存的修改。确定放弃修改并继续？';
       if (window.confirm(message)) {
+        documentInput.current = row.document;
+        leaveProtection.current.dirty = false;
         setD(row.document);
-        setCoverEdit({ dirty: false, busy: false });
+        reportCoverEdit({ dirty: false, busy: false });
         setCoverReset(value => value + 1);
         blocker.proceed();
       }
       else blocker.reset();
     }
-  }, [blocker, row.document, dirty, coverEdit]);
+  }, [blocker, row.document, dirty, coverEdit, reportCoverEdit]);
   const approvalHold = busy ? '正在处理当前稿件，请稍候。'
     : dirty ? '保存修改后再核对并审核。'
     : row.gate.blocked ? '先处理上方需要修改的问题。'
@@ -345,13 +361,18 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
       </li>;
     })}
   </ul>;
-  const change = (key: keyof Document, value: string) => setD(x => ({ ...x, [key]: key === 'questions_zh' ? value.split('\n').filter(Boolean) : value }));
+  const change = (key: keyof Document, value: string) => {
+    const next = { ...documentInput.current, [key]: key === 'questions_zh' ? value.split('\n').filter(Boolean) : value };
+    documentInput.current = next;
+    leaveProtection.current.dirty = JSON.stringify(editableDocument(next)) !== JSON.stringify(editableDocument(row.document));
+    setD(next);
+  };
   const field = (key: keyof Document, title: string, large = false) => <div className="mb-5"><Field label={title}>
     {large ? <Textarea data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} aria-describedby={key === 'body_en' ? 'draft-body-edit-help' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} className={'min-h-[440px] text-[15px] leading-8' + (key === 'body_en' ? ' draft-english-body' : '')} /> : <Input data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} />}
   </Field></div>;
   const history = <div className="divide-y divide-line">
     {row.history.map((h, i) => <div className="py-3 text-xs leading-6" key={i}>
-      <p>{({ 'studio.draft.confirm': '逐项确认风险', 'studio.draft.save': '保存稿件', 'studio.draft.apply-edit':'采纳英文修改', 'studio.draft.submit': '提交审稿', 'studio.draft.approve': '审核通过', 'studio.draft.return': '退回修改' } as Record<string, string>)[h.action] || h.action} · {h.actor} · <Time at={h.created_at} /></p>
+      <p>{({ 'studio.draft.confirm': '暂存核对结果', 'studio.draft.save': '保存稿件', 'studio.draft.apply-edit':'采纳英文修改', 'studio.draft.submit': '提交审稿', 'studio.draft.approve': '审核通过', 'studio.draft.return': '退回修改' } as Record<string, string>)[h.action] || h.action} · {h.actor} · <Time at={h.created_at} /></p>
       {h.reason && <p className="mt-1 text-ink-3">{h.reason}</p>}
     </div>)}
     {!row.history.length && <p className="py-3 text-xs text-ink-3">由 Agent 结果导入，尚无人工修改。</p>}
@@ -564,12 +585,12 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
     </div>
 
     <section hidden={stage !== 'cover'} aria-label="配封面" className="draft-stage-content space-y-5">
-      {stage === 'cover' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="cover" onEditStateChange={setCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
+      {stage === 'cover' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="cover" onEditStateChange={reportCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
       <DraftFigures id={row.id} version={row.version} />
     </section>
 
     <section hidden={stage !== 'delivery'} aria-label="手工交付" className="draft-stage-content space-y-5">
-      {stage === 'delivery' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="delivery" onEditStateChange={setCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
+      {stage === 'delivery' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="delivery" onEditStateChange={reportCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
       <Card title="当前稿件与交付版本">
         <dl className="space-y-2 text-sm" aria-label="稿件版本对应">
           <div className="flex justify-between gap-3"><dt>当前稿件</dt><dd>版本 {row.version}{dirty && '，尚有未保存修改'}</dd></div>

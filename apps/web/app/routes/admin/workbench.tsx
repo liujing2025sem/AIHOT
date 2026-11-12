@@ -50,7 +50,7 @@ export default function Workbench({ loaderData: data }: Route.ComponentProps) {
     <div className="workbench-worklists">
       <section aria-labelledby="recent-drafts-title">
         <header><h2 id="recent-drafts-title">最近的稿件</h2><Link to="/admin/studio?tab=drafts">全部稿件</Link></header>
-        {drafts.length ? <ul className="workbench-document-list" role="list">{drafts.slice(0, 6).map(draft => <li key={draft.id}><Link to={`/admin/studio/drafts/${draft.id}`}><Files aria-hidden="true" /><span><strong>{draft.title_zh || draft.title_en}</strong><span>版本 {draft.version}<Time at={draft.updated_at} /></span><span className="workbench-document-next">下一步：{draftNextSteps[draft.status] || '查看稿件状态'}</span></span><Badge tone={draft.status === 'approved' ? 'ok' : 'muted'}>{draftLabels[draft.status] || draft.status}</Badge></Link></li>)}</ul> : <p className="workbench-empty">还没有稿件。新建命题，或从今日选稿选择已有材料。</p>}
+        {drafts.length ? <ul className="workbench-document-list" role="list">{drafts.slice(0, 6).map(draft => <li key={draft.id}><Link to={`/admin/studio/drafts/${draft.id}${draft.status === 'approved' ? '?stage=delivery' : ''}`}><Files aria-hidden="true" /><span><strong>{draft.title_zh || draft.title_en}</strong><span>版本 {draft.version}<Time at={draft.updated_at} /></span><span className="workbench-document-next">下一步：{draftNextSteps[draft.status] || '查看稿件状态'}</span></span><Badge tone={draft.status === 'approved' ? 'ok' : 'muted'}>{draftLabels[draft.status] || draft.status}</Badge></Link></li>)}</ul> : <p className="workbench-empty">还没有稿件。新建命题，或从今日选稿选择已有材料。</p>}
       </section>
       <section aria-labelledby="recent-pitches-title">
         <header><h2 id="recent-pitches-title">待接续的命题</h2><Link to="/admin/studio/pitch">全部命题</Link></header>

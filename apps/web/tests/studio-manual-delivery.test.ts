@@ -75,6 +75,7 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     await flowGuide.focus(); await page.keyboard.press('Enter');
     await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeVisible();
     await expect(resume.getByText('下载已批准版本，运营上传', { exact: true })).toBeVisible();
+    await screenshot('home-flow-guide');
     await page.keyboard.press('Space');
     await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeHidden();
     await expect(page.getByRole('link', { name: /隔离样本：采购前如何确认 LED 箱体尺寸/ })).toHaveAttribute('href', '/admin/studio/pitch?id=original-pitch');
@@ -95,16 +96,28 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     assert.equal(writes.length, 0, 'opening home does not create or generate content');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await screenshot('home');
+    await page.getByRole('heading', { name: '今天，从这篇继续', exact: true }).click();
+    await expect(flowGuide).not.toBeFocused();
+    await screenshot('home-default');
     if (width === 390) {
       await page.setViewportSize({ width: 320, height: 900 });
       await expect(page.getByRole('link', { name: '检查交付文件', exact: true })).toBeVisible();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       const directory = process.env.AIHOT_UI_REVIEW_DIR;
       if (directory) await page.screenshot({ path: path.join(directory, 'original-workbench-home-320.png'), fullPage: true });
+      await flowGuide.focus(); await page.keyboard.press('Enter');
+      await expect(resume.getByText('下载已批准版本，运营上传', { exact: true })).toBeVisible();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      if (directory) await page.screenshot({ path: path.join(directory, 'original-workbench-home-flow-guide-320.png'), fullPage: true });
+      await page.keyboard.press('Space');
       await page.setViewportSize({ width, height: 900 });
     }
 
     const overviewReads = reads.filter(read => read === '/api/admin/studio').length;
+    const recent = page.getByRole('region', { name: '最近的稿件', exact: true }).getByRole('link', { name: /隔离样本：LED 箱体尺寸核对/ });
+    await recent.click();
+    await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    assert.equal(writes.length, 0, 'the approved draft entry only opens the described delivery step');
     await visit(page, web.origin + '/admin/studio/drafts/manual-fixture?stage=review');
     assert.equal(reads.filter(read => read === '/api/admin/studio').length, overviewReads, 'opening a draft reads capabilities without reloading the full overview');
     await page.getByText('对照稿件说法与原文依据', { exact: false }).click();
