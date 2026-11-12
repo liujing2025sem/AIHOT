@@ -67,6 +67,16 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     await visit(page, web.origin + '/admin/workbench');
     await expect(page.getByRole('heading', { name: draft.document.title_zh, exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '检查交付文件', exact: true })).toHaveAttribute('href', '/admin/studio/drafts/manual-fixture?stage=delivery');
+    const resume = page.getByRole('region', { name: draft.document.title_zh, exact: true });
+    await expect(resume.getByText('正文已通过', { exact: true })).toBeVisible();
+    await expect(resume.getByText('可交付', { exact: true })).toHaveCount(0);
+    const flowGuide = resume.locator('summary').filter({ hasText: '四步采编流程' });
+    await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeHidden();
+    await flowGuide.focus(); await page.keyboard.press('Enter');
+    await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeVisible();
+    await expect(resume.getByText('下载已批准版本，运营上传', { exact: true })).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeHidden();
     await expect(page.getByRole('link', { name: /隔离样本：采购前如何确认 LED 箱体尺寸/ })).toHaveAttribute('href', '/admin/studio/pitch?id=original-pitch');
     const tools = page.getByRole('region', { name: '采编工具', exact: true });
     for (const [label, destination] of [
@@ -85,6 +95,14 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     assert.equal(writes.length, 0, 'opening home does not create or generate content');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await screenshot('home');
+    if (width === 390) {
+      await page.setViewportSize({ width: 320, height: 900 });
+      await expect(page.getByRole('link', { name: '检查交付文件', exact: true })).toBeVisible();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      const directory = process.env.AIHOT_UI_REVIEW_DIR;
+      if (directory) await page.screenshot({ path: path.join(directory, 'original-workbench-home-320.png'), fullPage: true });
+      await page.setViewportSize({ width, height: 900 });
+    }
 
     const overviewReads = reads.filter(read => read === '/api/admin/studio').length;
     await visit(page, web.origin + '/admin/studio/drafts/manual-fixture?stage=review');
@@ -151,6 +169,7 @@ function coverInputFixture() {
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   const upload = { status: 200, wait: null as Promise<void> | null };
   const coverRead = { status: 200, wait: null as Promise<void> | null, requests: 0 };
+  const draftRead = { wait: null as Promise<void> | null, requests: 0 };
   const api = fakeApi(async (url, res, request) => {
     if (url.pathname === '/api/admin/me') return { name: '隔离测试运营', csrf: 'fixture', dev: false };
     if (url.pathname === '/api/admin/nav-counts') return {};
@@ -166,7 +185,7 @@ function coverInputFixture() {
     if (index < 0) return;
     const draft = drafts[index], state = covers[index], endpoint = '/api/admin/studio/drafts/' + draft.id;
     if (request.method === 'GET') {
-      if (url.pathname === endpoint) return draft;
+      if (url.pathname === endpoint) { draftRead.requests++; await draftRead.wait; return draft; }
       if (url.pathname === endpoint + '/figures') return { figures: [], issues: [] };
       if (url.pathname === endpoint + '/covers') {
         coverRead.requests++;
@@ -196,7 +215,7 @@ function coverInputFixture() {
     res.statusCode = 400;
     return { detail: '这项隔离测试只允许上传封面候选。' };
   });
-  return { api, drafts, covers, writes, upload, coverRead };
+  return { api, drafts, covers, writes, upload, coverRead, draftRead };
 }
 
 async function syntheticCover(page: Page) {
@@ -509,3 +528,94 @@ test('cover protection works with Tab, Enter and Space at 820px and 200% CSS zoo
     assert.equal(fixture.covers[0].selectedHash, null);
   } finally { await browser?.close(); await web.stop(); }
 });
+
+
+for (const { width, zoom } of [{ width: 1440, zoom: 1 }, { width: 390, zoom: 1 }, { width: 320, zoom: 1 }, { width: 820, zoom: 2 }]) {
+  test(`draft step focus follows committed navigation at ${width}px and CSS zoom ${zoom}`, async () => {
+    const fixture = coverInputFixture();
+    const pendingRead = Promise.withResolvers<void>();
+    const pendingNavigation = Promise.withResolvers<void>();
+    const web = await startWebServer(fixture.api); let browser;
+    try {
+      browser = await chromium.launch();
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+      const dialogs: string[] = [];
+      page.on('dialog', async dialog => { dialogs.push(dialog.type()); await dialog.dismiss(); });
+      await visit(page, web.origin + '/admin/studio?tab=drafts');
+      await page.getByRole('link', { name: /封面保护样本一/ }).click();
+      if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+      const flow = page.getByRole('navigation', { name: '当前稿件流程', exact: true });
+      const review = flow.getByRole('button', { name: '审正文', exact: true });
+      const cover = flow.getByRole('button', { name: '配封面', exact: true });
+      const delivery = flow.getByRole('button', { name: '手工交付', exact: true });
+      const reviewHeading = page.getByRole('heading', { name: '审正文', exact: true });
+      const coverHeading = page.getByRole('heading', { name: '配封面', exact: true });
+      const deliveryHeading = page.getByRole('heading', { name: '手工交付', exact: true });
+      await expect(reviewHeading).toBeVisible();
+      await expect(reviewHeading).not.toBeFocused();
+      await review.focus(); await page.keyboard.press('Space');
+      await expect(review).toBeFocused();
+      assert.equal(dialogs.length, 0, 'activating the current step does not leave it');
+
+      fixture.coverRead.wait = pendingRead.promise;
+      fixture.draftRead.wait = pendingNavigation.promise;
+      const readsBeforeNavigation = fixture.draftRead.requests;
+      await page.keyboard.press('Tab'); await expect(cover).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect.poll(() => fixture.draftRead.requests).toBe(readsBeforeNavigation + 1);
+      await expect(review).toHaveAttribute('aria-current', 'step');
+      await expect(cover).toBeFocused();
+      await expect(reviewHeading).not.toBeFocused();
+      pendingNavigation.resolve();
+      await expect(cover).toHaveAttribute('aria-current', 'step');
+      await expect(coverHeading).toBeFocused();
+      await expect(page.getByText('正在读取当前稿件的封面…', { exact: true })).toBeVisible();
+      // Reading completion must not steal focus from the next control the operator chose.
+      await page.keyboard.press('Tab');
+      const source = page.getByRole('link', { name: '打开原始来源', exact: true });
+      await expect(source).toBeFocused();
+      pendingRead.resolve();
+      const alt = page.getByLabel('封面英文替代文字', { exact: true });
+      await expect(alt).toBeEnabled();
+      await expect(source).toBeFocused();
+      await expect(page.getByLabel('封面图片文件', { exact: true })).toBeVisible();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await captureCoverReview(page, `mwg-workflow-css-zoom-${zoom}`, width);
+
+      await alt.fill('Keep the current input and keyboard location.');
+      await page.evaluate(() => history.back());
+      await expect.poll(() => dialogs.length).toBe(1);
+      await expect(alt).toHaveValue('Keep the current input and keyboard location.');
+      await expect(alt).toBeFocused();
+      await expect(cover).toHaveAttribute('aria-current', 'step');
+      await delivery.focus(); await page.keyboard.press('Enter');
+      await expect.poll(() => dialogs.length).toBe(2);
+      await expect(delivery).toBeFocused();
+      await expect(alt).toHaveValue('Keep the current input and keyboard location.');
+      await expect(cover).toHaveAttribute('aria-current', 'step');
+      await expect(coverHeading).not.toBeFocused();
+      assert.equal(fixture.writes.length, 0, 'pure and cancelled navigation never writes a draft or cover');
+
+      await alt.fill('');
+      await delivery.focus(); await page.keyboard.press('Space');
+      await expect(delivery).toHaveAttribute('aria-current', 'step');
+      await expect(deliveryHeading).toBeFocused();
+      await expect(page.getByRole('button', { name: '确认当前成品', exact: true })).toBeEnabled();
+      await expect(deliveryHeading).toBeFocused();
+      // A newer server version remounts the editor, but a committed step change still has a destination.
+      fixture.drafts[0].version++;
+      await review.focus(); await page.keyboard.press('Enter');
+      await expect(review).toHaveAttribute('aria-current', 'step');
+      await expect(reviewHeading).toBeFocused();
+      await expect(page.getByRole('heading', { name: '配封面', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: '手工交付', exact: true })).toHaveCount(0);
+      assert.equal(fixture.writes.length, 0);
+      assert.deepEqual(errors, []);
+      if (zoom === 2) {
+        await page.emulateMedia({ forcedColors: 'active' });
+        await captureCoverReview(page, 'mwg-workflow-forced-colors-css-zoom-2', width);
+      }
+    } finally { pendingNavigation.resolve(); pendingRead.resolve(); await browser?.close(); await web.stop(); }
+  });
+}

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { BookOpenText, Files, Rss, Layers3, ArrowUpRight } from 'lucide-react';
+import { BookOpenText, Files, Rss, Layers3, ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { Route } from './+types/workbench';
 import { adminGet } from '../../lib/admin.server';
 import { AdminPage, Badge, ButtonLink, Time } from '../../features/admin/ui';
@@ -12,7 +12,8 @@ type Overview = {
   generation: { ready: boolean; reason: string };
   stats: Record<string, number>;
 };
-const draftLabels: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '可交付' };
+const draftLabels: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '正文已通过' };
+const draftNextSteps: Record<string, string> = { draft: '完善正文', in_review: '核对正文与依据', approved: '核对成品与交付文件' };
 const pitchLabels: Record<string, string> = { unprepared: '未备料', preparing: '备料中', ready: '待确认', insufficient: '待补依据', failed: '备料未完成', confirmed: '方向已确认' };
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -30,27 +31,30 @@ export default function Workbench({ loaderData: data }: Route.ComponentProps) {
   const activeTasks = data.tasks.filter(task => ['queued', 'generating', 'running', 'unknown'].includes(task.state));
   return <AdminPage title="今天，从这篇继续" subtitle="把买家问题变成有依据、可交付的英文内容。" actions={<ButtonLink to="/admin/studio/pitch">新建命题</ButtonLink>}>
     <section className="workbench-resume" aria-labelledby="resume-title">
-      <div>
+      <div className="workbench-resume-document">
         <p className="workbench-resume-state">{resume ? <><Badge tone={resume.status === 'approved' ? 'ok' : 'warn'}>{draftLabels[resume.status] || resume.status}</Badge><span>版本 {resume.version}</span><Time at={resume.updated_at} /></> : '从一个具体问题开始'} </p>
         <h2 id="resume-title">{resume?.title_zh || '下一篇，帮买家做什么决定？'}</h2>
         {resume?.title_en && <p className="workbench-english-title" lang="en">{resume.title_en}</p>}
-        <p className="workbench-resume-hint">{resume ? resume.status === 'approved' ? '当前稿件已通过人工审核。核对配图和交付文件后，由运营手工上传。' : '接续已有稿件，先看要回答的问题、待确认原句和对应依据。' : '输入题目后，沿用原采编流程找材料、选范围和标题，再生成英文稿。'}</p>
+      </div>
+      <div className="workbench-resume-next">
+        <h3 id="resume-next-title">{resume ? resume.status === 'approved' ? '核对成品，准备交付' : '先核对正文与依据' : '先写一个买家问题'}</h3>
+        <p className="workbench-resume-hint">{resume ? resume.status === 'approved' ? '正文已通过人工审核。接着核对配图和交付文件，确认成品后下载，由运营手工上传。' : '从要回答的问题开始，逐项查看待确认原句与对应依据。已有内容会继续保留。' : '输入题目后，沿用原采编流程找材料、选范围和标题，再生成英文稿。'}</p>
         <ButtonLink tone="primary" to={resume ? `/admin/studio/drafts/${resume.id}${resume.status === 'approved' ? '?stage=delivery' : ''}` : '/admin/studio/pitch'}>{resume ? resume.status === 'approved' ? '检查交付文件' : '继续审稿' : '写下买家问题'}</ButtonLink>
       </div>
-      <aside className="workbench-resume-aside">
-        <h3>这篇怎么完成</h3>
-        <ol><li><strong>定方向</strong><span>选题、材料、事实与回答范围</span></li><li><strong>审正文</strong><span>中文理解，原文核对，英文交付</span></li><li><strong>配封面</strong><span>检查图片、说明和替代文字</span></li><li><strong>手工交付</strong><span>下载已批准版本，运营上传</span></li></ol>
-      </aside>
+      <details className="workbench-flow-guide">
+        <summary>四步采编流程<ChevronDown aria-hidden="true" /></summary>
+        <ol role="list"><li><strong>定方向</strong><span>选题、材料、事实与回答范围</span></li><li><strong>审正文</strong><span>中文理解，原文核对，英文交付</span></li><li><strong>配封面</strong><span>检查图片、说明和替代文字</span></li><li><strong>手工交付</strong><span>下载已批准版本，运营上传</span></li></ol>
+      </details>
     </section>
 
     <div className="workbench-worklists">
       <section aria-labelledby="recent-drafts-title">
         <header><h2 id="recent-drafts-title">最近的稿件</h2><Link to="/admin/studio?tab=drafts">全部稿件</Link></header>
-        {drafts.length ? <ul className="workbench-document-list">{drafts.slice(0, 6).map(draft => <li key={draft.id}><Link to={`/admin/studio/drafts/${draft.id}`}><Files aria-hidden="true" /><span><strong>{draft.title_zh || draft.title_en}</strong><span>版本 {draft.version}<Time at={draft.updated_at} /></span></span><Badge tone={draft.status === 'approved' ? 'ok' : 'muted'}>{draftLabels[draft.status] || draft.status}</Badge></Link></li>)}</ul> : <p className="workbench-empty">还没有稿件。新建命题，或从今日选稿选择已有材料。</p>}
+        {drafts.length ? <ul className="workbench-document-list" role="list">{drafts.slice(0, 6).map(draft => <li key={draft.id}><Link to={`/admin/studio/drafts/${draft.id}`}><Files aria-hidden="true" /><span><strong>{draft.title_zh || draft.title_en}</strong><span>版本 {draft.version}<Time at={draft.updated_at} /></span><span className="workbench-document-next">下一步：{draftNextSteps[draft.status] || '查看稿件状态'}</span></span><Badge tone={draft.status === 'approved' ? 'ok' : 'muted'}>{draftLabels[draft.status] || draft.status}</Badge></Link></li>)}</ul> : <p className="workbench-empty">还没有稿件。新建命题，或从今日选稿选择已有材料。</p>}
       </section>
       <section aria-labelledby="recent-pitches-title">
         <header><h2 id="recent-pitches-title">待接续的命题</h2><Link to="/admin/studio/pitch">全部命题</Link></header>
-        {data.pitches.length ? <ul className="workbench-document-list">{data.pitches.slice(0, 6).map(pitch => <li key={pitch.id}><Link to={`/admin/studio/pitch?id=${encodeURIComponent(pitch.id)}`}><BookOpenText aria-hidden="true" /><span><strong>{pitch.title}</strong><span>{pitchLabels[pitch.status] || pitch.status}</span></span><ArrowUpRight aria-hidden="true" /></Link></li>)}</ul> : <p className="workbench-empty">命题会保存在这里。材料、选中的标题和回答范围会随原任务一起保留。</p>}
+        {data.pitches.length ? <ul className="workbench-document-list" role="list">{data.pitches.slice(0, 6).map(pitch => <li key={pitch.id}><Link to={`/admin/studio/pitch?id=${encodeURIComponent(pitch.id)}`}><BookOpenText aria-hidden="true" /><span><strong>{pitch.title}</strong><span>{pitchLabels[pitch.status] || pitch.status}</span></span><ArrowUpRight aria-hidden="true" /></Link></li>)}</ul> : <p className="workbench-empty">命题会保存在这里。材料、选中的标题和回答范围会随原任务一起保留。</p>}
       </section>
     </div>
 

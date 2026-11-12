@@ -39,7 +39,7 @@ function reviewFixture() {
       ],
       summary: { findingCount: 2, issueCount: 2, requiredCount: 2, recommendedCount: 0 },
     },
-    confirmed_issues: [], history: [],
+    confirmed_issues: [] as { issueId: string; fingerprint: string }[], history: [],
     wordpress: { ready: false, message: '人审草稿通道未启用。', receipt: null },
   };
   const setRevision = (revision: FixtureRevision) => {
@@ -72,6 +72,14 @@ function reviewFixture() {
         draft.status = input.action === 'approve' ? 'approved' : 'in_review';
         draft.version++;
       }
+      if (url.pathname.endsWith('/review') && input.action === 'confirm') {
+        if (input.version !== draft.version) {
+          _res.statusCode = 409;
+          return { code: 'conflict', detail: '稿件版本已更新，请重新核对后暂存。' };
+        }
+        draft.confirmed_issues = input.confirmations as typeof draft.confirmed_issues;
+        draft.version++;
+      }
       if (url.pathname.endsWith('/review') && input.action === 'return') {
         draft.version++;
         draft.status = 'draft';
@@ -93,7 +101,7 @@ async function openEnglishDraft(page: Page) {
   const expand = page.getByRole('button', { name: '展开完整稿件', exact: true });
   if (await expand.isVisible()) await expand.click();
   await page.getByRole('tab', { name: '英文交付', exact: true }).click();
-  return page.getByLabel('English body · Markdown', { exact: true });
+  return page.getByLabel('英文正文（源稿）', { exact: true });
 }
 
 async function captureReviewState(page: Page, name: string, width: number) {
@@ -443,9 +451,12 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await bodyIssue.getByRole('button', { name: '查看原因与 1 处原文', exact: true }).click();
     await bodyIssue.getByRole('button', { name: '定位到稿件', exact: true }).click();
     await expect(page.getByRole('tab', { name: '英文交付', exact: true })).toHaveAttribute('aria-selected', 'true');
-    const body = page.getByLabel('English body · Markdown', { exact: true });
+    const body = page.getByLabel('英文正文（源稿）', { exact: true });
     await expect(body).toBeFocused();
+    await expect(body).toHaveAccessibleDescription('沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。');
+    await expect(body).toHaveAttribute('lang', 'en');
     assert.equal(await body.evaluate(el => { const text = el as HTMLTextAreaElement; return text.value.slice(text.selectionStart, text.selectionEnd); }), '5760');
+    await expect(page.getByText(/查看本次旧页改动/)).toHaveCount(0);
 
     const metaIssue = page.getByRole('listitem').filter({ has: page.getByText('搜索摘要数字需与原文一致', { exact: true }) });
     await metaIssue.getByRole('button', { name: '查看原因与 1 处原文', exact: true }).click();
@@ -459,6 +470,7 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(approve).toBeDisabled();
     await page.getByRole('checkbox', { name: '确认 搜索摘要数字需与原文一致', exact: true }).check();
     await expect(approve).toBeEnabled();
+    await expect(page.getByRole('button', { name: '暂存核对结果', exact: true })).toHaveAccessibleDescription('用于稍后继续核对。确认审核通过时会同时保存当前勾选，无需提前暂存。内容或来源变化后需要重新核对。');
     assert.equal(fixture.writes.length, 0, 'viewing evidence and checking issues do not approve, publish, or modify the draft');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 
@@ -483,6 +495,64 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
   } finally { await browser?.close(); await web.stop(); }
 });
 
+test('temporarily saved review checks survive a failed request and reload without approving the draft', async () => {
+  const fixture = reviewFixture();
+  Object.assign(fixture.draft, { review_sync: { status: 'stale', english_hash: 'test-current-hash' } });
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    const url = web.origin + '/admin/studio/drafts/review-fixture';
+    await visit(page, url);
+    const first = page.getByRole('checkbox', { name: '确认 正文尺寸数字需与原文一致', exact: true });
+    const second = page.getByRole('checkbox', { name: '确认 搜索摘要数字需与原文一致', exact: true });
+    const english = page.getByRole('checkbox', { name: '已按当前英文主稿核对', exact: true });
+    const saveChecks = page.getByRole('button', { name: '暂存核对结果', exact: true });
+    await first.check();
+    await english.check();
+    const endpoint = '**/api/admin/studio/drafts/review-fixture/review';
+    await page.route(endpoint, route => route.fulfill({ status: 503, json: { code: 'unavailable', detail: '本次暂存未完成，请稍后重试。' } }));
+    await saveChecks.click();
+    await expect(page.getByText('本次暂存未完成，请稍后重试。', { exact: true })).toBeVisible();
+    await expect(first).toBeChecked();
+    await expect(second).not.toBeChecked();
+    await expect(english).toBeChecked();
+    await expect(saveChecks).toBeEnabled();
+    assert.equal(fixture.writes.length, 0, 'a failed request does not create a persisted confirmation or a false approval');
+
+    await page.unroute(endpoint);
+    await saveChecks.click();
+    await expect.poll(() => fixture.draft.version).toBe(8);
+    await expect(first).toBeChecked();
+    await expect(second).not.toBeChecked();
+    await expect(english).not.toBeChecked();
+    assert.equal(fixture.draft.status, 'in_review');
+    assert.deepEqual(fixture.writes.map(write => write.body.action), ['confirm']);
+    assert.deepEqual(fixture.writes[0].body.confirmations, [{ issueId: 'body-number', fingerprint: 'body-number-v7-source3' }]);
+    assert.equal(fixture.writes[0].body.english_reviewed, undefined, 'temporary check saving never becomes the final English acknowledgement');
+
+    await visit(page, url);
+    await expect(first).toBeChecked();
+    await expect(second).not.toBeChecked();
+    await captureReviewState(page, 'temporarily-saved-checks', 390);
+    await second.check();
+    const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
+    await expect(approve).toBeDisabled();
+    await english.check();
+    await expect(approve).toBeEnabled();
+    await approve.click();
+    await expect.poll(() => fixture.draft.status).toBe('approved');
+    assert.deepEqual(fixture.writes.map(write => write.body.action), ['confirm', 'approve']);
+    assert.equal(fixture.writes[1].body.version, 8);
+    assert.equal(fixture.writes[1].body.english_reviewed, true);
+    assert.equal((fixture.writes[1].body.confirmations as unknown[]).length, 2);
+    assert.equal(fixture.writes.some(write => /\/(wordpress|publish|generate)$/.test(write.path)), false);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser?.close(); await web.stop(); }
+});
+
 for (const width of [1440, 390]) test('unsaved draft changes disable issue confirmation and human approval at ' + width, async () => {
   const fixture = reviewFixture();
   const web = await startWebServer(fixture.api);
@@ -501,7 +571,7 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
     await page.getByLabel('中文正文', { exact: true }).fill('修改后的内容需要重新保存和核对。');
     await expect(first).toBeDisabled(); await expect(second).toBeDisabled();
     await expect(approve).toBeDisabled();
-    await expect(page.getByRole('button', { name: '保存逐项确认', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '暂存核对结果', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
     await expect(page.getByText('先保存修改，系统会按新版本重新核对。', { exact: true })).toBeVisible();
     assert.equal(fixture.writes.length, 0, 'editing local text never manufactures a review or starts publication');
@@ -518,7 +588,7 @@ test('a BLOCK draft can save progress and adopt an exact English suggestion with
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width:1440,height:900}});
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
-    await expect(page.getByRole('button',{name:'保存逐项确认',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'暂存核对结果',exact:true})).toBeEnabled();
     await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeDisabled();
     await page.getByRole('button',{name:'采纳修改：删去这句待核实表述',exact:true}).click();
     await expect.poll(()=>fixture.writes.length).toBe(1);
@@ -530,12 +600,24 @@ test('a BLOCK draft can save progress and adopt an exact English suggestion with
 for (const width of [1440, 390]) test('a stale Chinese review explains the English acknowledgement and a bound upgrade has no publish button at '+width,async()=>{
   const fixture=reviewFixture();
   Object.assign(fixture.draft,{review_sync:{status:'stale',english_hash:'test-current-hash'},upgrade_context:{target_existing_url:'https://example.test/original-6098',target_post_id:6098,baseline_sha256:'original-hash',changes:[{operation:'revise',paragraph:'p3',reason:'像素取整'}],notice:'独立影子预览，不修改原页面。'}});
+  fixture.draft.document.body_en = '<p id="kept-source">A whole-cabinet layout is 5760 mm wide.</p>\n<p>Confirm cabinet alignment before installation.</p>';
+  const savedBody = fixture.draft.document.body_en;
   const web=await startWebServer(fixture.api);let browser;
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width,height:900}});
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
     await page.getByRole('button',{name:'展开完整稿件',exact:true}).click();
     await expect(page.getByRole('tab',{name:'英文交付',exact:true})).toHaveAttribute('aria-selected','true');
+    const sourceDraft = page.getByLabel('英文正文（源稿）', { exact: true });
+    await expect(sourceDraft).toHaveValue(savedBody);
+    await expect(sourceDraft).toHaveAccessibleDescription('沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。');
+    await page.getByText('查看本次旧页改动（1 项）', { exact: true }).click();
+    await expect(page.getByText('调整原段，原文位置 p3', { exact: true })).toBeVisible();
+    await expect(page.getByText('像素取整', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: '对照目标原页', exact: true })).toHaveAttribute('href', 'https://example.test/original-6098');
+    await expect(page.getByText('清单说明计划位置与理由；正文中的可改范围尚未高亮。', { exact: true })).toBeVisible();
+    await captureReviewState(page, 'planned-edit-help', width);
+    assert.equal(fixture.writes.length, 0, 'opening saved plan context never changes or formats the manuscript');
     await page.getByRole('checkbox',{name:'确认 正文尺寸数字需与原文一致',exact:true}).check();
     await page.getByRole('checkbox',{name:'确认 搜索摘要数字需与原文一致',exact:true}).check();
     const approve=page.getByRole('button',{name:'确认审核通过',exact:true});await expect(approve).toBeDisabled();
@@ -558,6 +640,7 @@ for (const width of [1440, 390]) test('a stale Chinese review explains the Engli
     await approve.click();await expect.poll(()=>fixture.writes.length).toBe(1);
     assert.equal(fixture.writes[0].body.english_reviewed,true);
     assert.equal(fixture.writes[0].body.version,7);
+    assert.equal(fixture.draft.document.body_en, savedBody);
     assert.equal(fixture.writes.some(w=>/\/(publish|wordpress)$/.test(w.path)),false);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   }finally{await browser?.close();await web.stop();}

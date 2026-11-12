@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Ref } from 'react';
 import { Link, useBeforeUnload, useBlocker, useRevalidator, useSearchParams } from 'react-router';
 import { ExternalLink, FileCheck2, FileText, History, Link2, LocateFixed, MessageSquareText, Save, ShieldAlert } from 'lucide-react';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
@@ -63,7 +63,18 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 }
 const label: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '审核通过' };
 export default function DraftPage({ loaderData: row }: Route.ComponentProps) {
-  return <Editor key={row.id + ':' + row.version} row={row} />;
+  const [search] = useSearchParams();
+  const requestedStage = search.get('stage');
+  const stage: DraftStage = requestedStage === 'cover' || requestedStage === 'delivery' ? requestedStage : 'review';
+  const stageHeading = useRef<HTMLHeadingElement>(null);
+  const previous = useRef({ id: row.id, stage });
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = { id: row.id, stage };
+    // Only a committed step change moves focus. Saving, loading and cancelled exits do not.
+    if (before.id === row.id && before.stage !== stage) stageHeading.current?.focus();
+  }, [row.id, stage]);
+  return <Editor key={row.id + ':' + row.version} row={row} stage={stage} stageHeadingRef={stageHeading} />;
 }
 
 function editableDocument(document: Document) {
@@ -189,12 +200,10 @@ function EvidenceDesk({ document, snapshots, onOpenSources }: { document: Docume
   </details>;
 }
 
-function Editor({ row }: { row: Detail }) {
+function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStage; stageHeadingRef: Ref<HTMLHeadingElement> }) {
   const inheritedDelivery = useDelivery();
   const delivery = row.delivery ?? inheritedDelivery;
-  const [search, setSearch] = useSearchParams();
-  const requestedStage = search.get('stage');
-  const stage: DraftStage = requestedStage === 'cover' || requestedStage === 'delivery' ? requestedStage : 'review';
+  const [, setSearch] = useSearchParams();
   const setStage = (value: DraftStage) => {
     if (value === stage) return;
     setSearch(previous => { const next = new URLSearchParams(previous); next.set('stage', value); return next; }, { replace: true });
@@ -338,7 +347,7 @@ function Editor({ row }: { row: Detail }) {
   </ul>;
   const change = (key: keyof Document, value: string) => setD(x => ({ ...x, [key]: key === 'questions_zh' ? value.split('\n').filter(Boolean) : value }));
   const field = (key: keyof Document, title: string, large = false) => <div className="mb-5"><Field label={title}>
-    {large ? <Textarea data-field={key} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} className={'min-h-[440px] text-[15px] leading-8' + (key === 'body_en' ? ' draft-english-body' : '')} /> : <Input data-field={key} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} />}
+    {large ? <Textarea data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} aria-describedby={key === 'body_en' ? 'draft-body-edit-help' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} className={'min-h-[440px] text-[15px] leading-8' + (key === 'body_en' ? ' draft-english-body' : '')} /> : <Input data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} />}
   </Field></div>;
   const history = <div className="divide-y divide-line">
     {row.history.map((h, i) => <div className="py-3 text-xs leading-6" key={i}>
@@ -349,7 +358,7 @@ function Editor({ row }: { row: Detail }) {
   </div>;
 
   return <AdminPage title={row.document.title_zh} subtitle={<span><Badge tone={row.status === 'approved' ? 'ok' : 'warn'}>{label[row.status]}</Badge><span className="ml-2">版本 {row.version} · <Time at={row.updated_at} /></span></span>} actions={<Link to="/admin/studio?tab=drafts" className="text-sm font-medium text-accent">返回稿件</Link>}>
-    <ArticleWorkflow current={stage} draftId={row.id} directionTo={row.pitch_id ? '/admin/studio/pitch?id=' + encodeURIComponent(row.pitch_id) : '/admin/studio/pitch'} onStage={setStage} />
+    <ArticleWorkflow current={stage} draftId={row.id} directionTo={row.pitch_id ? '/admin/studio/pitch?id=' + encodeURIComponent(row.pitch_id) : '/admin/studio/pitch'} onStage={setStage} stageHeadingRef={stageHeadingRef} />
     <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-xs text-ink-3">
       <span className="inline-flex items-center gap-2"><FileText className="size-4 text-accent" aria-hidden="true" />中文核对，英文交付</span>
       <span>原信源日期：{d.source.published_at ?? '尚待核实'}</span>
@@ -417,7 +426,17 @@ function Editor({ row }: { row: Detail }) {
             <TabsContent value="en">
               <p className="mb-4 text-xs leading-6 text-ink-3">公开交付为英文，位置为 Chipshow Blog；中文仅内部审稿。具体网站路径待 CMS 映射。限定语、原日期和出处会进入英文导出。</p>
               {field('title_en', 'English title')}
-              {field('body_en', 'English body · Markdown', true)}
+              {row.upgrade_context && <details className="mb-4 rounded-control border border-line p-3 text-sm leading-6">
+                <summary className="cursor-pointer font-medium text-accent">查看本次旧页改动（{row.upgrade_context.changes.length} 项）</summary>
+                <a href={row.upgrade_context.target_existing_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-accent">对照目标原页</a>
+                {row.upgrade_context.changes.length ? <ul className="mt-3 space-y-2">{row.upgrade_context.changes.map((change, index) => <li key={index} className="break-words">
+                  <p>{({ revise: '调整原段', insert_after: '在原段后新增' } as Record<string, string>)[change.operation] ?? '计划改动'}，原文位置 {change.paragraph}</p>
+                  <p className="text-ink-3">{change.reason}</p>
+                </li>)}</ul> : <p className="mt-2 text-ink-3">当前没有提供分段改动清单，请先对照原文核对本次修改。</p>}
+                <p className="mt-3 text-xs text-ink-3">清单说明计划位置与理由；正文中的可改范围尚未高亮。</p>
+              </details>}
+              <p id="draft-body-edit-help" className="mb-3 text-xs leading-6 text-ink-3">沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。</p>
+              {field('body_en', '英文正文（源稿）', true)}
               <Accordion type="single" collapsible value={metadataOpen} onValueChange={setMetadataOpen}>
                 <AccordionItem value="metadata">
                   <AccordionTrigger>搜索摘要与消息状态</AccordionTrigger>
@@ -488,8 +507,8 @@ function Editor({ row }: { row: Detail }) {
           </Accordion>}
           {row.issues.items.length === 0 && <div className={'flex items-start gap-2 rounded-control p-3 text-sm leading-6 ' + (row.gate.blocked ? 'bg-hot-soft text-hot' : 'bg-bg-sunk text-ink-3')}>{row.gate.blocked ? <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <FileCheck2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}<p>{row.gate.blocked ? '当前未提供可勾选的放行项。请查看稿件与原文，处理否决项后再审核。' : '当前未列出可勾选的问题，请继续核对事实与原文。没有提示不代表事实已获批准。'}</p></div>}
           {dirty && <p className="mt-3 text-xs leading-6 text-amber-ink">先保存修改，系统会按新版本重新核对。</p>}
-          <Button className="mt-4 w-full" disabled={busy || dirty} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'confirm', confirmations, note }, { success: '逐项确认已保存，同版本继续审稿时可复用。' })}>保存逐项确认</Button>
-          <p className="mt-2 text-[11px] leading-5 text-ink-4">确认绑定当前稿件、原文版本与条件；内容修改后重新核对。</p>
+          <Button className="mt-4 w-full" aria-describedby="draft-confirmation-help" disabled={busy || dirty} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'confirm', confirmations, note }, { success: '核对结果已暂存，可稍后继续审稿。' })}>暂存核对结果</Button>
+          <p id="draft-confirmation-help" className="mt-2 text-xs leading-6 text-ink-3">用于稍后继续核对。确认审核通过时会同时保存当前勾选，无需提前暂存。内容或来源变化后需要重新核对。</p>
         </Card>
 
         <Card title="当前动作">
