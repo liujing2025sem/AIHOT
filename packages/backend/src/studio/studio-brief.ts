@@ -1,7 +1,7 @@
 // Explicit, review-only composition. No WordPress credentials, publish mode or outbound CMS action.
 import { z } from 'zod';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
-import { evaluateNewsEligibility, newsVersions } from '../../../../industry/news-eligibility.ts';
+import { newsVersions } from '../../../../industry/news-eligibility.ts';
 import { editorialVersionSourceIds } from '../../../../site/editorial-sources.ts';
 import { packetSchema, sha256, validateResponse, writingHandoffFiles, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
 import { sql, type Db } from '../db.ts';
@@ -10,6 +10,7 @@ import { enqueue, QUEUES, type JobData } from '../jobs/queue.ts';
 import { chatJson } from '../providers/llm.ts';
 import { createStudioTask, studioTask, receiveStudioTask, studioGenerationStatus } from './studio.ts';
 import { briefGenerationSchema, buildBriefResponse, type BriefSelection } from './studio-brief-content.ts';
+import { assessBriefMaterials, type BriefSelectionInspection } from './studio-brief-inspection.ts';
 
 const invalid = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 const inputSchema = z.object({ article_ids: z.array(z.string().min(1)).min(5).max(12) }).strict();
@@ -23,13 +24,6 @@ export type BriefMaterial = {
   baseline_body: string | null; version_observed_at: Date | string | null; reference_only: boolean; already_published: boolean;
 };
 const iso = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null;
-const normalText = (value: string) => value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
-function canonicalUrl(value: string) {
-  const url = new URL(value); url.hash = '';
-  for (const key of [...url.searchParams.keys()]) if (/^(utm_.+|fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
-  url.searchParams.sort(); url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-  return url.href;
-}
 type PublishedSource = { binding: Packet['articles'][number]['binding']; title: string; body_text: string | null };
 /** A new observed software version can reuse a URL; body-only edits to a reported version cannot. */
 export function briefSourceWasPublished(material: Pick<BriefMaterial, 'id' | 'title' | 'body_text' | 'source_id'>, sources: PublishedSource[]) {
@@ -76,33 +70,20 @@ export async function loadBriefMaterials(ids: string[], db: Db = sql): Promise<B
   });
 }
 
-/** Pure preflight, shared by API and worker; labels are server facts, not client overrides. */
+/** Inspect incomplete selections without creating work or consulting the writing model. */
+export async function inspectBriefSelection(ids: string[], db: Db = sql, now = new Date().toISOString()): Promise<BriefSelectionInspection> {
+  const checked = z.array(z.string().min(1)).min(1).max(12).parse(ids);
+  const { events: _events, first_error: _error, ...inspection } = assessBriefMaterials(await loadBriefMaterials(checked, db), checked, now);
+  return inspection;
+}
+
+/** Strict gate, shared by API and worker; the preview never substitutes this check. */
 export function selectBriefEvents(materials: BriefMaterial[], ids: string[], now = new Date().toISOString()): BriefSelection['events'] {
   if (ids.length < 5 || ids.length > 12 || new Set(ids).size !== ids.length) return invalid('请勾选 5–12 条不同材料；重复条目不能计数。');
   if (materials.length !== ids.length || ids.some(id => !materials.some(a => a.id === id))) return invalid('部分所选材料不存在，请刷新选稿列表。');
-  const identities = new Map<string, string>(), events: BriefSelection['events'] = [];
-  const reasons: Record<string, string> = { reference_only: '参考资料不能计作新闻', already_published: '本事件已发过', first_import_baseline: '首次导入的版本基线不算新动态', missing_date: '缺少原文日期或新版本基线证明', invalid_date: '原文日期无效', future_date: '原文日期在未来', expired: '已超出新闻双窗口' };
-  for (const material of materials) {
-    if (material.body_status !== 'ok' || !material.body_text?.trim()) return invalid(`“${material.title.slice(0, 45)}”尚无完整正文，请补齐或移除。`);
-    const versionSource = editorialVersionSourceIds.includes(material.source_id);
-    const eligible = evaluateNewsEligibility({ title: material.title, bodyText: material.body_text, category: material.category, now,
-      publishedAt: material.published_at, referenceOnly: material.reference_only, alreadyPublished: material.already_published,
-      backfillReason: material.backfill_reason, versionSource, discoveredAt: material.discovered_at, sourceBaselineAt: material.source_baseline_at,
-      ...(material.baseline_title && material.version_observed_at ? { versionEvidence: { baselineTitle: material.baseline_title, baselineBodyText: material.baseline_body, observedAt: material.version_observed_at } } : {}),
-    });
-    if (!eligible.eligible) return invalid(`“${material.title.slice(0, 45)}”：${reasons[eligible.reason] ?? '暂不能进入本期短讯'}（${eligible.windowDays} 天）。`);
-    const keys = [material.event_id && `event:${material.event_id}`, `url:${canonicalUrl(material.url)}`, `title:${normalText(material.title)}`, `body:${sha256(normalText(material.body_text))}`].filter((v): v is string => !!v);
-    for (const key of keys) {
-      if (identities.has(key)) return invalid(`“${material.title.slice(0, 45)}”与已选材料属于同一事件或重复原文，请只保留主出处。`);
-      identities.set(key, material.id);
-    }
-    events.push({ article_id: material.id, event_id: material.event_id,
-      section: CATEGORIES.some(c => c.key === material.category) ? material.category as BriefSelection['events'][number]['section'] : 'industry',
-      publication_time: material.publication_time, source_utc_offset: material.source_utc_offset,
-      date_basis: eligible.dateBasis!, observed_version_at: eligible.dateBasis === 'observed_version' ? eligible.effectiveAt : null,
-    });
-  }
-  return events;
+  const assessment = assessBriefMaterials(materials, ids, now);
+  if (!assessment.can_compose) return invalid(assessment.first_error ?? '独立有效事件不足五个，请补选近期新闻。');
+  return assessment.events;
 }
 
 async function latest(id: string, db: Db = sql): Promise<BriefState | null> {

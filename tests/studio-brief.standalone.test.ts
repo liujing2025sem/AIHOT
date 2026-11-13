@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { packetSchema, sha256, validateResponse, responseFormat, instructions, type Packet, type Response } from '../scripts/editorial-pilot-lib.ts';
 import { briefGenerationSchema, buildBriefResponse, briefDraftSegments, evaluateBriefDraft } from '../packages/backend/src/studio/studio-brief-content.ts';
 import { briefSourceWasPublished, composeStudioBrief, selectBriefEvents, type BriefMaterial } from '../packages/backend/src/studio/studio-brief.ts';
+import { assessBriefMaterials } from '../packages/backend/src/studio/studio-brief-inspection.ts';
 import { evaluateDraft, type GateReport } from '../packages/backend/src/studio/editorial-gate.ts';
 import { config } from '../packages/backend/src/config.ts';
 
@@ -69,6 +70,49 @@ test('duplicate event/source/URL selections cannot make a five-event quota', () 
   assert.throws(() => buildBriefResponse(wrongGroup, generated, { agent_id: 'test', model: null, input_files: ['fixture'] }, 'run'), /重复计入/);
   const fakeCount = structuredClone(generated); fakeCount.items[1].event_key = fakeCount.items[0].event_key;
   assert.throws(() => buildBriefResponse(packet, fakeCount, { agent_id: 'test', model: null, input_files: ['fixture'] }, 'run'), /同一事件/);
+});
+
+test('selection inspection counts eligible events before five materials and explains correctable problems', () => {
+  const { materials } = fixture(6);
+  const before = structuredClone(materials), ids = materials.map(a => a.id);
+  const partial = assessBriefMaterials(materials.slice(0, 3), ids.slice(0, 3), at);
+  assert.deepEqual(partial.counts, { selected: 3, independent_events: 3, eligible_independent_events: 3, additional_events_needed: 2 });
+  assert.equal(partial.can_compose, false);
+  const valid = assessBriefMaterials(materials.slice(0, 5), ids.slice(0, 5), at);
+  assert.equal(valid.can_compose, true); assert.equal(valid.events.length, 5);
+  const changed = structuredClone(materials);
+  changed[1].url = changed[0].url + '?utm_source=syndication';
+  changed[5].body_status = 'partial'; changed[5].published_at = null;
+  const report = assessBriefMaterials(changed, ids, at);
+  assert.equal(report.counts.independent_events, 5);
+  assert.equal(report.counts.eligible_independent_events, 4);
+  assert.equal(report.counts.additional_events_needed, 1);
+  assert.equal(report.can_compose, false);
+  assert.ok(report.duplicates[0]?.matched_by.includes('canonical_url'));
+  assert.equal(report.materials[1].duplicate_of, ids[0]);
+  assert.match(report.materials[1].issues.at(-1)!.action_zh, /保留|移除/);
+  assert.deepEqual(report.materials[5].issues.map(issue => issue.code), ['missing_body', 'missing_date']);
+  assert.match(report.materials[5].issues[1].action_zh, /原文/);
+  assert.deepEqual(materials, before, 'the report never mutates original material records');
+});
+
+test('inspection merges transitive identity clues and preserves observed-version date evidence', () => {
+  const { materials } = fixture(5), ids = materials.map(a => a.id);
+  materials[1].event_id = materials[0].event_id;
+  materials[2].title = materials[1].title;
+  materials[3].body_text = materials[2].body_text;
+  const report = assessBriefMaterials(materials, ids, at);
+  assert.equal(report.counts.independent_events, 2);
+  assert.deepEqual(report.duplicates[0]?.article_ids, ids.slice(0, 4));
+  assert.deepEqual(new Set(report.duplicates[0]?.matched_by), new Set(['event_id', 'title', 'body']));
+  assert.equal(report.can_compose, false);
+  const newer = structuredClone(fixture(5).materials);
+  newer[0] = { ...newer[0], title: 'LEDVISION 9.8 software update', source_id: 'web-colorlight-ledvision',
+    published_at: null, source_baseline_at: '2026-10-01', discovered_at: '2026-11-03' };
+  const version = assessBriefMaterials(newer, newer.map(a => a.id), at);
+  assert.equal(version.materials[0].code, 'eligible');
+  assert.equal(version.materials[0].date_basis, 'observed_version');
+  assert.equal(version.can_compose, true);
 });
 
 test('headlines anchor to their own event; links use the registered owned-page allowlist', () => {

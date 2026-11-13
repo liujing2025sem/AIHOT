@@ -295,10 +295,10 @@ test('pitch desk keeps raw text private and generates only after explicit outlin
   }finally{await browser?.close();await web.stop();}
 });
 
-function operatorDeskFixture() {
+function operatorDeskFixture(options: { duplicate?: boolean } = {}) {
   const writes: { method: string | undefined; path: string; body: unknown }[] = [];
   const generation = { ready: true, reason: '模拟写作接口已就绪。' };
-  const rows = Array.from({ length: 6 }, (_, index) => ({
+  const rows = Array.from({ length: options.duplicate ? 7 : 6 }, (_, index) => ({
     id: `material-${index + 1}`, title: index === 5 ? '缺正文的公告' : `LED announcement ${index + 1}`,
     url: `https://maker.example.test/announcement-${index + 1}`, source_name: 'Official fixture',
     published_at: '2026-11-08T08:00:00Z', publication_time: '2026-11-08', discovered_at: '2026-11-08T09:00:00Z',
@@ -319,6 +319,14 @@ function operatorDeskFixture() {
     if (url.pathname === '/api/admin/studio/review-metrics') return { tier: 30, backtestConfirmed: false, totalDrafts: 1, observedDrafts: 0, unobservedDrafts: 1, interventionRate: null, zeroMissStreak: 0, eligible20: false, eligible10: false, note: '模拟审稿情况', trend: [] };
     if (url.pathname === '/api/admin/studio/publishing/settings') return { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
     if (url.pathname === '/api/admin/studio/publishing/reviews') return { rows: [], weekly: { reasons: [] } };
+    if (url.pathname === '/api/admin/studio/briefs/inspection' && req.method === 'GET') {
+      const ids = url.searchParams.getAll('article_ids'), duplicate = !!options.duplicate && ids.includes('material-1') && ids.includes('material-2');
+      const valid = ids.filter(id => rows.find(item => item.id === id)?.body_status === 'ok' && (!duplicate || id !== 'material-2')).length;
+      return { article_ids: ids, counts: { selected: ids.length, independent_events: ids.length - Number(duplicate), eligible_independent_events: valid, additional_events_needed: Math.max(0, 5 - valid) },
+        can_compose: ids.length >= 5 && valid === ids.length, duplicates: duplicate ? [{ article_ids: ['material-1', 'material-2'], matched_by: ['event_id'] }] : [],
+        materials: ids.map(id => {const row = rows.find(item => item.id === id)!;const same = duplicate && id === 'material-2';const lacking = row.body_status !== 'ok';return { article_id: id, title: row.title, source_name: row.source_name, code: same ? 'duplicate' : lacking ? 'missing_body' : 'eligible', duplicate_of: same ? 'material-1' : null,
+          window_days: 14, date_basis: 'published', issues: same ? [{ code: 'duplicate', message_zh: '与「LED announcement 1」初步识别为同一事件。', action_zh: '核对后移除重复材料。' }] : lacking ? [{ code: 'missing_body', message_zh: '尚无完整正文。', action_zh: '补齐正文或移除。' }] : [] }; }) };
+    }
     if (url.pathname === '/api/admin/studio/briefs' && req.method === 'POST') {
       briefCreated = true;
       return { task_id: briefTaskId, state: 'queued' };
@@ -326,7 +334,7 @@ function operatorDeskFixture() {
     if (url.pathname === '/api/admin/studio/briefs/' + briefTaskId && req.method === 'GET' && briefCreated) return {
       state: 'in_review', message: '模拟结果：1 篇短讯待审稿，尚未发布。', drafts: [{ id: briefDraft.id, status: briefDraft.status }],
     };
-    if (url.pathname === '/api/admin/studio') return { rows, total: rows.length, page: 1, stats: { materials: rows.length, body_ready: 5, undated: 0, review: briefCreated ? 2 : 1, approved: 0 }, generation, sources: [],
+    if (url.pathname === '/api/admin/studio') return { rows, total: rows.length, page: 1, stats: { materials: rows.length, body_ready: rows.filter(item => item.body_status === 'ok').length, undated: 0, review: briefCreated ? 2 : 1, approved: 0 }, generation, sources: [],
       tasks: briefCreated ? [{ id: briefTaskId, state: 'received', materials: 5, created_at: '2026-11-08T10:04:00Z', drafts: 1, articles: rows.slice(0, 5).map(({ id, title }) => ({ id, title })), decisions: null, brief: { schema: 'aihot-brief-selection/1' } }] : [],
       drafts: briefCreated ? [draft, briefDraft] : [draft],
     };
@@ -397,7 +405,7 @@ for (const width of [1440, 390]) test(`selected material actions keep single-dra
     await expect(selected).toBeVisible(); await expect(selected).toContainText(/已选\s*4\s*条/);
     await page.getByRole('checkbox', { name: '选择 LED announcement 5', exact: true }).check();
     await expect(selected).toContainText(/已选\s*5\s*条/); await expect(generate).toHaveCount(0); await expect(compose).toBeEnabled();
-    await expect(selected).toContainText(/5 个独立事件，合成 1 篇短讯待审稿/);
+    await expect(selected).toContainText(/初步识别 5 个事件，其中 5 个可用于短讯/);
     await page.getByRole('checkbox', { name: '选择 缺正文的公告', exact: true }).check();
     await expect(selected).toContainText(/已选\s*6\s*条/); await expect(compose).toBeDisabled();
     await expect(selected).toContainText(/缺.*正文|正文.*缺|先补齐/);
@@ -431,6 +439,34 @@ for (const width of [1440, 390]) test(`selected material actions keep single-dra
     await expect(page.getByRole('heading', { name: fixture.draft.title_zh, exact: true })).toHaveCount(1);
     assert.equal(fixture.writes.length, 1, 'opening the draft list does not repeat composition');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser?.close(); await web.stop(); }
+});
+
+test('operator sees duplicate-event advice and can repair selection without creating any writing task', async () => {
+  const fixture = operatorDeskFixture({ duplicate: true });
+  const web = await startWebServer(fixture.api); let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    await visit(page, web.origin + '/admin/studio');
+    for (let number = 1; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
+    const bar = page.getByRole('region', { name: '已选素材操作' });
+    await expect(bar).toContainText('初步识别 4 个事件，其中 4 个可用于短讯');
+    await expect(bar.getByRole('button', { name: '合成一期短讯' })).toBeDisabled();
+    await bar.getByRole('button', { name: '查看并处理问题' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('同一事件线索');
+    await expect(dialog).toContainText('已有事件归组');
+    await dialog.getByRole('button', { name: '移除 LED announcement 2' }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('checkbox', { name: '选择 LED announcement 7' }).check();
+    await expect(bar).toContainText('初步识别 5 个事件，其中 5 个可用于短讯');
+    await expect(bar.getByRole('button', { name: '合成一期短讯' })).toBeEnabled();
+    await page.getByRole('button', { name: '筛选', exact: true }).click();
+    await expect(bar).toContainText('初步识别 5 个事件，其中 5 个可用于短讯');
+    assert.deepEqual(fixture.writes, [], 'preflight, repairs and filtering never create or publish content');
     assert.deepEqual(errors, []);
   } finally { await browser?.close(); await web.stop(); }
 });
