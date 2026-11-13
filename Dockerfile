@@ -23,7 +23,10 @@ RUN npm run build -w @aihot/web && npm prune --omit=dev --no-audit --no-fund
 
 FROM base
 ENV NODE_ENV=production
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=build --chown=node:node /app /app
+RUN node node_modules/playwright-core/cli.js install --with-deps chromium --only-shell \
+ && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 3000

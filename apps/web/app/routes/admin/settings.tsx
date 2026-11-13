@@ -7,6 +7,7 @@ import { useAdminAction } from "../../features/admin/action";
 import { bj, num } from "../../features/admin/format";
 import { AdminPage, Badge, Button, Card, DataTable, Input, ReasonDialog } from "../../features/admin/ui";
 import { toast } from "../../features/admin/toast";
+import { PublishingSettingsCard } from "../../features/admin/publishing";
 
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -103,6 +104,7 @@ export default function SettingsAdmin({ loaderData: s }: Route.ComponentProps) {
   return (
     <AdminPage title="设置" subtitle="不改代码即可替换的运营设置。每次修改都写入审计记录。">
       <div className="grid gap-5 xl:grid-cols-2">
+        <PublishingSettingsCard />
         <Card title="关于页二维码">
           <div className="space-y-5">
             <QrSlot slot="wechatQr" label="微信公众号二维码" src={s.contact.wechatQr} />

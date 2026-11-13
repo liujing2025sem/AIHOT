@@ -14,6 +14,11 @@ let boss: PgBoss | null = null;
 let starting: Promise<PgBoss> | null = null;
 
 export interface JobData {
+  "studio.brief": { taskId: string; actor: string };
+  "studio.revision": { draftId: string; version: number; actor: string; recoverOnly?: boolean };
+  "studio.prep": { cardId:string; version:number; actor:string; phase:'prepare'|'draft';fragmentIndex?:number;attemptTag?:string };
+  "studio.publish": { id: string; actor: string; article_ids: string[]; kind: 'brief' | 'article' | 'guide';
+    section: typeof import('@aihot/industry/taxonomy').CATEGORIES[number]['key'] };
   "content.analyze": { articleId: string; attemptTag?: string };
   "content.extract-body": { articleId: string };
   "events.group": { articleId: string; signalOnly?: boolean };
@@ -28,6 +33,10 @@ export interface JobData {
 export type QueueName = keyof JobData;
 
 export const QUEUES = {
+  studioBrief: "studio.brief",
+  studioRevision: "studio.revision",
+  studioPrep: "studio.prep",
+  studioPublish: "studio.publish",
   analyze: "content.analyze",
   extractBody: "content.extract-body",
   group: "events.group",
@@ -44,6 +53,10 @@ export type QueueOptions = NonNullable<Parameters<PgBoss["createQueue"]>[1]>;
 
 /** Queue definitions in one place; created on first use by any process. */
 const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
+  [QUEUES.studioBrief]: { policy: "exclusive", retryLimit: 0, expireInSeconds: 900 },
+  [QUEUES.studioRevision]: { policy: "short", retryLimit: 0, expireInSeconds: 300 },
+  [QUEUES.studioPrep]: { policy: "short", retryLimit: 0, expireInSeconds: 600 },
+  [QUEUES.studioPublish]: { policy: "exclusive", retryLimit: 0, expireInSeconds: 900 },
   [QUEUES.analyze]: { policy: "short", retryLimit: 4, retryDelay: 30, retryBackoff: true, expireInSeconds: 600 },
   [QUEUES.extractBody]: { policy: "short", retryLimit: 2, retryDelay: 120, expireInSeconds: 300 },
   [QUEUES.group]: { policy: "short", retryLimit: 4, retryDelay: 20, retryBackoff: true, expireInSeconds: 600 },

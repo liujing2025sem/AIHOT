@@ -70,11 +70,23 @@ jobs:
       - name: Browser test engines
         run: npx playwright install --with-deps chromium webkit
       - name: Web tests
+        env:
+          AIHOT_UI_REVIEW_DIR: test-artifacts/workbench
         run: node --test apps/web/tests/*.test.ts
+      - name: Workbench visual evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: workbench-visual-evidence
+          path: test-artifacts/workbench
+          if-no-files-found: ignore
+          retention-days: 7
 
       # Each test file runs on its own copy of aihot_ci (tests/databases.ts), which the run migrates and
       # leaves empty; the smoke check then reads that empty database.
       - name: Backend tests
+        # Keep the independent backend evidence even when a browser assertion fails.
+        if: success() || failure()
         run: npm test
       - name: Smoke check of the built site
         # The site itself runs with collection and model calls off (the tests above use local stubs).
@@ -114,6 +126,7 @@ jobs:
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:3000/api/health 2>/dev/null && break; sleep 2; done
           docker compose ps
           docker compose run --rm --no-deps --entrypoint node setup scripts/smoke.ts --base http://web:3000
+          docker compose run --rm --no-deps --entrypoint node setup --input-type=module -e "import { buildFigure } from './packages/backend/src/studio/studio-figures.ts'; const f=await buildFigure({template:'layer-stack',params:{columns:['MiP']},alt_en:'',caption_en:''},[]); if(!f.usable||!f.png.length)throw Error(f.notes.join(';')); console.log('Production image render:',f.score.total,'points,',f.png.length,'bytes');"
           docker compose exec -T db psql -U aihot -d aihot -Atc "select count(*) from sources" | grep -qx "$(node -p "require('./industry/sources.json').sources.length")"
       - name: Logs
         if: failure()

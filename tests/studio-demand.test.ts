@@ -2,8 +2,8 @@ import { tag } from './setup.ts';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { closeDb, sql } from '@aihot/backend/db';
-import { aggregateWritingProfile, DemandCsvError, demandProfiles, importDemandCsv, listStudioImports, withdrawStudioImport } from '@aihot/backend/admin/studio-demand';
-import { demandCsvFields } from '@aihot/backend/admin/studio-demand-csv';
+import { aggregateWritingProfile, DemandCsvError, demandProfiles, importDemandCsv, listStudioImports, withdrawStudioImport } from '@aihot/backend/studio/studio-demand';
+import { demandCsvFields } from '@aihot/backend/studio/studio-demand-csv';
 
 after(closeDb);
 const actor = `test:demand:${tag()}`;

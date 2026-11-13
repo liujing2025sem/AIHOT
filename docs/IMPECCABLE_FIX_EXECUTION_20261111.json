@@ -1,0 +1,121 @@
+{
+  "TASK": "Complete F1 cover-input protection, F2 unchanged-body recovery for legacy fragment mismatch, and F4 accurate English-review blocking guidance, followed by real database/browser/export acceptance.",
+  "TRUTH": {
+    "base_head": "d3a24b19388c2f88e6367346f138f849a72f2be3",
+    "repository": "liujing2025sem/AIHOT",
+    "branch": "codex/original-workbench-20261111",
+    "pr": 25,
+    "source": "Original AIHOT implementation and the previous fixed-commit Impeccable audit; no production draft data read.",
+    "authorization": "User explicitly selected harden F1/F2, clarify F4 and full acceptance, and requested continuous execution without per-step questions.",
+    "classification": [
+      "Implementation",
+      "Evidence",
+      "Dependency"
+    ],
+    "skill": {
+      "name": "Impeccable",
+      "version": "4.8.2",
+      "commit": "b4bff1626c344067788c2679f048a20057c7cc5a",
+      "mode": "Operate"
+    },
+    "tests_only_head": "7dfad2742a3e74816710005c7f8667cd4eeba3ad"
+  },
+  "SCOPE": [
+    "Keep original four-step workflow and all existing business capabilities.",
+    "Propagate cover dirty/uploading state to the existing editor navigation guard; preserve inputs after cancelled navigation or failed upload; block in-app departure while upload outcome is pending.",
+    "Expose a read-only optional recovery capability on the existing draft detail response, calculated by the existing fragment reconciliation helper. The client never diagnoses recovery from D1 or its prose.",
+    "Show the explicit legacy recovery action for draft/in_review snapshots only. Reuse the existing version-bound PATCH save and retain every server gate.",
+    "Derive approval hint and disabled state from the same remaining conditions; retain the English acknowledgement requirement.",
+    "Add regressions to existing test files and prove at least one original browser-to-API-to-PostgreSQL-to-export path using disposable fixtures.",
+    "Restore and run the repository's sole existing Check workflow after inspecting its read-only permissions and isolated test tasks; no deployment workflow exists.",
+    "Cover POST outcomes and read-only list refresh have separate busy states. A conflict may refresh cover metadata without replacing file/ALT/caption or bypassing the draft version check."
+  ],
+  "FORBIDDEN": [
+    "No production data or 6098 changes",
+    "No receipts 16/17 retries",
+    "No paid model or collection calls",
+    "No WordPress writes",
+    "No merge or production deployment",
+    "No migration or dependency-lock changes",
+    "No global skill hooks, live mode or broad redesign",
+    "Do not implement optional F3/F5 beyond wording necessary for the selected actions"
+  ],
+  "INPUT": [
+    "docs/ORIGINAL_WORKBENCH_EXECUTION_20261111.md",
+    "apps/web/app/routes/admin/studio-draft.tsx",
+    "apps/web/app/features/admin/draft-covers.tsx",
+    "packages/backend/src/studio/studio.ts",
+    "packages/backend/src/studio/studio-review-edits.ts",
+    "tests/studio.test.ts",
+    "apps/web/tests/studio-review-workbench.test.ts",
+    "apps/web/tests/studio-manual-delivery.test.ts"
+  ],
+  "DEPENDENCY": {
+    "F1": "Cover local form state -> parent unsaved/busy navigation decision -> mounted input retention and existing cover POST result",
+    "F2": "Stored task and draft -> existing safe fragment reconciliation -> optional GET capability -> explicit version-bound PATCH -> submit/approve -> product confirmation -> bound export",
+    "F4": "Current busy/dirty/gate/confirmation/English state -> consistent approval disabled state and explanatory text",
+    "validation": "Locked dependencies + built original web + PostgreSQL test database + existing browser engines + no-external-call test configuration",
+    "local_full_acceptance_order": [
+      "npm ci --no-audit --no-fund",
+      "npm run typecheck",
+      "npm run build -w @aihot/web",
+      "npx playwright install --with-deps chromium webkit",
+      "node --test apps/web/tests/*.test.ts",
+      "DATABASE_URL pointing to a disposable *_test or *_ci database: npm test",
+      "original smoke/container gates"
+    ]
+  },
+  "API_CONTRACT": {
+    "endpoint": "GET /api/admin/studio/drafts/:id",
+    "additive_optional_field": "manual_edit_recovery: { available: true } or null",
+    "semantics": "Eligible draft/in_review, non-brief, with an existing fragments plan; reconciliation returns non-null and a different packet object. This indicates possible plan synchronization only, not editorial approval or removal of other blocks.",
+    "compatibility": "Older clients ignore this field. New clients hide recovery when the field is absent or null. No endpoint, write payload, database schema, gate rule or approval meaning changes.",
+    "write": "Existing PATCH with exact currently displayed version and editable fields; server recomputes inside the existing transaction. GET remains read-only."
+  },
+  "STEPS": [
+    "Write behavior regressions and capture baseline failures",
+    "Implement bounded changes",
+    "Run typecheck/build and scoped tests",
+    "Adversarial review and repair concrete findings",
+    "Run exact-head full CI and real database/browser/export acceptance",
+    "Review current rendered states, then freeze code",
+    "Update PR and incremental delivery/A2A/memory, verify uploads, clean this turn's temporary files"
+  ],
+  "OUTPUT": [
+    "Updated draft PR",
+    "Exact-head test and visual evidence",
+    "Incremental installation package",
+    "Operator report",
+    "Machine-readable A2A and project memory"
+  ],
+  "INVARIANTS": [
+    "Kept source bytes unchanged",
+    "Stale writes rejected",
+    "Recovery never approves or publishes",
+    "New factual blocks remain blocks",
+    "Cancelled departure and failed upload retain input",
+    "Pending upload cannot silently outlive an in-app discard",
+    "Successful upload remains a candidate until explicit adoption",
+    "Text approval and product confirmation remain separate",
+    "Export content and cover correspond to the confirmed version",
+    "Downloads do not mark publication"
+  ],
+  "ACCEPTANCE": [
+    "Legacy unchanged-body page recovery through real PostgreSQL API and browser reaches correct exported bytes",
+    "Normal manual edit save-refresh-review-export remains valid",
+    "Kept-text/ambiguous-boundary/factual/stale-version counterexamples hold",
+    "Cover file-only/ALT-only/caption-only and full input are protected on step/link/back/refresh cancellation",
+    "Upload failure retains inputs; success clears them; rapid repeat does not duplicate effective writes",
+    "Approval reason matches busy/dirty/BLOCK/unconfirmed/English conditions",
+    "Desktop, intermediate, narrow, zoom and keyboard render checks have observed evidence",
+    "Repository-required type/build/backend/browser/smoke/container gates pass on the submitted head"
+  ],
+  "STOP": "Stop expanding scope when selected changes and required gates pass. If an access control or unavailable dependency blocks a gate, preserve the concrete failure and complete independent work without bypassing controls. Additional unrelated audit findings are follow-ups for the user.",
+  "MATURITY": "STATIC_PASS",
+  "STATIC_EVIDENCE": {
+    "typecheck": "pass",
+    "web_build": "pass",
+    "targeted_standalone_tests": 42,
+    "database_browser_pipeline": "pending; do not treat this packet as a final run receipt"
+  }
+}

@@ -356,7 +356,7 @@ export interface DetailNeed {
  * text ("Published Time: …", "# Heading"), so that paid rendering is bought only when such a rule is
  * needed; selectors and page metadata read the page's own HTML.
  */
-export async function fetchDetail(url: string, source: SourceRow, need: DetailNeed): Promise<PublicationDate & { title: string | null; summary: string | null; body: ExtractedBody | null }> {
+export async function fetchDetail(url: string, source: SourceRow, need: DetailNeed, maxRedirects?: number): Promise<PublicationDate & { title: string | null; summary: string | null; body: ExtractedBody | null }> {
   const d = source.config.detail ?? {};
   const offset = articleUtcOffset(source.config);
   const jinaListing = String(source.config.url ?? "").startsWith(JINA_PREFIX);
@@ -368,7 +368,7 @@ export async function fetchDetail(url: string, source: SourceRow, need: DetailNe
   if ((need.date && !dateInJina) || (need.title && !titleInJina) || need.summary) {
     // The rules read a page's head and byline. A page past the size limit (a long paper with inline
     // figures) is read up to it rather than failing on every run; a body cut there is not kept.
-    const res = requireOk(await guardedFetch(url, { headers: languageHeaders(source.config.acceptLanguage), timeoutMs: 20_000, truncate: true }), "detail");
+    const res = requireOk(await guardedFetch(url, { headers: languageHeaders(source.config.acceptLanguage), timeoutMs: 20_000, truncate: true, maxRedirects }), "detail");
     html = res.text();
     page = { document: contentDocument(html), url: res.url, whole: !res.truncated && /html/.test(res.headers.get("content-type") ?? "") };
   }

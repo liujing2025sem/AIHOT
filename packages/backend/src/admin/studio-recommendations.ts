@@ -1,30 +1,31 @@
 // Programmatic editorial suggestions. Opening the page never runs selection or a model.
 import { z } from 'zod';
-import { sql } from '../db.ts';
+import { sql, type Db } from '../db.ts';
 import { audit, Conflict } from '../audit.ts';
 import { sha256 } from '../lib/ids.ts';
 import { editorialTopic } from '../../../../site/editorial.ts';
 import { studioQuestions, type StudioQuestionRow, type StudioQuestion } from './studio-questions.ts';
-import { demandProfiles, type DemandProfiles } from './studio-demand.ts';
+import { demandProfiles, type DemandProfiles } from '../studio/studio-demand.ts';
 import { type SearchSignal } from './studio-search-signals.ts';
-import { createStudioTask } from './studio.ts';
+import { createStudioTask } from '../studio/studio.ts';
 import { keywordMatch } from './studio-question-match.ts';
 import { editorialOwnedDomains, pageOwnership } from '../../../../site/editorial-ownership.ts';
 import { editorialSourceIds, editorialVersionSourceIds } from '../../../../site/editorial-sources.ts';
+import { classifyNewsKind, evaluateNewsEligibility, newsCardExpired, newsVersions, type NewsKind } from '../../../../industry/news-eligibility.ts';
 export { editorialSourceIds } from '../../../../site/editorial-sources.ts';
 
 const invalid=(message:string):never=>{throw Object.assign(new Error(message),{statusCode:400});};
 const policyKey='studio.recommendations.weekly_limit';
 const daysKey='studio.recommendations.lookback_days',refreshKey='studio.recommendations.last_refresh';
 const plain=(s:string)=>s.replace(/\s+/g,' ').trim();
-export type PlanningMaterial={id:string;revision:number;title:string;body_text:string|null;body_status:string;url:string;source_id:string;published_at:string|Date|null;discovered_at?:string|Date|null;backfill_reason?:string|null;imported_title?:string|null;previous_revision?:number|null;previous_title?:string|null;previous_body?:string|null;first_party?:boolean;source_kind?:string;reference_only?:boolean};
-export type Recommendation={key:string;trigger:'A'|'E'|'B'|'C'|'D'|'M';question_id:string|null;article_id:string|null;article_revision:number|null;title:string;change:string;evidence:{url:string;date:string|null;discovered_at?:string|null;revision:number|null;before?:string;after?:string;query?:string}[];reason:string;action:'new_brief'|'new_explainer'|'new_tutorial'|'update_page';channels:string[];existing_url:string;requires_first_party:boolean;needs_material:boolean;demand_mentions:number;priority:number;bound_article_ids?:string[];evidence_checklist?:{source_body:boolean;existing_page_body:boolean|null;first_party:boolean|null};affected_page?:{url:string;paragraph:string|null;article_id:string|null;revision:number|null}|null};
+export type PlanningMaterial={id:string;revision:number;title:string;body_text:string|null;body_status:string;url:string;source_id:string;published_at:string|Date|null;discovered_at?:string|Date|null;backfill_reason?:string|null;imported_title?:string|null;imported_body?:string|null;source_initialized_at?:string|Date|null;version_observed_at?:string|Date|null;previous_revision?:number|null;previous_title?:string|null;previous_body?:string|null;first_party?:boolean;source_kind?:string;reference_only?:boolean;category?:string|null;item_type?:string|null;event_id?:string|null;already_published?:boolean};
+export type Recommendation={key:string;trigger:'A'|'E'|'B'|'C'|'D'|'M';question_id:string|null;article_id:string|null;article_revision:number|null;title:string;change:string;evidence:{url:string;date:string|null;discovered_at?:string|null;revision:number|null;before?:string;after?:string;query?:string}[];reason:string;action:'new_brief'|'new_explainer'|'new_tutorial'|'update_page';channels:string[];existing_url:string;requires_first_party:boolean;needs_material:boolean;demand_mentions:number;priority:number;bound_article_ids?:string[];news?:{kind:NewsKind;observed_version_at:string|null;already_published?:boolean};evidence_checklist?:{source_body:boolean;existing_page_body:boolean|null;first_party:boolean|null};affected_page?:{url:string;paragraph:string|null;article_id:string|null;revision:number|null}|null};
 type RecommendationCounts={total:number;adopted:number;rejected:number;update_opportunities:number;updates_completed:number;baseline_missed_updates:number;baseline_unknown:number;manual_total:number;manual_adopted:number;manual_rejected:number};
 type StoredRecommendation={id:string;status:string;created_at:Date;document:Recommendation;stale?:boolean;article_id:string|null;article_revision:number|null;current_revision?:number|null;question_id:string|null;task_id:string|null;baseline_found:boolean|null;completed:boolean;[key:string]:unknown};
 const actionFor=(q:StudioQuestion):Recommendation['action']=>q.existing_url?'update_page':q.content_type==='tutorial'?'new_tutorial':q.content_type==='news'?'new_brief':'new_explainer';
 const readership=(q:StudioQuestion,profiles:DemandProfiles)=>profiles.groups.filter(g=>q.roles.includes(g.role)&&(g.scenario===q.scenario||g.needTags.some(tag=>keywordMatch(q,tag.tag)>0)));
 const dateValue=(value:PlanningMaterial['published_at'])=>{const ms=value?new Date(value).getTime():NaN;return Number.isFinite(ms)?new Date(ms).toISOString():null;};
-const versions=(text:string)=>[...new Set((text.match(/\bv?\d+\.\d+(?:\.\d+){0,2}\b/gi)??[]).map(v=>v.toLowerCase().replace(/^v/,'')))].sort();
+const versions=newsVersions;
 function changedParagraphs(before:string,after:string){
   const old=before.split(/\r?\n+/).map(plain).filter(Boolean),next=after.split(/\r?\n+/).map(plain).filter(Boolean);
   const a=old.filter(p=>!next.includes(p)).join('\n'),b=next.filter(p=>!old.includes(p)).join('\n');
@@ -40,15 +41,15 @@ export function enrichRecommendation(card:Recommendation,materials:PlanningMater
   const paragraphs=page?.body_text?.split(/\r?\n+/).filter(p=>p.trim())??[];
   const relevant=question?paragraphs.map(text=>({text,n:keywordMatch(question,text)})).filter(p=>p.n>0).sort((a,b)=>b.n-a.n)[0]?.text:null;
   const checklist={source_body:card.article_id?source.some(m=>m.id===card.article_id):source.some(m=>m.url!==card.existing_url),existing_page_body:card.existing_url?!!page&&bound.has(page.id):null,first_party:card.requires_first_party?source.some(m=>m.first_party&&m.source_kind==='external'):null};
-  return {...card,...(card.trigger==='M'?{evidence:source.map(m=>({url:m.url,date:dateValue(m.published_at),revision:m.revision}))}:{}),evidence_checklist:checklist,needs_material:Object.values(checklist).some(value=>value===false),
+  const current=materials.find(m=>m.id===card.article_id);
+  return {...card,...(current&&['D','E'].includes(card.trigger)?{news:{kind:card.news?.kind??classifyNewsKind({title:current.title,bodyText:current.body_text,category:current.category}),observed_version_at:card.news?.observed_version_at??null,already_published:current.already_published??card.news?.already_published}}:{}),...(card.trigger==='M'?{evidence:source.map(m=>({url:m.url,date:dateValue(m.published_at),revision:m.revision}))}:{}),evidence_checklist:checklist,needs_material:Object.values(checklist).some(value=>value===false),
     affected_page:card.existing_url?{url:card.existing_url,paragraph:relevant?.slice(0,600)??null,article_id:page?.id??null,revision:page?.revision??null}:null};
 }
 export function planRecommendations(input:{questions:StudioQuestionRow[];materials:PlanningMaterial[];profiles:DemandProfiles;search:SearchSignal[];now:string;ownedDomains?:readonly string[]}):Recommendation[]{
-  const result:Recommendation[]=[],questions=input.questions.filter(q=>q.document.active),now=Date.parse(input.now),domains=input.ownedDomains??editorialOwnedDomains;
+  const result:Recommendation[]=[],questions=input.questions.filter(q=>q.document.active),domains=input.ownedDomains??editorialOwnedDomains,seenEvents=new Set<string>();
   for(const material of input.materials){
     if(material.reference_only)continue;
-    const text=material.title+'\n'+(material.body_text??''),date=dateValue(material.published_at),age=date?(now-Date.parse(date))/86400000:null;
-    const fresh=age!==null&&age>=0&&age<=7;
+    const text=material.title+'\n'+(material.body_text??''),date=dateValue(material.published_at);
     const change=material.previous_body&&material.body_text&&plain(material.previous_body)!==plain(material.body_text)?changedParagraphs(material.previous_body,material.body_text):null;
     const ranked=questions.map(q=>({q,matches:keywordMatch(q.document,text)})).filter(x=>x.matches>0).sort((a,b)=>b.matches-a.matches||a.q.id.localeCompare(b.q.id));
     const changed=change?ranked.find(x=>x.q.document.existing_url&&keywordMatch(x.q.document,change.full_before+'\n'+change.full_after)>0):undefined;
@@ -58,17 +59,22 @@ export function planRecommendations(input:{questions:StudioQuestionRow[];materia
     const isVersion=(versionSource||/NovaLCT|ViPlex|LEDVISION|LEDStudio|HDPlayer|firmware|固件|软件版本/i.test(text))&&currentVersions.length>0;
     const hasVersionChange=hasPrevious&&currentVersions.some(v=>!previousVersions.includes(v));
     // The first revision keeps the baseline even after a later version receives body-only edits.
-    const importedVersions=versions(material.imported_title??material.previous_title??material.title);
-    if(versionSource&&material.backfill_reason==='first-import'&&!changed&&!currentVersions.some(v=>!importedVersions.includes(v)))continue;
+    const baselineTitle=material.imported_title??material.previous_title,baselineBody=material.imported_body??material.previous_body;
+    const versionEvidence=baselineTitle&&material.version_observed_at?{baselineTitle,baselineBodyText:baselineBody,observedAt:material.version_observed_at}:undefined;
+    const eligibility=evaluateNewsEligibility({title:material.title,bodyText:material.body_text,category:material.category,itemType:material.item_type,publishedAt:material.published_at,now:input.now,
+      referenceOnly:material.reference_only,alreadyPublished:material.already_published,backfillReason:material.backfill_reason,versionSource,discoveredAt:material.discovered_at,sourceBaselineAt:material.source_initialized_at,versionEvidence});
     const best=changed?.q??ranked[0]?.q;
-    const trigger:Recommendation['trigger']|null=changed?'A':isVersion&&(hasVersionChange||fresh&&(!hasPrevious||versionSource)||versionSource&&!date)?'E':fresh&&(!!best||!!editorialTopic(text))?'D':null;
+    const trigger:Recommendation['trigger']|null=changed?'A':eligibility.eligible&&isVersion&&(hasVersionChange||!hasPrevious||versionSource)?'E':eligibility.eligible&&(!!best||!!editorialTopic(text))?'D':null;
     if(!trigger)continue;
+    const eventKey=material.event_id??material.url;
+    if(trigger!=='A'){if(seenEvents.has(eventKey))continue;seenEvents.add(eventKey);}
     const q=best?.document;
     const mentions=q?readership(q,input.profiles).reduce((n,g)=>n+g.recordCount,0):0;
     const queryEvidence=q?input.search.filter(s=>keywordMatch(q,s.query)>0).sort((a,b)=>(b.impressions??b.volume??0)-(a.impressions??a.volume??0)).slice(0,5).map(s=>({url:s.page,date:null,revision:null,query:s.query})):[];
     result.push({key:trigger==='E'?`version:${material.id}:${currentVersions.join(',')}`:`material:${material.id}:${material.revision}`,trigger,question_id:best?.id??null,article_id:material.id,article_revision:material.revision,title:q?.question??material.title,
       change:change?`${change.before.slice(0,160)} → ${change.after.slice(0,160)}`:material.title,
-      evidence:[{url:material.url,date,...(trigger==='E'?{discovered_at:dateValue(material.discovered_at??input.now)}:{}),revision:material.revision,...(change?{before:change.before.slice(0,350),after:change.after.slice(0,350)}:{after:material.body_text?.split(/\r?\n/).find(p=>p.trim())?.slice(0,350)??material.title})},...queryEvidence],
+      evidence:[{url:material.url,date,...(trigger==='E'?{discovered_at:dateValue(material.discovered_at??null)}:{}),revision:material.revision,...(change?{before:change.before.slice(0,350),after:change.after.slice(0,350)}:{after:material.body_text?.split(/\r?\n/).find(p=>p.trim())?.slice(0,350)??material.title})},...queryEvidence],
+      ...(trigger==='D'||trigger==='E'?{news:{kind:eligibility.kind,observed_version_at:eligibility.dateBasis==='observed_version'?eligibility.effectiveAt:null}}:{}),
       reason:q?`对应“${q.question}”；面向${q.roles.join('、')}，${mentions}条登记提及。`:'LED商显主题线索，尚未挂接已有问题，需确认客户影响。',action:q?actionFor(q):'new_brief',channels:['blog','social'],existing_url:q?.existing_url??'',requires_first_party:!!q?.requires_first_party,needs_material:material.body_status!=='ok'||!material.body_text||!!q?.requires_first_party||!!q?.existing_url&&q.existing_url!==material.url,demand_mentions:mentions,priority:trigger==='A'?0:trigger==='E'?1:4});
   }
   for(const question of questions){
@@ -96,14 +102,48 @@ export function planRecommendations(input:{questions:StudioQuestionRow[];materia
 
 function queueOrder(a:any,b:any){return a.document.priority-b.document.priority||(a.document.trigger==='D'&&b.document.trigger==='D'?Date.parse(b.document.evidence[0]?.date??b.created_at)-Date.parse(a.document.evidence[0]?.date??a.created_at):0)||b.document.demand_mentions-a.document.demand_mentions||new Date(a.created_at).getTime()-new Date(b.created_at).getTime()||a.id.localeCompare(b.id);}
 export function allocateRecommendationCapacity<T extends {id:string;status:string;stale?:boolean;document:Recommendation;created_at:Date|string}>(rows:T[],limit:number|null,now=Date.now()){
-  const dated=rows.map(r=>{const date=r.document.evidence[0]?.date,age=date?(now-Date.parse(date))/86400000:NaN;return {...r,expired:r.document.trigger==='D'&&(!Number.isFinite(age)||age>7)};});
+  const dated=rows.map(r=>{const card=r.document,kind=card.news?.kind??classifyNewsKind({title:card.change,bodyText:card.evidence[0]?.after});
+    const date=card.evidence[0]?.date??card.news?.observed_version_at;
+    return {...r,expired:['D','E'].includes(card.trigger)&&(card.news?.already_published===true||newsCardExpired(kind,date,now))};});
   const pending=dated.filter(r=>['pending','later'].includes(r.status)&&!r.stale&&!r.expired).sort(queueOrder),active=new Set(pending.slice(0,limit??0).map(r=>r.id));
   return {pendingCount:pending.length,activeCount:active.size,capacityFullCount:pending.length-active.size,rows:dated.map(r=>({...r,capacity_full:['pending','later'].includes(r.status)&&!r.stale&&!r.expired&&!active.has(r.id)})).sort(queueOrder)};
 }
-async function cardMaterials(cards:Recommendation[],db=sql){
+async function cardMaterials(cards:Recommendation[],db:Db=sql){
   const urls=cards.map(c=>c.existing_url).filter(Boolean),ids=cards.flatMap(c=>[...(c.bound_article_ids??[]),...(c.article_id?[c.article_id]:[])]);
   if(!urls.length&&!ids.length)return [];
-  return db<PlanningMaterial[]>`SELECT a.id,a.revision,a.title,a.body_text,a.body_status,a.url,a.source_id,a.published_at,s.first_party,s.kind AS source_kind FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.url=ANY(${urls}) OR a.id=ANY(${ids})`;
+  const materials=await db<PlanningMaterial[]>`SELECT a.id,a.revision,a.title,a.body_text,a.body_status,a.url,a.source_id,a.published_at,s.first_party,s.kind AS source_kind,
+    COALESCE('fact-'||p.fact_id::text,'fact-'||bound_fact.fact_id::text,'story-'||p.story_id::text) AS event_id
+    FROM articles a JOIN sources s ON s.id=a.source_id LEFT JOIN publications p ON p.article_id=a.id
+    LEFT JOIN LATERAL(SELECT fact_id FROM fact_articles WHERE article_id=a.id AND role<>'mention' ORDER BY fact_id LIMIT 1) bound_fact ON true
+    WHERE a.url=ANY(${urls}) OR a.id=ANY(${ids})`;
+  return markPublishedMaterials(materials,db);
+}
+
+// A draft push is not a publication. Use only recorded public WordPress receipts and frozen sources.
+async function markPublishedMaterials(materials:PlanningMaterial[],db:Db=sql):Promise<PlanningMaterial[]>{
+  if(!materials.length)return materials;
+  const published=await db<{article_id:string;document:Record<string,any>;request:Record<string,any>}[]>`SELECT DISTINCT d.id,d.article_id,d.document,t.request FROM studio_drafts d JOIN studio_tasks t ON t.id=d.task_id
+    JOIN audit_log l ON l.action='studio.publishing.receipt' AND l.after->>'draft_id'=d.id AND l.after->>'status'='published'
+      AND l.after->>'visibility'='public' AND l.after->>'wp_status'='publish'`;
+  const events=new Set<string>(),sources=new Map<string,{revision:number|null;title:string;body:string}[]>();
+  for(const draft of published){
+    const bindings=draft.document.brief?.items?.flatMap((item:{sources:{article_id:string;revision:number}[]})=>item.sources)??[draft.document.source??{article_id:draft.article_id,revision:null}];
+    for(const source of bindings){
+      const original=draft.request.articles?.find((a:any)=>a.binding?.article_id===source.article_id);
+      sources.set(source.article_id,[...(sources.get(source.article_id)??[]),{revision:source.revision,title:original?.title??'',body:original?.body_text??''}]);
+    }
+    for(const event of draft.request.brief?.events??[])if(event.event_id)events.add(event.event_id);
+  }
+  return materials.map(material=>{
+    const currentVersions=versions(material.title),isVersion=editorialVersionSourceIds.includes(material.source_id)||/NovaLCT|ViPlex|LEDVISION|LEDStudio|HDPlayer|firmware|固件|软件版本/i.test(material.title);
+    const sameSource=(sources.get(material.id)??[]).some(old=>{
+      if(old.revision===material.revision)return true;
+      const oldVersions=versions(old.title).length?versions(old.title):versions(old.body);
+      // Same-version body edits stay used. A proven new software version at the same URL is a new event.
+      return !(isVersion&&currentVersions.length&&oldVersions.length&&currentVersions.some(v=>!oldVersions.includes(v)));
+    });
+    return {...material,already_published:sameSource||!!material.event_id&&events.has(material.event_id)};
+  });
 }
 
 export async function recommendationOverview(){
@@ -151,21 +191,28 @@ export async function refreshRecommendations(actor:string){
   const [days]=await sql`SELECT value FROM settings WHERE key=${daysKey}`;
   if(!days)invalid('先由运营设置回看天数，再整理建议。');
   const [last]=await sql`SELECT value FROM settings WHERE key=${refreshKey}`;
-  const scanAt=new Date().toISOString(),questions=await studioQuestions(),allowed=[...new Set([...editorialSourceIds,...questions.rows.flatMap(q=>q.document.source_ids)])];
-  const materials=allowed.length?await sql<PlanningMaterial[]>`SELECT a.id,a.revision,a.title,a.body_text,a.body_status,a.url,a.source_id,a.published_at,a.discovered_at,a.backfill_reason,initial.title AS imported_title,s.first_party,s.kind AS source_kind,old.revision AS previous_revision,old.title AS previous_title,old.body_text AS previous_body
+  const scanAt=new Date().toISOString(),scanDays=Math.max(30,Number(days.value)||30),questions=await studioQuestions(),allowed=[...new Set([...editorialSourceIds,...questions.rows.flatMap(q=>q.document.source_ids)])];
+  const materials=allowed.length?await sql<PlanningMaterial[]>`SELECT a.id,a.revision,a.title,a.body_text,a.body_status,a.url,a.source_id,a.published_at,a.discovered_at,a.backfill_reason,initial.title AS imported_title,initial.body_text AS imported_body,
+    s.first_party,s.kind AS source_kind,s.cursor->>'initializedAt' AS source_initialized_at,COALESCE(version_first.created_at,a.updated_at) AS version_observed_at,
+    old.revision AS previous_revision,old.title AS previous_title,old.body_text AS previous_body,analysis.category,
+    COALESCE('fact-'||p.fact_id::text,'fact-'||bound_fact.fact_id::text,'story-'||p.story_id::text) AS event_id
     FROM articles a JOIN sources s ON s.id=a.source_id LEFT JOIN LATERAL(SELECT revision,title,body_text FROM article_revisions WHERE article_id=a.id AND revision<a.revision ORDER BY revision DESC LIMIT 1) old ON true
-    LEFT JOIN LATERAL(SELECT title FROM article_revisions WHERE article_id=a.id AND a.backfill_reason='first-import' ORDER BY revision LIMIT 1) initial ON true
-    WHERE a.source_id=ANY(${allowed}) AND (a.updated_at>COALESCE(${last?.value??null}::timestamptz,${scanAt}::timestamptz-${days.value}*interval '1 day') OR COALESCE(a.published_at,a.discovered_at)>=${scanAt}::timestamptz-${days.value}*interval '1 day')`:[];
+    LEFT JOIN LATERAL(SELECT title,body_text FROM article_revisions WHERE article_id=a.id AND a.backfill_reason='first-import' ORDER BY revision LIMIT 1) initial ON true
+    LEFT JOIN LATERAL(SELECT created_at FROM article_revisions WHERE article_id=a.id AND title=a.title ORDER BY revision LIMIT 1) version_first ON true
+    LEFT JOIN LATERAL(SELECT category FROM analyses WHERE article_id=a.id AND input_revision=a.revision ORDER BY id DESC LIMIT 1) analysis ON true
+    LEFT JOIN publications p ON p.article_id=a.id LEFT JOIN LATERAL(SELECT fact_id FROM fact_articles WHERE article_id=a.id AND role<>'mention' ORDER BY fact_id LIMIT 1) bound_fact ON true
+    WHERE a.source_id=ANY(${allowed}) AND (a.updated_at>COALESCE(${last?.value??null}::timestamptz,${scanAt}::timestamptz-${scanDays}*interval '1 day') OR COALESCE(a.published_at,a.discovered_at)>=${scanAt}::timestamptz-${scanDays}*interval '1 day')`:[];
   const pages=await cardMaterials(questions.rows.filter(q=>q.document.existing_url).map(q=>({existing_url:q.document.existing_url} as Recommendation)));
   const [profiles,search]=await Promise.all([demandProfiles(),sql`SELECT s.record,s.batch_id FROM studio_search_signals s JOIN studio_import_batches b ON b.id=s.batch_id ORDER BY b.created_at DESC,s.id`]);
-  const candidates=planRecommendations({questions:questions.rows,profiles,materials:[...materials,...pages.filter(p=>!materials.some(m=>m.id===p.id)).map(p=>({...p,reference_only:true}))],search:search.map(s=>({...s.record,batch_id:s.batch_id} as SearchSignal)),now:scanAt});
+  const candidates=planRecommendations({questions:questions.rows,profiles,materials:[...await markPublishedMaterials(materials),...pages.filter(p=>!materials.some(m=>m.id===p.id)).map(p=>({...p,reference_only:true}))],search:search.map(s=>({...s.record,batch_id:s.batch_id} as SearchSignal)),now:scanAt});
   return sql.begin(async tx=>{
     const [policy]=await tx`SELECT value FROM settings WHERE key=${policyKey} FOR UPDATE`;
     if(!policy)invalid('先由运营设置待处理名额（5–15件），再生成建议。');
     let created=0;
     for(const candidate of candidates){
       const inserted=await tx`INSERT INTO studio_recommendations(id,input_key,question_id,article_id,article_revision,document,updated_by) VALUES(${`recommendation-${sha256(candidate.key).slice(0,32)}`},${candidate.key},${candidate.question_id},${candidate.article_id},${candidate.article_revision},${tx.json(candidate)},${actor})
-        ON CONFLICT(input_key) DO UPDATE SET article_revision=EXCLUDED.article_revision,document=EXCLUDED.document||jsonb_build_object('bound_article_ids',COALESCE(studio_recommendations.document->'bound_article_ids','[]'::jsonb)),updated_by=EXCLUDED.updated_by,updated_at=now()
+        ON CONFLICT(input_key) DO UPDATE SET article_revision=EXCLUDED.article_revision,
+          document=jsonb_set(EXCLUDED.document,'{news,observed_version_at}',COALESCE(studio_recommendations.document#>'{news,observed_version_at}',EXCLUDED.document#>'{news,observed_version_at}','null'::jsonb))||jsonb_build_object('bound_article_ids',COALESCE(studio_recommendations.document->'bound_article_ids','[]'::jsonb)),updated_by=EXCLUDED.updated_by,updated_at=now()
         WHERE EXCLUDED.document->>'trigger'='E' AND studio_recommendations.status IN ('pending','later') AND studio_recommendations.article_id=EXCLUDED.article_id AND studio_recommendations.article_revision<EXCLUDED.article_revision RETURNING xmax=0 AS created`;
       if(inserted[0]?.created)created++;
     }
@@ -203,8 +250,9 @@ export async function decideRecommendation(id:string,input:unknown,actor:string)
       let articleIds:string[]=[...(document.bound_article_ids??[])];
       if(card.article_id){const [current]=await tx`SELECT revision,body_status,body_text FROM articles WHERE id=${card.article_id} FOR SHARE`;if(!current||current.revision!==card.article_revision)throw new Conflict('素材版本已变化，请生成并处理新版本卡片。');if(current.body_status==='ok'&&current.body_text?.trim())articleIds=[...new Set([card.article_id,...articleIds])];}
       const pending=await tx<StoredRecommendation[]>`SELECT r.*,a.revision AS current_revision FROM studio_recommendations r LEFT JOIN articles a ON a.id=r.article_id WHERE r.status IN ('pending','later')`;
-      const queue=allocateRecommendationCapacity(pending.map(r=>({...r,stale:r.article_id!==null&&r.current_revision!==r.article_revision})),policy?.value??null);
-      if(queue.rows.some(r=>r.id===id&&r.expired))invalid('该短讯已超过7天新鲜窗口，保留作历史参考，不再采纳为时讯。');
+      const materials=await cardMaterials(pending.map(r=>r.document),tx);
+      const queue=allocateRecommendationCapacity(pending.map(r=>({...r,document:enrichRecommendation(r.document,materials),stale:r.article_id!==null&&r.current_revision!==r.article_revision})),policy?.value??null);
+      if(queue.rows.some(r=>r.id===id&&r.expired))invalid('该条已不满足14/30天新闻窗口或已有发布记录，保留作历史参考，不再采纳为时讯。');
       if(!queue.rows.some(r=>r.id===id&&!r.stale&&!r.expired&&!r.capacity_full))invalid('待处理名额已满，请先处理更高优先级的卡片。');
       const task=await createStudioTask({article_ids:articleIds,planning_context:{card_id:id,question_id:card.question_id,selection_origin:document.trigger==='M'?'operator':'automatic',action:document.action,question:document.title,existing_url:document.existing_url,requires_first_party:document.requires_first_party}},actor,tx);
       await tx`UPDATE studio_recommendations SET status='adopted',task_id=${task.id},updated_by=${actor},updated_at=now() WHERE id=${id}`;

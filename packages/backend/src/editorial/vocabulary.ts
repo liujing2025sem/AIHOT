@@ -2,7 +2,7 @@
 // which the topics (industry/topics.json) are built on.
 import { CATEGORIES, CATEGORY_TAGS, ENTITIES, ENTITY_TAGS, RELEASE, TAG_SYNONYMS, TOPIC_TAGS } from "@aihot/industry/taxonomy";
 
-export { CATEGORY_TAGS, ENTITIES, ENTITY_TAGS, ITEM_TYPES, TOPIC_TAGS } from "@aihot/industry/taxonomy";
+export { CATEGORY_TAGS, EDITORIAL_ENTITY_IDS, ENTITIES, ENTITY_TAGS, ITEM_TYPES, normalizeItemType, TOPIC_TAGS } from "@aihot/industry/taxonomy";
 
 const ALLOWED_TAGS = new Set<string>([...CATEGORY_TAGS, ...TOPIC_TAGS, ...ENTITY_TAGS]);
 

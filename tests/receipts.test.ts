@@ -3,6 +3,7 @@
 // answer cut off at the output limit says so, and the valve stops calls before they are sent.
 import { gate, stub, tag } from "./setup.ts";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { after, test } from "node:test";
 import { z } from "zod";
 import { config } from "@aihot/backend/config";
@@ -20,6 +21,37 @@ process.env.DEEPSEEK_API_KEY = "test-key";
 
 const ask = (subject: string) =>
   chatJson({ model: "deepseek-flash", purpose: "invariant_test", subject, promptVersion: "t1", system: "s", user: `input ${subject}`, schema: z.object({ ok: z.boolean() }) });
+
+test("Studio receipt distinguishes a stalled response body from a request without headers", async () => {
+  const server = createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { "x-request-id": "stub-stalled-body", "content-type": "application/json" });
+    res.flushHeaders();
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const old = process.env.DEEPSEEK_BASE_URL;
+  process.env.DEEPSEEK_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
+  const subject = `studio-pitch:stalled-${tag()}:1`;
+  try {
+    await assert.rejects(chatJson({ model:"deepseek-flash", purpose:"studio_prep_edit_plan", subject, promptVersion:"t1",
+      system:"s", user:"u", schema:z.object({ok:z.boolean()}), timeoutMs:400 }), ReceiptUnknownError);
+    const [r] = await sql`SELECT id,status,request,request_id,attempts FROM receipts WHERE subject=${subject}`;
+    assert.equal(r.status, "unknown");
+    assert.equal(r.request_id, "stub-stalled-body");
+    assert(Number.isFinite(r.request.transport.headersMs));
+    assert.equal(r.request.transport.bodyMs, null);
+    await sql`UPDATE receipts SET updated_at = now() - interval '31 minutes' WHERE id=${r.id}`;
+    await autoReleaseUnknownReceipts();
+    const [preserved] = await sql`SELECT status,attempts FROM receipts WHERE id=${r.id}`;
+    assert.deepEqual({...preserved}, {status:"unknown", attempts:1});
+  } finally {
+    if (old === undefined) delete process.env.DEEPSEEK_BASE_URL; else process.env.DEEPSEEK_BASE_URL = old;
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
 
 after(async () => {
   await provider.close();
@@ -352,6 +384,32 @@ test("an unknown outcome is released automatically once, so a lost answer costs 
   assert.equal(await status(), "unknown", "a second loss waits for the admin");
   await assert.rejects(paidRequest(req, lost), ReceiptUnknownError);
   assert.equal(sent, 2);
+});
+
+test("all Studio writing purposes retain unknown outcomes without an automatic second purchase", async () => {
+  const purposes = ['studio_editorial', 'studio_revision', 'studio_prep_keywords', 'studio_prep_outline',
+    'studio_prep_subquestions', 'studio_prep_edit_plan', 'studio_fragment', 'studio_future_operation'];
+  const requests = purposes.map(purpose => ({ service: 'invariant-studio-unbudgeted', purpose,
+    subject: `studio-task:unknown-${purpose}-${tag()}`, identity: { purpose, run: tag() } }));
+  let sent = 0;
+  const lost = async () => { sent++; throw new Error('simulated lost response after sending'); };
+  for (const request of requests) await assert.rejects(paidRequest(request, lost), ReceiptUnknownError);
+  assert.equal(sent, purposes.length);
+  const subjects = requests.map(request => request.subject);
+  await sql`UPDATE receipts SET updated_at = now() - interval '31 minutes' WHERE subject = ANY(${subjects})`;
+  await autoReleaseUnknownReceipts();
+  const retained = await sql<{ id: number; purpose: string; status: string; attempts: number }[]>`
+    SELECT id,purpose,status,attempts FROM receipts WHERE subject = ANY(${subjects}) ORDER BY purpose`;
+  assert.equal(retained.length, purposes.length);
+  for (const row of retained) {
+    assert.equal(row.status, 'unknown', row.purpose);
+    assert.equal(row.attempts, 1, row.purpose);
+  }
+  for (const request of requests) await assert.rejects(paidRequest(request, lost), /operator recovery is required/);
+  assert.equal(sent, purposes.length, 'reading or revisiting the same request does not call its provider again');
+  const releases = await sql`SELECT id FROM audit_log WHERE action='receipt.release'
+    AND subject=ANY(${retained.map(row => `receipt:${row.id}`)})`;
+  assert.equal(releases.length, 0);
 });
 
 // The classification the alert layer already uses: a TPM/RPM throttle may pass; an account, spending or

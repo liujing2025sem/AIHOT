@@ -8,19 +8,18 @@
 
 ## 内容类型
 
-`itemType` 必须七选一：
+`itemType` 必须六选一：
 
-- `model_release`：仅限显示场景相关的 AI 模型发布；显示器件和整屏型号归 product_launch
 - `product_launch`：显示器件、整屏、控制软硬件、设备或材料的发布与重要更新
 - `tool_or_prompt`：可复用的工程方法、测试工具、计算表或操作技巧（沿用类型 key）
 - `research_paper`：论文、研究或技术报告
-- `industry_event`：融资、收购、监管、诉讼、商业动作或人事
+- `industry_event`：项目交付、展会、市场经营、融资、收购、监管、商业动作或人事
 - `opinion_analysis`：观点、行业判断、复盘或长访谈
 - `tutorial_explainer`：教程、科普、解读或评测
 
 优先级：显示产品及软件发布选 product_launch；工程方法或测试工具选 tool_or_prompt；论文优先 research_paper；实测与工程复盘选 tutorial_explainer。原文把发布写成过去的事、本条在讲用法或做演示时，不算本次发布，选 tutorial_explainer。
 
-输出前检查 `itemType` 与第一个分类标签是否自洽：`model_release` 对应“模型发布”，`product_launch` 对应“产品更新”，`research_paper` 对应“论文/研究”，`industry_event` 对应“行业动态”或“政策/监管”，`opinion_analysis` 对应“大佬观点”或“现象/趋势”，`tutorial_explainer` 对应“教程/实践”或“评测/基准”。如果二者冲突，按当前材料的核心事件修正后再输出。
+输出前检查 `itemType` 与第一个分类标签是否自洽：`product_launch` 对应“产品更新”“软件/固件”或“规格变更”，`research_paper` 对应“论文/研究”，`industry_event` 对应“项目交付”“行业动态”或“政策/监管”，`opinion_analysis` 对应“行业观点”或“现象/趋势”，`tutorial_explainer` 对应“教程/实践”或“评测/基准”。如果二者冲突，按当前材料的核心事件修正后再输出。
 
 ## 作者角色
 
@@ -32,14 +31,14 @@
 
 ## 标签
 
-`tags` 输出 1–6 个字符串。第一个必须从以下分类标签中选一个：模型发布、产品更新、开源/仓库、论文/研究、教程/实践、大佬观点、评测/基准、安全/对齐、现象/趋势、行业动态、政策/监管、非AI/通用工具、其他。
+`tags` 输出 1–6 个字符串。第一个必须从以下分类标签中选一个：产品更新、软件/固件、规格变更、项目交付、开源/仓库、论文/研究、教程/实践、行业观点、评测/基准、安全/可靠性、现象/趋势、行业动态、政策/监管、其他。
 
 其后可选 0–5 个适用标签，并且只能来自以下两个白名单：
 
-- 主题：LED控制系统、LED封装、LED驱动IC、LED电源、户外LED显示、LED采购选型、LED项目案例、LED安装维护、DOOH、consumer-display、近眼显示。只标材料的主要主题；consumer-display 用于聚焦消费级显示设备的材料。
+- 主题：LED控制系统、LED封装、LED驱动IC、LED电源、LED箱体、户外LED显示、LED采购选型、LED项目案例、LED安装维护、LED可靠性、LED功耗、租赁显示、虚拟拍摄、DOOH、consumer-display、近眼显示。只标材料的主要主题；consumer-display 用于聚焦消费级显示设备的材料。
 - 实体：由后续 structure 步骤按名录识别实际主体，本步骤不添加公司标签。
 
-不要创造白名单之外的标签。LED 消息只返回与当前事实一致的通用分类标签，如“产品更新”“行业动态”“论文/研究”“教程/实践”或“评测/基准”；不因为型号中有数字就标“模型发布”。
+不要创造白名单之外的标签。LED 型号与规格按实际器件或整屏对象分类；项目采用某种封装，仍须区分器件发布与项目交付。
 
 ## 候选阅读价值
 

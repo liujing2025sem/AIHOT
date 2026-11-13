@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql, type Db } from '../db.ts';
 import { audit, Conflict } from '../audit.ts';
-import { studioDraft, exportStudioDraft } from './studio.ts';
-import { evaluateDraft, type GateReport } from './editorial-gate.ts';
-import { buildEditorialIssues, validateEditorialConfirmations, type EditorialConfirmation, type EditorialDraft } from './editorial-issues.ts';
-import { publicationStatus } from './studio-publication.ts';
+import { studioDraft, exportStudioDraft } from '../studio/studio.ts';
+import { evaluateDraft, type GateReport } from '../studio/editorial-gate.ts';
+import { buildEditorialIssues, validateEditorialConfirmations, type EditorialConfirmation, type EditorialDraft } from '../studio/editorial-issues.ts';
+import { publicationStatus } from '../studio/studio-publication.ts';
 import { assertPublicEnglish } from '../../../../site/editorial.ts';
 import { packetSchema, responseSchema, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
 

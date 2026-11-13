@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { closeDb } from '../packages/backend/src/db.ts';
 import { CsvParseError, demandCsvFields, demandCsvLimits, demandCsvOptions, demandCsvTemplate, parseDemandCsv, readCsv,
-  type DemandCsvIssue, type DemandRecord } from '../packages/backend/src/admin/studio-demand-csv.ts';
-import { DemandCsvError, describeWritingProfile, importDemandCsv, summarizeDemandSignals } from '../packages/backend/src/admin/studio-demand.ts';
+  type DemandCsvIssue, type DemandRecord } from '../packages/backend/src/studio/studio-demand-csv.ts';
+import { DemandCsvError, describeWritingProfile, importDemandCsv, summarizeDemandSignals } from '../packages/backend/src/studio/studio-demand.ts';
 
 after(closeDb);
 const synthetic = { week: '2026-W45', region: '欧洲', channel: '网站', role: '集成商/安装商/招牌制作商',

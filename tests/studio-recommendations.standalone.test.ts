@@ -4,9 +4,10 @@ import { allocateRecommendationCapacity, enrichRecommendation, planRecommendatio
 import preview from './fixtures/editorial-preview-20261103.json' with {type:'json'};
 import { pageOwnership } from '../site/editorial-ownership.ts';
 import { questionSchema, type StudioQuestionRow } from '../packages/backend/src/admin/studio-questions.ts';
-import { summarizeDemandSignals } from '../packages/backend/src/admin/studio-demand.ts';
-import { parseDemandCsv,demandCsvTemplate, type DemandRecord } from '../packages/backend/src/admin/studio-demand-csv.ts';
+import { summarizeDemandSignals } from '../packages/backend/src/studio/studio-demand.ts';
+import { parseDemandCsv,demandCsvTemplate, type DemandRecord } from '../packages/backend/src/studio/studio-demand-csv.ts';
 import { parseSearchSignals, type SearchSignal } from '../packages/backend/src/admin/studio-search-signals.ts';
+import { evaluateNewsEligibility, classifyNewsKind, newsCardExpired } from '../industry/news-eligibility.ts';
 
 const now='2026-11-03T12:00:00Z';
 const q=(extra:Record<string,unknown>={}):StudioQuestionRow=>({id:'question-1',version:1,created_at:new Date(now),updated_at:new Date(now),document:questionSchema.parse({question:'户外招牌电费怎么估算？',roles:['集成商/安装商/招牌制作商'],scenario:'户外招牌',dimension:'费用',keywords:['电费','power'],...extra})});
@@ -40,18 +41,20 @@ test('software versions become tutorial proposals with explicit first-party depe
   assert.equal(result[0].trigger,'E');assert.equal(result[0].action,'new_tutorial');assert.equal(result[0].requires_first_party,true);assert.equal(result[0].needs_material,true);
 });
 
-test('real undated LEDVISION titles create version cards with discovery dates, never fabricated publication dates',()=>{
+test('real undated LEDVISION titles remain reference without a proven baseline; a synthetic post-baseline discovery preserves its unknown date',()=>{
   const question=q({question:'LEDVISION 升级前需要检查什么？',content_type:'tutorial',requires_first_party:true,keywords:['LEDVISION']});
   const entries=preview.previews.find(p=>p.id==='web-colorlight-ledvision')!.output.items;
   assert.equal(entries.length,11);
   for(const [i,entry] of entries.entries()){
     assert.equal(entry.publishedAt,null);
     const row=material({id:`ledvision-${i}`,source_id:'web-colorlight-ledvision',title:entry.title,url:entry.url,published_at:entry.publishedAt,discovered_at:'2026-11-02T08:30:00Z',body_text:null,body_status:'pending'});
-    const card=plan([question],[row])[0];
+    assert.deepEqual(plan([question],[row]),[],'a feed name and version number alone are not proof of news');
+    const proven={...row,source_initialized_at:'2026-11-01T00:00:00Z'}; // Synthetic observation, not a historical collection claim.
+    const card=plan([question],[proven])[0];
     assert.equal(card.trigger,'E');assert.equal(card.action,'new_tutorial');assert.equal(card.needs_material,true);
     assert.equal(card.evidence[0].date,null);assert.equal(card.evidence[0].discovered_at,'2026-11-02T08:30:00.000Z');
     assert.equal(card.evidence[0].after,entry.title);
-    assert.equal(plan([question],[{...row,revision:2,previous_title:row.title,body_status:'ok',body_text:`${row.title} download instructions.`}])[0].key,card.key,'body completion retains one version identity');
+    assert.equal(plan([question],[{...proven,revision:2,previous_title:row.title,body_status:'ok',body_text:`${row.title} download instructions.`}])[0].key,card.key,'body completion retains one version identity');
   }
 });
 
@@ -64,7 +67,7 @@ test('R1-0 real first-import version history: 22 records create no cards; one sy
   assert.deepEqual(plan([],versionHistory),[],'first-import history cannot fall back to any material card');
   const original=versionHistory.find(row=>row.title==='LEDVISION V9.7')!;
   // Synthetic counterfactual, not a real release/download: retain the fixture URL and unknown publication date.
-  const next={...original,id:'synthetic-ledvision-v9-8',title:'LEDVISION V9.8',backfill_reason:null};
+  const next={...original,id:'synthetic-ledvision-v9-8',title:'LEDVISION V9.8',backfill_reason:null,source_initialized_at:'2026-11-01T00:00:00Z',discovered_at:'2026-11-02T00:00:00Z'};
   const cards=plan([],[...versionHistory,next]);
   assert.equal(cards.length,1);assert.equal(cards[0].trigger,'E');assert.equal(cards[0].article_id,next.id);
   assert.equal(cards[0].evidence[0].date,null);assert.equal(cards[0].evidence[0].url,original.url);assert.equal(cards[0].evidence[0].after,next.title);
@@ -73,7 +76,7 @@ test('R1-0 real first-import version history: 22 records create no cards; one sy
 test('R1-0 first-import marker survives a synthetic same-item version change, while same-version body completion stays quiet',()=>{
   const original=versionHistory.find(row=>row.title==='LEDVISION V9.7')!;
   // Synthetic body-completion control reuses the fixture title; it is not fetched source body evidence.
-  const completed={...original,revision:2,previous_revision:1,previous_title:original.title,previous_body:null,body_status:'ok',body_text:original.title};
+  const completed={...original,revision:2,previous_revision:1,previous_title:original.title,previous_body:null,version_observed_at:'2026-11-02T00:00:00Z',body_status:'ok',body_text:original.title};
   assert.deepEqual(plan([],[completed]),[]);
   const changed={...completed,title:'LEDVISION V9.8',body_text:null,body_status:'pending'}; // Synthetic counterfactual.
   const cards=plan([],[changed]);
@@ -89,22 +92,22 @@ test('uppercase version changes work without a body; undated ordinary news and u
   const row=material({title:'LEDVISION V9.7',body_text:null,body_status:'pending',source_id:'web-colorlight-news'});
   assert.equal(plan([question],[row])[0].trigger,'E');
   assert.equal(plan([question],[{...row,published_at:null}]).length,0);
-  assert.equal(plan([question],[{...row,published_at:'2020-01-01',revision:2,previous_title:'LEDVISION v9.6'}])[0].trigger,'E');
+  assert.deepEqual(plan([question],[{...row,published_at:'2020-01-01',revision:2,previous_title:'LEDVISION v9.6'}]),[],'a version string change cannot overwrite a known old source date');
   assert.equal(plan([question],[{...row,revision:2,previous_title:'LEDVISION v9.7'}]).some(c=>c.trigger==='E'),false);
 });
 
 test('expired news remains visible without slots, while recent news is ordered by publication date',()=>{
   const base=plan([],[material()])[0];
-  const row=(id:string,date:string,created:string,trigger:'A'|'D'='D')=>({id,status:'pending',created_at:created,document:{...base,trigger,priority:trigger==='A'?0:4,evidence:[{...base.evidence[0],date}]}});
-  const rows=[row('old-news','2026-10-26T12:00:00Z',now),row('older-recent','2026-11-01T12:00:00Z','2026-11-01'),row('newer-recent','2026-11-03T10:00:00Z',now),row('old-page-change','2020-01-01','2020-01-01','A')];
+  const row=(id:string,date:string,created:string,trigger:'A'|'D'='D')=>({id,status:'pending',created_at:created,document:{...base,trigger,news:{kind:'project_market' as const,observed_version_at:null},priority:trigger==='A'?0:4,evidence:[{...base.evidence[0],date}]}});
+  const rows=[row('old-news','2026-10-19T12:00:00Z',now),row('older-recent','2026-11-01T12:00:00Z','2026-11-01'),row('newer-recent','2026-11-03T10:00:00Z',now),row('old-page-change','2020-01-01','2020-01-01','A')];
   const queue=allocateRecommendationCapacity(rows,2,Date.parse(now));
   assert.equal(queue.rows.length,4);assert.equal(queue.pendingCount,3);assert.equal(queue.activeCount,2);
   const old=queue.rows.find(r=>r.id==='old-news')!;assert.equal(old.expired,true);assert.equal(old.capacity_full,false);
   assert.deepEqual(queue.rows.filter(r=>!r.expired&&!r.capacity_full).map(r=>r.id),['old-page-change','newer-recent']);
   assert.equal(queue.rows.find(r=>r.id==='older-recent')!.capacity_full,true);
-  const atBoundary=allocateRecommendationCapacity([row('boundary','2026-10-27T12:00:00Z',now)],1,Date.parse(now));
+  const atBoundary=allocateRecommendationCapacity([row('boundary','2026-10-20T12:00:00Z',now)],1,Date.parse(now));
   assert.equal(atBoundary.rows[0].expired,false);
-  assert.equal(allocateRecommendationCapacity([row('boundary','2026-10-27T12:00:00Z',now)],1,Date.parse(now)+1).rows[0].expired,true);
+  assert.equal(allocateRecommendationCapacity([row('boundary','2026-10-20T12:00:00Z',now)],1,Date.parse(now)+1).rows[0].expired,true);
 });
 
 test('owned subdomains are owned without accepting lookalike domains',()=>{
@@ -240,7 +243,7 @@ for(const sample of [
 });
 
 for(const sample of [
-  {name:'older than seven days',row:material({published_at:'2026-10-26T12:00:00Z'})},
+  {name:'older than the upstream thirty-day window',row:material({published_at:'2026-10-03T12:00:00Z'})},
   {name:'unrelated fresh material',row:material({title:'Local poetry award announced',body_text:'A poet received a literary prize.'})},
 ])test(`A2 synthetic D negative: ${sample.name}`,()=>{
   assert.equal(runPlan({materials:[sample.row]}).some(card=>card.trigger==='D'),false);
@@ -343,4 +346,70 @@ for(const domain of ['chipshow.com','chipshow.eu','chipshowledusa.com','unishine
   assert.equal(runPlan({ownedDomains:undefined,search:[signal]}).some(card=>card.trigger==='C'),false);
   const cards=runPlan({ownedDomains:undefined,search:[{...signal,position:18}]}).filter(card=>card.trigger==='C');
   assert.equal(cards.length,1);assert.equal(cards[0].action,'update_page');assert.equal(cards[0].existing_url,page);
+});
+
+test('G3 shared selection uses event-specific inclusive 14/30-day windows',()=>{
+  for(const sample of [
+    {title:'Macroblock announces a new LED driver IC',category:'components-ics',days:30},
+    {title:'Kinglight launches a new LED package',category:'components-ics',days:30},
+    {title:'MEAN WELL releases a new power supply',category:'components-ics',days:30},
+    {title:'Macroblock launches a new driver IC at the LED trade show',category:'components-ics',days:30},
+    {title:'NovaLCT v5.6.1 release notes',category:'control-software',days:30},
+    {title:'Kinglight quarterly revenue results',category:'components-ics',days:14},
+    {title:'Macroblock exhibits at the LED trade show',category:'components-ics',days:14},
+    {title:'Nationstar LED stadium project opens',category:'displays-projects',days:14},
+  ]){
+    const at=new Date(Date.parse(now)-sample.days*86400_000).toISOString();
+    const onBoundary=evaluateNewsEligibility({...sample,publishedAt:at,now});
+    assert.equal(onBoundary.windowDays,sample.days,sample.title);assert.equal(onBoundary.eligible,true,sample.title);
+    assert.equal(evaluateNewsEligibility({...sample,publishedAt:at,now:Date.parse(now)+1}).reason,'expired',sample.title);
+    assert.equal(newsCardExpired(onBoundary.kind,at,now),false);
+    assert.equal(newsCardExpired(onBoundary.kind,at,Date.parse(now)+1),true);
+  }
+  assert.equal(classifyNewsKind({title:'Macroblock company announcement',bodyText:'The supplier released quarterly revenue data.',category:'components-ics'}),'project_market','the maker name and source category are insufficient for 30 days');
+});
+
+test('G3 unknown, invalid and future dates do not become news from discovery time',()=>{
+  const input={title:'New LED power supply',now,discoveredAt:'2026-11-02T00:00:00Z'};
+  assert.equal(evaluateNewsEligibility(input).reason,'missing_date');
+  assert.equal(evaluateNewsEligibility({...input,publishedAt:'unknown'}).reason,'invalid_date');
+  assert.equal(evaluateNewsEligibility({...input,publishedAt:'2026-02-30'}).reason,'invalid_date');
+  assert.equal(evaluateNewsEligibility({...input,publishedAt:'2026-11-02T00:00:00'}).reason,'invalid_date','unlabelled local time is not a trusted original date');
+  assert.equal(evaluateNewsEligibility({...input,publishedAt:'2026-11-04T00:00:00Z'}).reason,'future_date');
+  assert.equal(evaluateNewsEligibility({...input,publishedAt:'2026-11-02',referenceOnly:true}).reason,'reference_only');
+  assert.equal(evaluateNewsEligibility({...input,publishedAt:'2026-11-02',alreadyPublished:true}).reason,'already_published');
+});
+
+test('G3 new undated software needs a real prior baseline and retains the observation window',()=>{
+  const input={title:'LEDVISION V9.8',versionSource:true,publishedAt:null,now,discoveredAt:'2026-11-02T00:00:00Z'};
+  assert.equal(evaluateNewsEligibility(input).reason,'missing_date');
+  assert.equal(evaluateNewsEligibility({...input,sourceBaselineAt:'2026-11-03T00:00:00Z'}).reason,'missing_date');
+  const seen=evaluateNewsEligibility({...input,sourceBaselineAt:'2026-11-01T00:00:00Z'});
+  assert.equal(seen.eligible,true);assert.equal(seen.dateBasis,'observed_version');assert.equal(seen.effectiveAt,'2026-11-02T00:00:00.000Z');
+  assert.equal(evaluateNewsEligibility({...input,backfillReason:'first-import',sourceBaselineAt:'2026-11-01T00:00:00Z'}).reason,'first_import_baseline');
+  const changed={...input,backfillReason:'first-import',versionEvidence:{baselineTitle:'LEDVISION V9.7',observedAt:'2026-11-02T00:00:00Z'}};
+  assert.equal(evaluateNewsEligibility(changed).eligible,true);
+  assert.equal(evaluateNewsEligibility({...changed,now:'2026-12-03T00:00:00Z'}).reason,'expired','opening the page later cannot reset first observation');
+});
+
+test('G3 recommendations accept 8-30 day component releases but not same-aged market news, repeated events or already-published items',()=>{
+  const at='2026-10-14T12:00:00Z';
+  const chip=material({id:'upstream-chip',title:'Macroblock releases a new LED driver IC',body_text:'A new driver IC was announced.',published_at:at,event_id:'fact-1'});
+  const second=material({...chip,id:'same-event-relay',url:'https://media.example/relay'});
+  const market=material({id:'market-result',title:'Macroblock quarterly revenue results',body_text:'Revenue results.',published_at:at,event_id:'fact-2'});
+  const used=material({id:'used-event',published_at:at,already_published:true});
+  const cards=plan([],[chip,second,market,used]);
+  assert.deepEqual(cards.map(c=>c.article_id),['upstream-chip']);
+  assert.equal(cards[0].news?.kind,'upstream_update');
+  const rows=[{id:'stored',status:'pending',created_at:now,document:cards[0]}];
+  assert.equal(allocateRecommendationCapacity(rows,1,Date.parse(now)).activeCount,1);
+  assert.equal(allocateRecommendationCapacity(rows,1,Date.parse('2026-11-15T12:00:00Z')).rows[0].expired,true);
+  assert.equal(allocateRecommendationCapacity(rows.map(r=>({...r,document:enrichRecommendation(r.document,[{...chip,already_published:true}])})),1,Date.parse(now)).rows[0].expired,true);
+});
+
+test('G3 expired news does not remove evergreen source-change and manual research paths',()=>{
+  const old=material({revision:2,previous_body:'Power was 200 W.',body_text:'Power is 180 W.',published_at:'2020-01-01',already_published:true});
+  const cards=plan([q({existing_url:'https://chipshow.com/energy'})],[old]);
+  assert.equal(cards[0].trigger,'A');
+  assert.equal(allocateRecommendationCapacity([{id:'update',status:'pending',created_at:now,document:cards[0]}],1,Date.parse(now)).rows[0].expired,false);
 });

@@ -63,7 +63,7 @@ export function publicDraft(draft: Draft, site: string = editorialDirection.publ
     language: 'en', target_site: site, placement: site===editorialDirection.publication_site?editorialDirection.placement:'explicit_target',
     canonical: null, cms_mapping: 'PENDING', news_status: status,
     source: { ...draft.source, publication_date: date.date, publication_precision: date.precision, publication_time: date.time, utc_offset: date.utcOffset },
-    title, body: `> ${notice}\n\n${draft.body_en}`,
+    title, body: draft.brief ? draft.body_en : `> ${notice}\n\n${draft.body_en}`,
     meta_description: status === 'reported' ? draft.meta_description_en : `${label}. ${draft.meta_description_en}`,
   };
 }

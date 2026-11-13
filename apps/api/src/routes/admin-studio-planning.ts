@@ -2,17 +2,32 @@ import type { FastifyInstance } from 'fastify';
 import { readFileSync } from 'node:fs';
 import { actorOf } from '@aihot/backend/admin/auth';
 import { studioQuestions, saveStudioQuestion, importStudioQuestions } from '@aihot/backend/admin/studio-questions';
-import { importDemandCsv, listStudioImports, withdrawStudioImport, demandProfiles, DemandCsvError } from '@aihot/backend/admin/studio-demand';
-import { demandCsvTemplate, demandCsvOptions } from '@aihot/backend/admin/studio-demand-csv';
+import { importDemandCsv, listStudioImports, withdrawStudioImport, demandProfiles, DemandCsvError } from '@aihot/backend/studio/studio-demand';
+import { demandCsvTemplate, demandCsvOptions } from '@aihot/backend/studio/studio-demand-csv';
 import { z } from 'zod';
 import { recommendationOverview, setRecommendationCapacity, refreshRecommendations, decideRecommendation, bindRecommendationEvidence, createManualRecommendation } from '@aihot/backend/admin/studio-recommendations';
 import { studioSearchSignals, importSearchSignals, searchTemplates } from '@aihot/backend/admin/studio-search-signals';
 import { listStudioSocial, deriveStudioSocial, saveStudioSocial, reviewStudioSocial, exportStudioSocial } from '@aihot/backend/admin/studio-social';
 import { adminHandler } from './admin-auth.ts';
 import { body, param, orNotFound } from './admin.ts';
+import { previewPitch,createPitch,listPitches,getPitch,revisePitch,savePitchChoices,confirmPitch,queuePitchDraft } from '@aihot/backend/studio/studio-pitch';
+import {upgradePitch,supplementPitchEvidence,choosePitchScope,queueFragmentRetry,savePitchFacts} from '@aihot/backend/studio/studio-pitch-v2';
 
 /** Planning is internal; a page view never generates cards or calls a model. */
 export function registerAdminStudioPlanning(app: FastifyInstance) {
+  app.post('/api/admin/studio/pitch/redact',adminHandler(async(req)=>previewPitch(body(req))));
+  app.get('/api/admin/studio/pitches',adminHandler(async()=>listPitches()));
+  app.post('/api/admin/studio/pitches',adminHandler(async(req,_reply,admin)=>createPitch(body(req),actorOf(admin))));
+  app.get('/api/admin/studio/pitches/:id',adminHandler(async(req,reply)=>orNotFound(req,reply,await getPitch(param(req,'id')))));
+  app.patch('/api/admin/studio/pitches/:id',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await revisePitch(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/confirm',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await confirmPitch(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/generate',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await queuePitchDraft(param(req,'id'),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/upgrade',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await upgradePitch(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/evidence',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await supplementPitchEvidence(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/scope',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await choosePitchScope(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/choices',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await savePitchChoices(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/facts',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await savePitchFacts(param(req,'id'),body(req),actorOf(admin)))));
+  app.post('/api/admin/studio/pitches/:id/fragments/:index/retry',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await queueFragmentRetry(param(req,'id'),z.coerce.number().int().nonnegative().parse(param(req,'index')),body(req),actorOf(admin)))));
   app.get('/api/admin/studio/social',adminHandler(async req=>({rows:await listStudioSocial((req.query as Record<string,string>).draft_id)})));
   app.post('/api/admin/studio/social/derive',adminHandler(async(req,_reply,admin)=>deriveStudioSocial(body(req),actorOf(admin))));
   app.patch('/api/admin/studio/social/:id',adminHandler(async(req,reply,admin)=>orNotFound(req,reply,await saveStudioSocial(param(req,'id'),body(req),actorOf(admin)))));

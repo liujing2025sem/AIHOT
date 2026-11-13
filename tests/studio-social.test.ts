@@ -2,7 +2,7 @@ import { tag } from './setup.ts';
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { closeDb, sql } from '@aihot/backend/db';
-import { createStudioTask, exportStudioTask, receiveStudioTask, studioDraft, reviewStudioDraft, saveStudioDraft, exportStudioDraft } from '@aihot/backend/admin/studio';
+import { createStudioTask, exportStudioTask, receiveStudioTask, studioDraft, reviewStudioDraft, saveStudioDraft, exportStudioDraft } from '@aihot/backend/studio/studio';
 import { deriveStudioSocial, listStudioSocial, saveStudioSocial, reviewStudioSocial, exportStudioSocial } from '@aihot/backend/admin/studio-social';
 
 after(closeDb);
@@ -107,7 +107,7 @@ test('a Blog version change invalidates its prior social binding even after the 
   let updated = (await studioDraft(row.id))!;
   await reviewStudioDraft(row.id, { version: updated.version, action: 'submit' }, actor);
   updated = (await studioDraft(row.id))!;
-  await reviewStudioDraft(row.id, { version: updated.version, action: 'approve', confirmations: updated.issues.items.filter(issue => issue.confirmable)
+  await reviewStudioDraft(row.id, { version: updated.version, action: 'approve', english_reviewed: true, confirmations: updated.issues.items.filter(issue => issue.confirmable)
     .map(issue => ({ issueId: issue.id, fingerprint: issue.fingerprint })) }, actor);
   await assert.rejects(exportStudioSocial(post.id), /父 Blog 版本已变化/);
   await assert.rejects(reviewStudioSocial(post.id, { version: post.version, action: 'approve', confirmations: confirmations(post) }, actor), /父 Blog 版本已变化/);

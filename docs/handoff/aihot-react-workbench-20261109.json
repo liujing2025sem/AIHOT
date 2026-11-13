@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-09",
+  "project": "AIHOT",
+  "task": "React component-library workbench rewrite",
+  "repository": "liujing2025sem/AIHOT",
+  "branch": "codex/react-editor-workbench-20261109",
+  "base_branch": "codex/autopilot-figures-a-20261108",
+  "base_commit": "c883ed74c0d97c347f4c181127257036138e6711",
+  "status": "implemented_release_candidate",
+  "report": "docs/aihot-react-workbench-20261109.md",
+  "delivery": {
+    "production_deployed": false,
+    "public_content_modified": false,
+    "model_or_collection_switch_changed": false,
+    "publishing_mode_changed": false,
+    "external_agent_acknowledged": false
+  },
+  "ui": {
+    "foundation": ["Radix UI", "shadcn/ui source-component organization", "Lucide React"],
+    "reference": "yikart/AiToEarn@f185b900a095db740afcbfbfef08130bc28b863c",
+    "primary_navigation": ["今日选稿", "专业内容", "我的稿件", "发布记录"],
+    "changed_flows": ["task-oriented sidebar", "material cards", "selection action bar", "existing draft resume", "document with review sidebar", "mobile drawer"],
+    "existing_backend_preserved": true
+  },
+  "evidence": {
+    "full_typecheck": "passed",
+    "web_build": "passed",
+    "non_browser_tests": { "passed": 53, "scope": "web/cache/navigation/SSR regression subset; no browser launched" },
+    "package_tests": { "passed": 8, "scope": "source/build bundle, hashes, secret-path exclusions and no-overwrite behavior" },
+    "diff_check": "passed",
+    "browser_acceptance": "github_ci_web_tests_passed; operator_visual_acceptance_pending",
+    "local_browser_blocker": "System Chromium: socket() failed: Operation not permitted; stopped without bypass",
+    "first_ci": {
+      "run_id": 42593987217,
+      "commit": "8fabf5c571e0cf7b99ec49b9bd4dff24e8917f07",
+      "web_passed": 91,
+      "backend_passed": 1188,
+      "backend_failed": 2,
+      "docker": "passed",
+      "fixes": ["Use existing radius tokens", "Remove random phone-like suffix from demand fixture"],
+      "final_result": "See delivery verification.json for exact final candidate CI"
+    },
+    "new_browser_cases": 8,
+    "screenshots": [],
+    "production_model_calls": 0,
+    "production_publications": 0
+  },
+  "known_limits": [
+    "Selection limit remains 12; automatic generation limit remains 4",
+    "Merging multiple selected news items into one brief is not implemented",
+    "No measured one-minute usability acceptance yet",
+    "Professional pitch workflow retains its backend steps",
+    "Default collection/model readiness follows target-machine settings"
+  ],
+  "next_actions": [
+    "Preserve stacked PRs #18, #19 and #20; do not replace them with old main",
+    "Use complete source/build package; preserve existing runtime, private configuration, database and user changes",
+    "Verify target installation and human 390/1440 visual review without bypassing access denials",
+    "Open existing 6098 read-only; do not regenerate",
+    "Report actual running version and usability results; no automatic production or public-content changes"
+  ],
+  "release": {
+    "type": "complete_source_and_built_web_update",
+    "windows_offline_runtime_included": false,
+    "guide": "docs/releases/react-workbench-20261109/README.zh-CN.md",
+    "deployment": "docs/releases/react-workbench-20261109/DEPLOYMENT.md",
+    "historical_prd_reconciliation": "docs/releases/react-workbench-20261109/PRD-RECONCILIATION.md",
+    "final_version_and_hashes": "RELEASE.json in package",
+    "final_validation": "verification.json alongside package"
+  },
+  "project_memory": {
+    "user_requirement": "Use real React component libraries and an intuitive AiToEarn-like left sidebar",
+    "product_jobs": ["professional SEO/GEO content", "news briefs"],
+    "interaction_intent": "AI prepares; operator selects, checks contextual findings and deliberately delivers",
+    "evidence_boundary": "A committed or archived handoff is not proof that another agent received it"
+  }
+}

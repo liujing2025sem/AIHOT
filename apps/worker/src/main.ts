@@ -13,12 +13,16 @@ import { registerPublicationJobs } from "@aihot/backend/jobs/publication";
 import { registerSchedules } from "./schedules.ts";
 import { ensureContentTargets } from "@aihot/backend/notify/deliver";
 import { startHeartbeat } from "@aihot/backend/operations/heartbeat";
+import { registerStudioJobs } from "./studio.ts";
 
 installModules(SERVER_MODULES);
 assertProductionSecrets([["auth", "IMG_PROXY_SIGN_SECRET"]]);
 
 await ensureContentTargets();
 const boss = await getBoss();
+await registerStudioJobs(boss);
+// The portable Studio only consumes explicitly requested editorial jobs.
+if (process.env.STUDIO_WORKER_ONLY !== 'true') {
 await registerContentJobs(boss);
 if (process.env.COLLECT_ENABLED === "true") await registerSourceJobs(boss);
 await registerEventJobs(boss);
@@ -26,6 +30,7 @@ await registerNotifyJobs(boss);
 await registerPublicationJobs(boss);
 await workModuleQueues(boss);
 await registerSchedules(boss);
+}
 const heartbeat = startHeartbeat("worker");
 console.log(JSON.stringify({ level: "info", msg: "worker started", pid: process.pid }));
 

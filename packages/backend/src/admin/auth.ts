@@ -1,4 +1,4 @@
-// Admin identity: the admin password (ADMIN_PASSWORD), or optionally Feishu OAuth with an allowlist of
+// Admin identity: the admin password (ADMIN_PASSWORD), optionally with ADMIN_USERNAME, or Feishu OAuth with an allowlist of
 // union_ids / emails; opaque sessions stored hashed, and an audit trail for every manual change.
 // Development may impersonate an admin with DEV_AUTH_ROLE=admin; production refuses to start with it.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -10,6 +10,7 @@ import { sha256 } from "../lib/ids.ts";
 export const SESSION_COOKIE = "aihot_admin";
 export const STATE_COOKIE = "aihot_oauth_state";
 export const SESSION_DAYS = 30;
+export const ADMIN_PASSWORD_MIN_LENGTH = 11;
 /** Register this callback in the Feishu open platform when Feishu sign-in is used. */
 export const CALLBACK_URL = `${config.siteUrl}/api/auth/callback`;
 
@@ -47,6 +48,11 @@ function sessionBinding(method: SessionAuth["method"], identity: unknown, key: s
   return createHmac("sha256", key).update(JSON.stringify(["admin-session-v1", method, identity])).digest("hex");
 }
 
+/** Preserve existing password-only bindings; adding or changing a configured name revokes old sessions. */
+function passwordIdentity(password: string) {
+  return config.adminUsername ? { username: config.adminUsername, password } : password;
+}
+
 function validClaims(value: unknown): value is FeishuClaims {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const c = value as Record<string, unknown>;
@@ -60,8 +66,8 @@ function sessionAuthorized(row: { auth_method: string | null; auth_binding: stri
   if (!key || !row.auth_binding || !/^[0-9a-f]{64}$/.test(row.auth_binding)) return false;
   let binding: string;
   if (row.auth_method === "password") {
-    if (!config.adminPassword || config.adminPassword.length < 12 || row.auth_claims !== null) return false;
-    binding = sessionBinding("password", config.adminPassword, key);
+    if (!config.adminPassword || config.adminPassword.length < ADMIN_PASSWORD_MIN_LENGTH || row.auth_claims !== null) return false;
+    binding = sessionBinding("password", passwordIdentity(config.adminPassword), key);
   } else if (row.auth_method === "feishu") {
     const c = row.auth_claims;
     if (!validClaims(c) || !feishuLoginConfigured() || c.appId !== credential("integrations", "FEISHU_LOGIN_APP_ID")) return false;
@@ -202,13 +208,17 @@ export async function completeLogin(code: string, state: string, stateCookie: st
 const PASSWORD_ADMIN = "admin@local";
 
 /** Password sign-in: a constant-time comparison of digests, so the length leaks nothing either. */
-export async function passwordLogin(password: string, returnTo: string, userAgent: string | undefined) {
+export async function passwordLogin(password: string, returnTo: string, userAgent: string | undefined, username?: string) {
   const expected = config.adminPassword;
-  if (!expected || expected.length < 12) throw new LoginRejected("还没有设置管理员密码（环境变量 ADMIN_PASSWORD，至少 12 位）");
+  if (!expected || expected.length < ADMIN_PASSWORD_MIN_LENGTH) throw new LoginRejected(`还没有设置管理员密码（环境变量 ADMIN_PASSWORD，至少 ${ADMIN_PASSWORD_MIN_LENGTH} 位）`);
   const given = createHmac("sha256", "admin-password").update(password).digest();
   const wanted = createHmac("sha256", "admin-password").update(expected).digest();
-  if (!timingSafeEqual(given, wanted)) throw new LoginRejected("密码不对");
-  const auth: SessionAuth = { method: "password", claims: null, binding: sessionBinding("password", expected, secret()) };
+  const passwordMatches = timingSafeEqual(given, wanted);
+  const givenName = createHmac("sha256", "admin-username").update(username ?? "").digest();
+  const wantedName = createHmac("sha256", "admin-username").update(config.adminUsername ?? "").digest();
+  const usernameMatches = timingSafeEqual(givenName, wantedName);
+  if (!passwordMatches || config.adminUsername && !usernameMatches) throw new LoginRejected("账户名或密码不正确，请检查后重试");
+  const auth: SessionAuth = { method: "password", claims: null, binding: sessionBinding("password", passwordIdentity(expected), secret()) };
   const [user] = await sql<{ id: number }[]>`
     INSERT INTO admin_users (email, display_name, last_login_at) VALUES (${PASSWORD_ADMIN}, '管理员', now())
     ON CONFLICT (email) DO UPDATE SET last_login_at = now() RETURNING id`;
@@ -226,7 +236,9 @@ export async function sessionPrincipal(cookieHeader: string | undefined): Promis
       FROM admin_sessions s JOIN admin_users u ON u.id = s.user_id
       WHERE s.id_hash = ${hash} AND s.expires_at > now()`;
     if (row) {
-      if (sessionAuthorized(row)) return { userId: row.user_id, name: row.name ?? row.email ?? `admin:${row.user_id}`, csrf: row.csrf_token, dev: false };
+      if (sessionAuthorized(row)) return { userId: row.user_id,
+        name: row.auth_method === "password" && config.adminUsername ? config.adminUsername : row.name ?? row.email ?? `admin:${row.user_id}`,
+        csrf: row.csrf_token, dev: false };
       // A session seen to be invalid is gone for good: restoring the old configuration does not revive it.
       await sql`DELETE FROM admin_sessions WHERE id_hash = ${hash}`;
     }

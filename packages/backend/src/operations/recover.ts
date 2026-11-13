@@ -3,6 +3,8 @@
 // half an hour without checking the provider's bill, so a lost answer costs at most one repeat; one that
 // turns unknown again waits for an authorized manual release with the actual billing state and a note. A released
 // receipt lets its request call again, and an article that stopped on it goes back to processing.
+// Studio writing receipts always wait for explicit operator recovery; their lost result is never
+// automatically released, including older preparation purposes and future studio_ operations.
 // A primary already handed to a backup is retained for billing; only the backup may need recovery.
 import { audit, Conflict } from "../audit.ts";
 import { sql } from "../db.ts";
@@ -41,11 +43,13 @@ export async function releaseReceipt(id: number, input: { billed: boolean | null
  * Unknown receipts older than half an hour, released without checking the provider's bill. A request
  * released this way once and unknown again stays for the admin (the alerts' follow-ups list it).
  * Primaries continued by a backup are not awaiting release: that would revive their old request.
+ * Studio requests retain their unknown result until the operator resolves it.
  */
 export async function autoReleaseUnknownReceipts(now = Date.now()) {
   const rows = await sql<{ id: number }[]>`
     SELECT r.id FROM receipts r
     WHERE ${awaitingRelease(sql`r`)} AND r.updated_at < ${new Date(now - AUTO_RELEASE_AFTER_MS)}
+      AND NOT starts_with(r.purpose, 'studio_')
       AND NOT EXISTS (SELECT 1 FROM receipt_attempts a WHERE a.receipt_id = r.id AND a.error LIKE ${AUTO_RELEASE_NOTE + "%"})
     ORDER BY r.id LIMIT 200`;
   let released = 0;

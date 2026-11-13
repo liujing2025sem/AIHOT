@@ -152,7 +152,7 @@ test('two real LED sources retain exact evidence and provide a self-contained ha
 
 
 import { editorialDirection, editorialTopic } from '../site/editorial.ts';
-import { publicDraft } from '../packages/backend/src/admin/studio-publication.ts';
+import { publicDraft } from '../packages/backend/src/studio/studio-publication.ts';
 
 test('approved multi-direction Blog brief reaches file handoff without a mandatory buyer question',()=>{
  const p={...packet,editorial_policy:editorialDirection};const parsed=packetSchema.parse(p);assert.equal(parsed.editorial_policy?.daily_digest,true);

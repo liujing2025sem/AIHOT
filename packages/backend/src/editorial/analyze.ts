@@ -29,7 +29,7 @@ import {
   needsShortTweetTranslation, parseTranslateOutput, PREFILTER_SYSTEM, prefilterUser, translateInputOf, UNDERSTAND_SYSTEM, understandUser,
   type IdentityGuard,
 } from "./writing.ts";
-import { CATEGORY_GUIDE, CATEGORY_TAGS, ENTITIES, ENTITY_TAGS, ITEM_TYPES, normalizeTags, TOPIC_TAGS } from "./vocabulary.ts";
+import { CATEGORY_GUIDE, CATEGORY_TAGS, EDITORIAL_ENTITY_IDS, ENTITIES, ENTITY_TAGS, ITEM_TYPES, normalizeItemType, normalizeTags, TOPIC_TAGS } from "./vocabulary.ts";
 import { promptText, promptVersion } from "./prompts.ts";
 import { originalPostCopy } from "../content/posts.ts";
 import { wordingProblems } from "./wording.ts";
@@ -137,7 +137,7 @@ export const StructureSchema = z.object({
 });
 
 const UnderstandSchema = z.object({
-  itemType: z.enum(ITEM_TYPES),
+  itemType: z.preprocess(normalizeItemType, z.enum(ITEM_TYPES)),
   authorRole: z.enum(["principal", "observer", "relayer"]).catch("relayer"),
   // The understanding prompt asks for tags; the public ones come from the structure step.
   tags: z.array(z.string()).max(12).catch([]),
@@ -157,7 +157,7 @@ export const STRUCTURE_SYSTEM = promptText("structure", {
   categoryTags: CATEGORY_TAGS.join("、"),
   topicTags: TOPIC_TAGS.join("、"),
   entityTags: ENTITY_TAGS.join("、"),
-  entities: Object.entries(ENTITIES).map(([id, e]) => `${id}（${e.aliases.slice(0, 3).join("/")}）`).join("，"),
+  entities: EDITORIAL_ENTITY_IDS.map(id => `${id}（${ENTITIES[id]!.aliases.slice(0, 3).join("/")}）`).join("，"),
 });
 
 /** Keep only quotes present both in the original material and in the text the structure model saw. */

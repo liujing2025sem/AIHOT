@@ -57,8 +57,13 @@ const hash = (value: unknown) => createHash('sha256').update(stable(value)).dige
 // Do not lowercase numbers/units or names: mW and MW are different objects.
 const normalizedQuote = (quote: string) => quote.normalize('NFKC').replace(/\s+/gu, ' ').trim();
 
-function fieldText(draft: EditorialDraft, source: string, field: string): string {
+function fieldText(draft: EditorialDraft, source: string, field: string, packet?:Packet): string {
   if (field === 'source.body_text') return source;
+  const sourceId=/^source\[([^\]]+)\]\.body_text$/.exec(field)?.[1];
+  if(sourceId&&packet){
+    const article=packet.articles.find(a=>a.binding.article_id===sourceId);
+    if(article)return article.body_text??'';
+  }
   if (Object.hasOwn(draft, field) && typeof draft[field as keyof EditorialDraft] === 'string') {
     return draft[field as keyof EditorialDraft] as string;
   }
@@ -114,23 +119,26 @@ export function buildEditorialIssues(packet: Packet, draft: EditorialDraft, gate
   }
   const article = articles[0];
   const scope = hash({ version: VERSION, gateVersion: gate.version, taskId: packet.task_id,
-    createdAt: packet.created_at, writing: packet.writing, methods: packet.methods, article, draft });
+    createdAt: packet.created_at, writing: packet.writing, methods: packet.methods, article,
+    ...(draft.brief?{articles:packet.articles}:{}),draft });
   const buckets = new Map<string, EditorialIssue>();
   for (const finding of gate.findings) {
-    const text = fieldText(draft, article.body_text ?? '', finding.field);
+    const text = fieldText(draft, article.body_text ?? '', finding.field,packet);
     if (!Number.isInteger(finding.start) || !Number.isInteger(finding.end) || finding.start < 0
       || finding.end <= finding.start || finding.end > text.length
       || text.slice(finding.start, finding.end) !== finding.quote) {
       throw Error(`Finding no longer matches current text: ${finding.ruleId} ${finding.field}`);
     }
     const object = objectFor(finding, text);
-    const identity = [packet.task_id, draft.source.article_id, 'finding', finding.ruleId, finding.severity, object];
+    const sourceId=/^source\[([^\]]+)\]\.body_text$/.exec(finding.field)?.[1];
+    const findingSource=sourceId?packet.articles.find(a=>a.binding.article_id===sourceId)!.binding:draft.source;
+    const identity = [packet.task_id, findingSource.article_id, 'finding', finding.ruleId, finding.severity, object];
     const id = `issue-${hash(identity)}`;
     let item = buckets.get(id);
     if (!item) {
       item = { id, fingerprint: '', ruleId: finding.ruleId, severity: finding.severity, kind: 'finding',
         title: `${finding.ruleId} · ${object.label}`, group: finding.severity === 'BLOCK' || !recommendedRules.has(finding.ruleId) ? 'required' : 'recommended',
-        requiredForApproval: true, confirmable: finding.severity === 'WARN', object, source: { ...draft.source }, occurrences: [], count: 0 };
+        requiredForApproval: true, confirmable: finding.severity === 'WARN', object, source: { ...findingSource }, occurrences: [], count: 0 };
       buckets.set(id, item);
     }
     item.occurrences.push({ ...finding, context: { field: finding.field, text } });
