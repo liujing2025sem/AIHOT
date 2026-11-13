@@ -558,22 +558,39 @@ test('WordPress push only writes approved English to one draft, with safe recove
  redirect=false;
 
  const hold={entered:gate<void>(),release:gate<void>()};reservationHold=hold;
- const firstPush=push(id,version);
- await hold.entered.promise;
- const secondPush=push(id,version);
+ const committed=gate<void>(),resumeCreator=gate<void>(),begin=sql.begin;
+ let pauseNextCommit=true;
+ const checkpoint=t.mock.method(sql,'begin',async(...args:Parameters<typeof sql.begin>)=>{
+   const pause=pauseNextCommit;pauseNextCommit=false;
+   const result=await Reflect.apply(begin,sql,args);
+   // begin returns after COMMIT. Hold the creator outside its row lock until recovery finishes.
+   if(pause){committed.open();await resumeCreator.promise;}
+   return result;
+ });
+ const firstPush=Promise.resolve(push(id,version));
+ let secondPush:Promise<Awaited<ReturnType<typeof push>>>|undefined;
  try{
-   // Queue the second request on the first transaction's row lock before the reservation commits.
-   // It must then recover pending before the creator can enter its second transaction.
-   let queued=false;
-   for(let i=0;i<200;i++){
-     const waiting=await sql`SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()
-       AND wait_event_type='Lock' AND query LIKE 'SELECT id,version,status FROM studio_drafts WHERE id=%FOR UPDATE%'`;
-     if(waiting.length){queued=true;break;}
-     await new Promise(resolve=>setTimeout(resolve,10));
-   }
-   assert.equal(queued,true,'the duplicate request must wait for the reservation transaction');
- }finally{hold.release.open();}
- const [first,second]=await Promise.all([firstPush,secondPush]);
+   await hold.entered.promise;
+   secondPush=Promise.resolve(push(id,version));
+   try{
+     // Observe the duplicate waiting, then explicitly hold the post-commit window.
+     // Row-lock queue order alone does not guarantee it runs before the creator's next transaction.
+     let queued=false;
+     for(let i=0;i<200;i++){
+       const waiting=await sql`SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()
+         AND wait_event_type='Lock' AND query LIKE 'SELECT id,version,status FROM studio_drafts WHERE id=%FOR UPDATE%'`;
+       if(waiting.length){queued=true;break;}
+       await new Promise(resolve=>setTimeout(resolve,10));
+     }
+     assert.equal(queued,true,'the duplicate request must wait for the reservation transaction');
+   }finally{hold.release.open();}
+   await committed.promise;
+   await secondPush;
+ }finally{
+   hold.release.open();resumeCreator.open();checkpoint.mock.restore();
+   await Promise.allSettled([firstPush,...(secondPush?[secondPush]:[])]);
+ }
+ const [first,second]=await Promise.all([firstPush,secondPush!]);
  assert.equal(recoveryBeforeCreate,true,'recovery must inspect pending before any remote post write');
  assert.ok([first,second].some(res=>res.statusCode===200&&res.json().state==='pushed'),JSON.stringify([first.json(),second.json()]));
  assert.equal(writes.filter(write=>write.id===null).length,1);

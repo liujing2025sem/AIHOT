@@ -124,6 +124,18 @@ for (const width of [1440, 390, 320]) test(`candidate choices expose stored cont
     await expect(page.getByRole('region', { name: '已选素材操作' })).toContainText('还缺 1 条完整正文');
     await expect(page.getByRole('button', { name: '补齐所选正文 / 日期', exact: true })).toBeEnabled();
     await screenshot('needs-body');
+    if (width === 320) {
+      // The final source action must clear the fixed selection bar at the end of the page.
+      const lastSource = material('source-missing').getByRole('link', { name: '查看原文', exact: true });
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await expect.poll(async () => {
+        const link = await lastSource.boundingBox();
+        const toolbar = await page.getByRole('region', { name: '已选素材操作' }).boundingBox();
+        return !!link && !!toolbar && link.y + link.height <= toolbar.y;
+      }).toBe(true);
+      await lastSource.click({ trial: true });
+      await screenshot('last-material-clear');
+    }
     await page.getByRole('button', { name: '清空选择', exact: true }).click();
     await expect(page.getByRole('region', { name: '已选素材操作' })).toHaveCount(0);
     assert.deepEqual(errors, []);

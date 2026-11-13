@@ -104,11 +104,11 @@ async function openEnglishDraft(page: Page) {
   return page.getByLabel('英文正文（源稿）', { exact: true });
 }
 
-async function captureReviewState(page: Page, name: string, width: number) {
+async function captureReviewState(page: Page, name: string, width: number, fullPage = true) {
   const directory = process.env.AIHOT_UI_REVIEW_DIR;
   if (!directory) return;
   mkdirSync(directory, { recursive: true });
-  await page.screenshot({ path: path.join(directory, `review-${name}-${width}.png`), fullPage: true });
+  await page.screenshot({ path: path.join(directory, `review-${name}-${width}.png`), fullPage });
 }
 
 for (const width of [1440, 390]) test('saved fragment changes can be rechecked without editing the current document at ' + width, async () => {
@@ -454,6 +454,7 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(page.getByRole('tab', { name: '英文交付', exact: true })).toHaveAttribute('aria-selected', 'true');
     const body = page.getByLabel('英文正文（源稿）', { exact: true });
     await expect(body).toBeFocused();
+    await expect(body).toBeInViewport();
     await expect(body).toHaveAccessibleDescription('沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。');
     await expect(body).toHaveAttribute('lang', 'en');
     assert.equal(await body.evaluate(el => { const text = el as HTMLTextAreaElement; return text.value.slice(text.selectionStart, text.selectionEnd); }), '5760');
@@ -465,6 +466,7 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(page.getByRole('button', { name: '搜索摘要与消息状态', exact: true })).toHaveAttribute('aria-expanded', 'true');
     const description = page.getByLabel('Meta description', { exact: true });
     await expect(description).toBeFocused();
+    await expect(description).toBeInViewport();
     assert.equal(await description.evaluate(el => { const text = el as HTMLInputElement; return text.value.slice(text.selectionStart ?? 0, text.selectionEnd ?? 0); }), '5760');
 
     await page.getByRole('checkbox', { name: '确认 正文尺寸数字需与原文一致', exact: true }).check();
@@ -517,11 +519,14 @@ test('review remedies open the bound source and position-free review without wri
     const source = page.locator('[data-field="source.body_text"]');
     await expect(source).toBeVisible();
     await expect(source).toBeFocused();
+    await expect(source).toBeInViewport();
     assert.equal(await page.evaluate(() => getSelection()?.toString()), '6 × ');
+    await captureReviewState(page, 'source-target', 390, false);
     const wholeReview = page.getByRole('listitem').filter({ has: page.getByText('新领域首篇逐字核对', { exact: true }) });
     await wholeReview.getByRole('button', { name: '打开英文稿核对', exact: true }).click();
     const body = page.getByLabel('英文正文（源稿）', { exact: true });
     await expect(body).toBeFocused();
+    await expect(body).toBeInViewport();
     await expect(body).toHaveValue(fixture.draft.document.body_en);
     await expect(page.getByRole('button', { name: '确认审核通过', exact: true })).toBeDisabled();
     assert.equal(fixture.writes.length, 0, 'inspection never mutates, verifies facts, or approves');
@@ -611,6 +616,7 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
     await body.fill(localBody);
     await bodyIssue.getByRole('button', { name: '定位并核对', exact: true }).click();
     await expect(body).toBeFocused();
+    await expect(body).toBeInViewport();
     await expect(body).toHaveValue(localBody);
     await expect(first).toBeDisabled(); await expect(second).toBeDisabled();
     await expect(approve).toBeDisabled();
