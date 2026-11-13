@@ -14,7 +14,16 @@ import { studioPageLabels } from '../../features/admin/navigation';
 
 type ExtractionState = 'ok' | 'partial' | 'unconfirmed' | 'skipped' | 'conflict' | 'unsupported' | 'failed';
 type Editorial = { decision: 'KEEP' | 'SKIP' | 'HOLD'; reason_zh: string; task_id?: string };
-type Material = { id: string; title: string; url: string; source_name: string; published_at: string | null; publication_time: string | null; discovered_at: string; body_status: string; body_length: number | null; body_text?: string | null; analysis?: { category: string | null; item_type: string | null; reason_zh: string | null } | null; editorial?: Editorial | null; last_extraction: { state: ExtractionState; notice: string; at: string } | null };
+type Material = { id: string; revision?: number; title: string; url: string; source_name: string; published_at: string | null; publication_time: string | null; discovered_at: string; body_status: string; body_length: number | null; body_text?: string | null; analysis?: { category: string | null; item_type: string | null; reason_zh: string | null } | null; editorial?: Editorial | null; last_extraction: { state: ExtractionState; notice: string; at: string } | null };
+type BriefInspection = {
+  article_ids: string[];
+  counts: { selected: number; independent_events: number; eligible_independent_events: number; additional_events_needed: number };
+  can_compose: boolean;
+  materials: { article_id: string; title: string; source_name: string | null; code: string; duplicate_of: string | null;
+    window_days: 14 | 30 | null; date_basis: 'published' | 'observed_version' | null;
+    issues: { code: string; message_zh: string; action_zh: string }[] }[];
+  duplicates: { article_ids: string[]; matched_by: string[] }[];
+};
 type Extraction = { state: ExtractionState; notice: string; changes: { body: boolean; date: boolean }; material: Material };
 type BatchResult = { id: string; title: string; result: Extraction | null };
 type Draft = { id: string; title_zh: string; title_en: string; status: string; updated_at: string; version: number };
@@ -59,6 +68,7 @@ function MaterialAssessment({ material }: { material: Material }) {
 }
 const labels: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '正文已通过' };
 const extractionLabels: Record<ExtractionState, string> = { ok: '补齐完成', partial: '部分补齐', unconfirmed: '仍待核实', skipped: '已齐', conflict: '版本冲突', unsupported: '暂不支持', failed: '补齐失败' };
+const duplicateBasisLabels: Record<string, string> = { event_id: '已有事件归组', canonical_url: '原文链接', title: '标题', body: '正文' };
 const healthLabels: Record<string, string> = { ok: '正常', degraded: '不稳定', failing: '采集失败', paused: '已暂停', unknown: '待检查' };
 const fetchLabels: Record<string, string> = { ok: '采集完成', failed: '采集失败', error: '采集失败', running: '采集中', skipped: '已齐', partial: '部分完成', aborted: '已中断' };
 const bodyReady = (a: Material) => a.body_status === 'ok' && (a.body_length ?? a.body_text?.length ?? 0) > 0;
@@ -85,6 +95,9 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
   const binding=bindingCard||bindingTask;
   const tab = sp.get('tab') || 'materials';
   const [selected, setSelected] = useState<Material[]>([]);
+  const [inspection, setInspection] = useState<BriefInspection | null>(null);
+  const [inspectionError, setInspectionError] = useState('');
+  const [inspectionRefresh, setInspectionRefresh] = useState(0);
   const [target, setTarget] = useState('');
   const [pageType, setPageType] = useState('行业资讯');
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -107,13 +120,41 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
   const page = studioPageLabels[tab] ?? studioPageLabels.materials;
   const nextDraft = data.drafts.find(d => d.status === 'in_review') ?? data.drafts.find(d => d.status === 'draft');
   const isBriefSelection = selected.length >= 5;
+  const selectedIds = selected.map(a => a.id).join('\u0000');
+  const selectedVersion = selected.map(a => `${a.id}:${a.revision ?? ''}:${a.body_status}:${a.body_length ?? ''}:${a.published_at ?? ''}`).join('|');
+  const currentInspection = inspection?.article_ids.join('\u0000') === selectedIds ? inspection : null;
+  const firstInspectionProblem = currentInspection?.materials.find(item => item.issues.length)?.issues[0];
+  const inspectionHold = isBriefSelection ? inspectionError || (!currentInspection ? '正在核对独立事件与来源…' : !currentInspection.can_compose
+    ? firstInspectionProblem ? `${firstInspectionProblem.message_zh} ${firstInspectionProblem.action_zh}` : `还差 ${currentInspection.counts.additional_events_needed} 个可用独立事件，请补选近期材料。` : null) : null;
   const generationHold = missingBodies ? `还缺 ${missingBodies} 条完整正文，请先补齐或移除。`
+    : inspectionHold ? inspectionHold
     : !data.generation.ready ? data.generation.reason || '写作模型尚未就绪，请检查模型连接。'
     : !isBriefSelection && !targetValid ? '目标页面须为允许的 Chipshow 站点 HTTPS 地址。'
     : busy ? generationStep || '正在处理当前操作，请稍候。' : null;
   useEffect(() => {
     setSelected(items => items.map(a => data.rows.find(row => row.id === a.id) ?? a));
   }, [data.rows]);
+  useEffect(() => {
+    setInspection(null); setInspectionError('');
+    if (binding || !selectedIds || tab !== 'materials') return;
+    const controller = new AbortController();
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const query = new URLSearchParams();
+        for (const id of selectedIds.split('\u0000')) query.append('article_ids', id);
+        const response = await fetch(`/api/admin/studio/briefs/inspection?${query}`, { credentials: 'same-origin', signal: controller.signal });
+        if (response.status === 401) { window.location.href = `/api/auth/login?return=${encodeURIComponent(window.location.pathname + window.location.search)}`; return; }
+        if (!response.ok) throw Error('检查暂时失败，请重试。');
+        const next: BriefInspection = await response.json();
+        if (!active || next.article_ids.join('\u0000') !== selectedIds) return;
+        setInspection(next); setInspectionError('');
+      } catch {
+        if (active && !controller.signal.aborted) { setInspection(null); setInspectionError('选材检查暂时不可用，点击“重新核对”后再合成。'); }
+      }
+    }, 240);
+    return () => { active = false; clearTimeout(timer); controller.abort(); };
+  }, [binding, selectedIds, selectedVersion, tab, inspectionRefresh]);
   useEffect(() => () => { stopRef.current = true; }, []);
   const extract = async () => {
     if (busy || extractingRef.current || !selected.length || selected.length > 12) return;
@@ -169,7 +210,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
     }
   };
   const composeBrief = async () => {
-    if(busy||generatingRef.current||selected.length<5||selected.length>12||generationHold)return;
+    if(busy||generatingRef.current||selected.length<5||selected.length>12||generationHold||!currentInspection?.can_compose)return;
     generatingRef.current=true;
     try {
       const result=await run<{task_id:string;state:string}>('POST','/api/admin/studio/briefs',{article_ids:selected.map(a=>a.id)}, {success:'短讯合集任务已保存，完成后进入待审。不会直接发布。'});
@@ -224,6 +265,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
             </div>
             <h2><Link to={'/admin/studio/materials/' + a.id} className="break-words text-[15px] font-semibold leading-6 text-ink hover:text-accent">{a.title}</Link></h2>
             <MaterialAssessment material={a}/>
+            {checked && currentInspection?.materials.find(item => item.article_id === a.id)?.issues.map(issue => <p key={issue.code} className="mt-2 rounded-control bg-amber-soft px-3 py-2 text-xs leading-5 text-amber-ink">{issue.message_zh} 建议：{issue.action_zh}</p>)}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3"><Badge tone={bodyReady(a) ? 'ok' : 'warn'}>{bodyReady(a) ? '正文可读' : '缺少正文'}</Badge><a className="inline-flex min-h-10 items-center gap-1 text-xs text-accent" href={a.url} target="_blank" rel="noreferrer">查看原文<ExternalLink className="size-3" aria-hidden="true"/></a></div>
             {a.last_extraction && <p className="mt-2 break-words text-xs leading-5 text-ink-3">最近补齐：{extractionLabels[a.last_extraction.state]} · {a.last_extraction.notice}</p>}
           </article>;
@@ -233,15 +275,16 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
       <div className="mt-5 flex flex-wrap justify-between gap-3 text-xs text-ink-3"><span>共 {data.total} 条 · 第 {data.page} 页</span><span className="flex gap-4">{data.page > 1 && <Link to={'?' + new URLSearchParams({...Object.fromEntries(sp), page: String(data.page - 1)})}>上一页</Link>}{data.page * 30 < data.total && <Link to={'?' + new URLSearchParams({...Object.fromEntries(sp), page: String(data.page + 1)})}>下一页</Link>}</span></div>
       {selected.length > 0 && <section role="region" aria-label="已选素材操作" className="fixed inset-x-3 bottom-3 z-40 rounded-panel border border-line-strong bg-surface p-4 shadow-[0_8px_32px_rgba(0,0,0,0.12)] sm:inset-x-6 lg:left-[calc(var(--studio-sidebar-width)+2rem)] lg:right-8">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1 basis-full sm:basis-0"><p className="text-sm font-semibold text-ink">已选 {selected.length} 条 <span className="ml-1 text-xs font-normal text-ink-4">/ 12</span></p><p className="mt-1 text-xs leading-5 text-ink-3">{binding ? '将材料补回原任务。' : isBriefSelection ? '去重后满 5 个独立事件，合成 1 篇短讯待审稿。' : `可逐条成稿；再选 ${5-selected.length} 条可尝试合成一期短讯。`}</p></div>
+          <div className="min-w-0 flex-1 basis-full sm:basis-0"><p className="text-sm font-semibold text-ink">已选 {selected.length} 条 <span className="ml-1 text-xs font-normal text-ink-4">/ 12</span></p><p className="mt-1 text-xs leading-5 text-ink-3" role="status" aria-live="polite">{binding ? '将材料补回原任务。' : currentInspection ? `初步识别 ${currentInspection.counts.independent_events} 个事件，其中 ${currentInspection.counts.eligible_independent_events} 个可用于短讯。${isBriefSelection && currentInspection.can_compose ? '可以合成 1 篇待审稿。' : currentInspection.counts.additional_events_needed ? `还差 ${currentInspection.counts.additional_events_needed} 个可用独立事件。` : '请处理下方选材问题。'}` : isBriefSelection ? '正在核对独立事件与来源…' : `可逐条成稿；再选 ${5-selected.length} 条可尝试合成一期短讯。`}</p></div>
           <Button tone="ghost" size="sm" disabled={busy} aria-label="清空选择" onClick={() => setSelected([])}><X className="size-4" aria-hidden="true"/>清空</Button>
           <Button ref={optionsTrigger} disabled={busy} onClick={() => setOptionsOpen(true)}><SlidersHorizontal className="size-4" aria-hidden="true"/>选稿设置</Button>
           {binding ? <Button tone="primary" disabled={busy || missingBodies > 0} onClick={() => void bindMaterials()}>绑定证据并返回</Button> : <Button tone="primary" disabled={!!generationHold} onClick={() => void (isBriefSelection ? composeBrief() : create(true))}>{isBriefSelection?'合成一期短讯':'一键评估并成稿'}<ArrowRight className="size-4" aria-hidden="true"/></Button>}
         </div>
-        {((!binding && generationHold) || missingBodies > 0) && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs leading-5 text-amber-ink" role="status"><span>{binding && missingBodies ? '还缺 ' + missingBodies + ' 条正文，请先补齐。' : generationHold}</span>{missingBodies > 0 && <Button size="sm" disabled={busy} onClick={() => void extract()}>补齐所选正文 / 日期</Button>}{!data.generation.ready && !binding && <Link to="/admin/channels" className="text-accent">检查模型连接 →</Link>}</div>}
+        {((!binding && generationHold) || missingBodies > 0) && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs leading-5 text-amber-ink" role="status"><span>{binding && missingBodies ? '还缺 ' + missingBodies + ' 条正文，请先补齐。' : generationHold}</span>{missingBodies > 0 && <Button size="sm" type="button" disabled={busy} onClick={() => void extract()}>补齐所选正文 / 日期</Button>}{isBriefSelection && firstInspectionProblem && <Button size="sm" type="button" tone="ghost" onClick={() => setOptionsOpen(true)}>查看并处理问题</Button>}{inspectionError && <Button size="sm" type="button" tone="ghost" onClick={() => setInspectionRefresh(count => count + 1)}>重新核对</Button>}{!data.generation.ready && !binding && <Link to="/admin/channels" className="text-accent">检查模型连接 →</Link>}</div>}
       </section>}
       <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}><DialogContent className="space-y-4" onCloseAutoFocus={event => { const target = optionsTrigger.current?.isConnected ? optionsTrigger.current : document.querySelector<HTMLInputElement>('input[name="q"]'); if (target) { event.preventDefault(); target.focus(); } }}><DialogTitle>所选材料与写作设置</DialogTitle><DialogDescription>5–12 条材料可合成 1 篇短讯，先核对独立事件、出处和 14/30 天时效。1–4 条可逐条成稿；专业长文使用左侧“专业内容”。全部先进入待审。</DialogDescription>
-        <ul className="max-h-44 divide-y divide-line overflow-y-auto">{selected.map(a => <li key={a.id} className="flex items-start gap-2 py-3 text-sm"><span className="min-w-0 flex-1">{a.title}<span className="mt-1 block text-xs text-ink-4">{bodyReady(a) ? '正文可读' : '缺少正文'}</span></span><Button size="sm" tone="ghost" disabled={busy} aria-label={'移除 ' + a.title} onClick={() => setSelected(items => items.filter(item => item.id !== a.id))}>移除</Button></li>)}</ul>
+        {!binding && currentInspection && <div className="rounded-control bg-bg-sunk p-3 text-sm" role="status"><p>初步识别 {currentInspection.counts.independent_events} 个事件，{currentInspection.counts.eligible_independent_events} 个符合短讯选材条件。</p>{currentInspection.duplicates.map(group => <p key={group.article_ids.join('|')} className="mt-2 text-xs leading-5 text-amber-ink">同一事件线索：{group.article_ids.map(id => currentInspection.materials.find(item => item.article_id === id)?.title ?? id).join(' / ')}。依据：{group.matched_by.map(basis => duplicateBasisLabels[basis] ?? basis).join('、')}。请核对后只保留一条。</p>)}</div>}
+        <ul className="max-h-64 divide-y divide-line overflow-y-auto">{selected.map(a => {const checkedMaterial = currentInspection?.materials.find(item => item.article_id === a.id);return <li key={a.id} className="flex items-start gap-2 py-3 text-sm"><span className="min-w-0 flex-1 break-words">{a.title}<span className="mt-1 block text-xs text-ink-4">{checkedMaterial?.date_basis === 'observed_version' ? '依据新版本观察时间' : checkedMaterial?.window_days ? `新闻时效窗口 ${checkedMaterial.window_days} 天` : bodyReady(a) ? '正文可读' : '缺少正文'}</span>{checkedMaterial?.issues.map(issue => <span key={issue.code} className="mt-1 block text-xs leading-5 text-amber-ink">{issue.message_zh} 建议：{issue.action_zh}</span>)}{checkedMaterial?.issues.some(issue => ['missing_date','invalid_date','future_date','invalid_url'].includes(issue.code)) && <Link to={`/admin/studio/materials/${a.id}`} className="mt-1 inline-block text-xs text-accent">打开材料详情核对</Link>}</span><Button size="sm" tone="ghost" disabled={busy} aria-label={'移除 ' + a.title} onClick={() => setSelected(items => items.filter(item => item.id !== a.id))}>移除</Button></li>;})}</ul>
         <Button disabled={busy || !selected.length} onClick={() => { setOptionsOpen(false); void extract(); }}>{extracting ? '正在补齐…' : '补齐所选正文 / 日期'}</Button>
         {!binding && <><label className="block text-sm text-ink-2">目标页面（选填）<Input value={target} onChange={e => setTarget(e.target.value)} placeholder="https://www.chipshow.com/..." className="mt-2"/></label><label className="block text-sm text-ink-2">内容类型<Input value={pageType} onChange={e => setPageType(e.target.value)} className="mt-2"/></label><DirectPublish materialIds={selected.map(a => a.id)} disabled={busy || !data.generation.ready || missingBodies > 0} onQueued={() => {setSelected([]); setOptionsOpen(false); switchTab('tasks');}}/><Button disabled={busy || !selected.length || missingBodies > 0 || !targetValid} onClick={async () => {await create(); setOptionsOpen(false);}}>另存为 Agent 文件任务</Button><p className="text-xs leading-5 text-ink-4">{delivery.wordpressWritesAllowed ? '直接上线沿用当前设置；打开此面板不会切换发布模式或调用模型。' : '这里设置本次选材与写作要求，成稿后继续审稿。'}</p></>}
       </DialogContent></Dialog>

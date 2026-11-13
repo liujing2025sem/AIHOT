@@ -20,6 +20,12 @@ const api = fakeApi((url, _res, req) => {
   if (req.method !== 'GET' && url.pathname !== '/api/site/track') writes.push(url.pathname);
   if (url.pathname === '/api/admin/me') return { name: 'Synthetic editor', csrf: 'fixture', dev: false };
   if (url.pathname === '/api/admin/nav-counts') return {};
+  if (url.pathname === '/api/admin/studio/briefs/inspection') {
+    const ids = url.searchParams.getAll('article_ids'), valid = ids.filter(id => fixtureMaterials.find(a => a.id === id)?.body_status === 'ok').length;
+    return { article_ids: ids, counts: { selected: ids.length, independent_events: ids.length, eligible_independent_events: valid, additional_events_needed: Math.max(0, 5 - valid) }, can_compose: valid === ids.length && ids.length >= 5, duplicates: [],
+      materials: ids.map(id => { const material = fixtureMaterials.find(a => a.id === id)!; return { article_id: id, title: material.title, source_name: material.source_name, code: material.body_status === 'ok' ? 'eligible' : 'missing_body', duplicate_of: null, window_days: 14, date_basis: 'published',
+        issues: material.body_status === 'ok' ? [] : [{ code: 'missing_body', message_zh: '尚无完整正文。', action_zh: '请先补齐正文或移除。' }] }; }) };
+  }
   if (url.pathname === '/api/admin/studio/review-metrics') return {};
   if (url.pathname === '/api/admin/studio/pitches') return { rows: [{ id: 'pitch-fixture', title: '买家如何核对箱体尺寸？', version: 2, status: 'ready', task_id: null }] };
   if (url.pathname === '/api/admin/studio') return {
@@ -106,7 +112,7 @@ for (const width of [1440, 390, 320]) test(`candidate choices expose stored cont
     await expect(page.getByRole('region', { name: '已选素材操作' })).toContainText('再选 1 条');
     await page.getByRole('checkbox', { name: '选择 ' + fixtureMaterials[4].title, exact: true }).check();
     await expect(page.getByRole('button', { name: '合成一期短讯', exact: true })).toBeDisabled();
-    await expect(page.getByRole('region', { name: '已选素材操作' })).toContainText('去重后满 5 个独立事件');
+    await expect(page.getByRole('region', { name: '已选素材操作' })).toContainText('初步识别 5 个事件，其中 5 个可用于短讯');
     await screenshot('selected');
 
     const options = page.getByRole('button', { name: '选稿设置', exact: true });
