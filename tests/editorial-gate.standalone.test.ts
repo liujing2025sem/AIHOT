@@ -407,6 +407,35 @@ test('W2 counts distinct URLs per draft, never counts unrelated packet sources',
   assert.equal(has(check(withBody(`${draft.body_en}\nhttps://lab.example/report`)), 'W2'), false);
 });
 
+test('W2 includes retained page citations while keeping images and repeated source URLs excluded', () => {
+  for (const [keep, singleSource] of [
+    ['<p><a href="https://lab.example/format">Format reference</a></p>', false],
+    ['<p>Format reference: https://lab.example/format</p>', false],
+    ['<p><a href="https://maker.example/news/">Original source</a></p>', true],
+    ['<p><img src="https://cdn.example/format.png" alt="Format illustration"></p>', true],
+  ] as const) {
+    const p = structuredClone(packet);
+    const before = '<p>Read the installation drawing.</p>';
+    const after = '<p>Check the installation drawing before ordering.</p>';
+    const d = withBody(keep + after);
+    p.pitch = {
+      question: 'Which installation drawing is needed?', output_type: 'update', existing_url: binding.url,
+      selected_title: d.title_en, primary_article_id: binding.article_id, outline: [],
+      engineer: { mode: 'conservative', name: '', reply: '', answers: [] }, withheld_numbers: [],
+      fragments_plan: {
+        paragraphs: [{ id: 'p1', html: keep, text: 'Retained reference.' }, { id: 'p2', html: before, text: 'Read the installation drawing.' }],
+        subquestions: [], source_html: keep + before, original_title: d.title_en, method_rule_ids: [],
+        facts: [{ id: 'f1', kind: 'page', statement: 'Check the installation drawing.', quote: 'Read the drawing.', attribution: 'Original page' }],
+        edit_plan: [{ op: 'keep', paragraph: 'p1', facts: [] }, { op: 'revise', paragraph: 'p2', facts: ['f1'] }],
+        fragments: [{ op_index: 1, html_en: after, zh_review: '下单前核对安装图。', used_facts: ['f1'] }],
+      },
+    };
+    const report = check(d, p);
+    assert.equal(report.blocked, false, keep);
+    assert.equal(has(report, 'W2'), singleSource, keep);
+  }
+});
+
 test('W3 source offsets point into unchanged source body, same-origin evidence is not called independent', () => {
   const p = structuredClone(packet); p.articles[0].body_text = '😀 Source citing Research and Markets for its figures.';
   const r = check(draft, p);

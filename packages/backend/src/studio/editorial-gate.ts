@@ -29,6 +29,14 @@ type Draft = Response['drafts'][number];
 type Span = { text: string; start: number; end: number };
 const VERSION = 'editorial-gate/1';
 const contentFields = ['title_zh', 'review_zh', 'title_en', 'body_en', 'meta_description_en'] as const;
+function citationUrls(draft: Draft): Set<string> {
+  const citations = new Set([draft.source.url.replace(/\/$/, '')]);
+  for (const field of contentFields) {
+    const prose = draft[field].replace(/!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>/gi, '');
+    for (const m of matches(prose, /https?:\/\/[^\s<>"')\]]+/g)) citations.add(m[0].replace(/[.,;，。；]+$/, '').replace(/\/$/, ''));
+  }
+  return citations;
+}
 const techNumber = /(?<![a-zA-Z0-9])\d[\d,.]*(?:\s*[–—~-]\s*\d[\d,.]*)?\s*(?:nits?\b|cd\s*\/\s*m[²2]|mm\b|cm\b|μm\b|µm\b|nm\b|[kM]?Hz\b|[kM]?W\b|mA\b|V\b|ms\b|°\s*C\b|℃|%|:\s*1\b|[亿万]色)/giu;
 const ranking = /最好|最强|领先|首选|全面优于|碾压|完胜|第一(?![章节步条次天])|\b(?:best|strongest|leading|first choice|outperforms?|number one)\b/gi;
 const freshness = /最新|首发|独家|刚刚|今日|\b(?:latest|just released|world premiere|exclusive|today)\b/gi;
@@ -121,7 +129,9 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
     const scopedBody=errors.length?draft.body_en:draft.body_en.split('').map((char,i)=>keepRanges.some(r=>i>=r.start&&i<r.end)&&char!=='\n'?' ':char).join('');
     const scopedPacket={...packet,pitch:{...packet.pitch!,fragments_plan:undefined}};
     const gate=evaluateDraft(scopedPacket,{...draft,body_en:scopedBody},context);
-    const findings=gate.findings.map(f=>f.field==='body_en'
+    // Kept text is excluded from claim review, but its citations still belong to the whole draft.
+    const fullCitations=citationUrls(draft);
+    const findings=gate.findings.filter(f=>f.ruleId!=='W2'||fullCitations.size===1).map(f=>f.field==='body_en'
       ? {...f,quote:draft.body_en.slice(f.start,f.end)} : f);
     const wholeCompany=pitchDraftFindings(scopedPacket,draft);
     return report([...findings,...wholeCompany,...errors.map(reason=>({ruleId:'D1',severity:'BLOCK' as const,field:'body_en',start:0,end:Math.min(300,draft.body_en.length),quote:draft.body_en.slice(0,300),reason}))]);
@@ -260,11 +270,7 @@ export function evaluateDraft(packet: Packet, draft: Draft, context: GateContext
   if (ageDays === null || ageDays < 0) anchor('W1', '原文日期或任务日期未知/矛盾，无法判断材料年龄。');
   else if (ageDays > 30) anchor('W1', `原文距任务日期${Math.floor(ageDays)}天；确认应作技术解释还是新闻。`);
   // Count distinct URLs actually present in this draft, including its bound source, not packet size.
-  const citations = new Set([draft.source.url.replace(/\/$/, '')]);
-  for (const field of contentFields) {
-    const prose = draft[field].replace(/!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>/gi, '');
-    for (const m of matches(prose, /https?:\/\/[^\s<>"')\]]+/g)) citations.add(m[0].replace(/[.,;，。；]+$/, '').replace(/\/$/, ''));
-  }
+  const citations = citationUrls(draft);
   if (citations.size === 1) anchor('W2', '本稿仅识别到1个不同来源URL（含绑定原文）；URL数量不等于独立证据数量。');
   for (const m of matches(source, /转引|援引|\b(?:citing|cites|quoted from|Research and Markets|TrendForce)\b/gi)) add('W3', 'WARN', 'source.body_text', source, m.index!, m.index! + m[0].length, '原文含二次转述线索；同一研究的传播不算独立互证，需追溯一手。');
   const subject = `${article?.title ?? ''}\n${source}`;
