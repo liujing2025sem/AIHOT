@@ -5,6 +5,8 @@ import { adminGet } from '../../lib/admin.server';
 import { useAdminAction } from '../../features/admin/action';
 import { AdminPage, Badge, Button, ButtonLink, Card, healthTone, Input, Stat, Time } from '../../features/admin/ui';
 import { DirectPublish } from '../../features/admin/publishing';
+import { useDelivery } from '../../features/admin/delivery';
+import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { ArrowRight, BookOpenText, ExternalLink, FileCheck2, Newspaper, SlidersHorizontal, X } from 'lucide-react';
 import { Checkbox } from '../../components/ui/primitives/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../components/ui/primitives/dialog';
@@ -12,7 +14,7 @@ import { studioPageLabels } from '../../features/admin/navigation';
 
 type ExtractionState = 'ok' | 'partial' | 'unconfirmed' | 'skipped' | 'conflict' | 'unsupported' | 'failed';
 type Editorial = { decision: 'KEEP' | 'SKIP' | 'HOLD'; reason_zh: string; task_id?: string };
-type Material = { id: string; title: string; url: string; source_name: string; published_at: string | null; publication_time: string | null; discovered_at: string; body_status: string; body_length: number | null; body_text?: string | null; editorial?: Editorial | null; last_extraction: { state: ExtractionState; notice: string; at: string } | null };
+type Material = { id: string; title: string; url: string; source_name: string; published_at: string | null; publication_time: string | null; discovered_at: string; body_status: string; body_length: number | null; body_text?: string | null; analysis?: { category: string | null; item_type: string | null; reason_zh: string | null } | null; editorial?: Editorial | null; last_extraction: { state: ExtractionState; notice: string; at: string } | null };
 type Extraction = { state: ExtractionState; notice: string; changes: { body: boolean; date: boolean }; material: Material };
 type BatchResult = { id: string; title: string; result: Extraction | null };
 type Draft = { id: string; title_zh: string; title_en: string; status: string; updated_at: string; version: number };
@@ -43,7 +45,19 @@ const decisionLabels = { KEEP: '值得成稿', SKIP: '暂不采用', HOLD: '待�
 function EditorialResult({ value }: { value: Editorial }) {
   return <div className="mt-2 text-xs leading-5"><Badge tone={value.decision === 'KEEP' ? 'ok' : value.decision === 'HOLD' ? 'warn' : 'muted'}>{decisionLabels[value.decision]}</Badge><p className="mt-1 break-words text-ink-3">{value.reason_zh}</p></div>;
 }
-const labels: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '可导出' };
+const materialTypeLabels: Record<string, string> = { product_launch: '新品发布', tool_or_prompt: '工具资料', research_paper: '研究论文', industry_event: '行业事件', opinion_analysis: '观点分析', tutorial_explainer: '教程说明' };
+function MaterialAssessment({ material }: { material: Material }) {
+  const category = CATEGORIES.find(item => item.key === material.analysis?.category)?.label;
+  const materialType = material.analysis?.item_type && Object.hasOwn(materialTypeLabels, material.analysis.item_type) ? materialTypeLabels[material.analysis.item_type] : null;
+  return <div className="mt-3 space-y-2">
+    {(category || materialType) && <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs leading-5">
+      {category && <div className="min-w-0"><dt className="inline text-ink-3">分类建议：</dt><dd className="inline break-words text-ink-2">{category}</dd></div>}
+      {materialType && <div><dt className="inline text-ink-3">材料类型：</dt><dd className="inline text-ink-2">{materialType}</dd></div>}
+    </dl>}
+    {material.editorial ? <EditorialResult value={material.editorial}/> : material.analysis?.reason_zh ? <p className="break-words text-sm leading-6 text-ink-2"><span className="font-medium">参考理由：</span>{material.analysis.reason_zh}</p> : !category && !materialType && <p className="text-xs leading-6 text-ink-3">暂无选题建议</p>}
+  </div>;
+}
+const labels: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '正文已通过' };
 const extractionLabels: Record<ExtractionState, string> = { ok: '补齐完成', partial: '部分补齐', unconfirmed: '仍待核实', skipped: '已齐', conflict: '版本冲突', unsupported: '暂不支持', failed: '补齐失败' };
 const healthLabels: Record<string, string> = { ok: '正常', degraded: '不稳定', failing: '采集失败', paused: '已暂停', unknown: '待检查' };
 const fetchLabels: Record<string, string> = { ok: '采集完成', failed: '采集失败', error: '采集失败', running: '采集中', skipped: '已齐', partial: '部分完成', aborted: '已中断' };
@@ -66,6 +80,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 export const meta = () => [{ title: '采编工作台 · Chipshow Studio' }];
 export default function Studio({ loaderData: data }: Route.ComponentProps) {
   const [sp, setSp] = useSearchParams();
+  const delivery = useDelivery();
   const navigate=useNavigate(),bindingTask=sp.get('bind_task'),bindingCard=sp.get('bind_card');
   const binding=bindingCard||bindingTask;
   const tab = sp.get('tab') || 'materials';
@@ -195,18 +210,22 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
         <select aria-label="筛选素材状态" name="quality" defaultValue={sp.get('quality') ?? 'ready'} className="h-10 min-w-0 max-w-full rounded-control border border-line bg-surface px-3 text-sm"><option value="">全部材料</option><option value="ready">正文可读</option><option value="missing-body">待补正文</option><option value="missing-date">待核发布日期</option></select>
         <Button type="submit">筛选</Button>
       </Form>
+      <p className="mb-3 text-sm leading-6 text-ink-3">先看已有分类和选题理由，再选材料。选中后可逐条成稿，或合成一期短讯。</p>
       <div className={'grid gap-4 xl:grid-cols-2 ' + (selected.length ? 'pb-40' : '')}>
         {data.rows.map(a => {
           const checked = selected.some(item => item.id === a.id);
-          return <article key={a.id} className={'group flex min-w-0 gap-3 rounded-panel border bg-surface p-5 transition-colors ' + (checked ? 'border-accent ring-1 ring-accent/20' : 'border-line hover:border-accent/35')}>
-            <Checkbox className="mt-1 shrink-0" aria-label={'选择 ' + a.title} disabled={busy || selected.length >= 12 && !checked} checked={checked} onCheckedChange={value => setSelected(items => value === true ? items.length < 12 && !items.some(item => item.id === a.id) ? [...items, a] : items : items.filter(item => item.id !== a.id))}/>
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-ink-4"><span className="font-medium text-ink-3">{a.source_name}</span><span>·</span><PublicationDate material={a}/></div>
-              <h2><Link to={'/admin/studio/materials/' + a.id} className="text-[15px] font-semibold leading-6 text-ink hover:text-accent">{a.title}</Link></h2>
-              {a.editorial ? <EditorialResult value={a.editorial}/> : <p className="mt-3 text-xs leading-6 text-ink-3">勾选后由 AI 评估写作价值，成稿保留事实出处。</p>}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3"><Badge tone={bodyReady(a) ? 'ok' : 'warn'}>{bodyReady(a) ? '可用于采编' : '缺少正文'}</Badge><a className="inline-flex items-center gap-1 text-xs text-accent" href={a.url} target="_blank" rel="noreferrer">查看原文<ExternalLink className="size-3" aria-hidden="true"/></a></div>
-              {a.last_extraction && <p className="mt-2 break-words text-xs leading-5 text-ink-3">最近补齐：{extractionLabels[a.last_extraction.state]} · {a.last_extraction.notice}</p>}
+          return <article key={a.id} className={'group min-w-0 rounded-panel border bg-surface p-5 ' + (checked ? 'border-accent' : 'border-line')}>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div className="min-w-0 pt-2 text-xs leading-5 text-ink-3"><p className="break-words font-medium">{a.source_name}</p><div className="mt-1 flex flex-wrap gap-1"><PublicationDate material={a}/></div></div>
+              <label htmlFor={'select-material-' + a.id} className="inline-flex min-h-12 shrink-0 cursor-pointer items-center gap-2 rounded-control px-2 text-xs font-medium text-ink-2">
+                <Checkbox id={'select-material-' + a.id} className="size-6" aria-label={'选择 ' + a.title} disabled={busy || selected.length >= 12 && !checked} checked={checked} onCheckedChange={value => setSelected(items => value === true ? items.length < 12 && !items.some(item => item.id === a.id) ? [...items, a] : items : items.filter(item => item.id !== a.id))}/>
+                <span>选择</span>
+              </label>
             </div>
+            <h2><Link to={'/admin/studio/materials/' + a.id} className="break-words text-[15px] font-semibold leading-6 text-ink hover:text-accent">{a.title}</Link></h2>
+            <MaterialAssessment material={a}/>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3"><Badge tone={bodyReady(a) ? 'ok' : 'warn'}>{bodyReady(a) ? '正文可读' : '缺少正文'}</Badge><a className="inline-flex min-h-10 items-center gap-1 text-xs text-accent" href={a.url} target="_blank" rel="noreferrer">查看原文<ExternalLink className="size-3" aria-hidden="true"/></a></div>
+            {a.last_extraction && <p className="mt-2 break-words text-xs leading-5 text-ink-3">最近补齐：{extractionLabels[a.last_extraction.state]} · {a.last_extraction.notice}</p>}
           </article>;
         })}
       </div>
@@ -224,7 +243,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
       <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}><DialogContent className="space-y-4" onCloseAutoFocus={event => { const target = optionsTrigger.current?.isConnected ? optionsTrigger.current : document.querySelector<HTMLInputElement>('input[name="q"]'); if (target) { event.preventDefault(); target.focus(); } }}><DialogTitle>所选材料与写作设置</DialogTitle><DialogDescription>5–12 条材料可合成 1 篇短讯，先核对独立事件、出处和 14/30 天时效。1–4 条可逐条成稿；专业长文使用左侧“专业内容”。全部先进入待审。</DialogDescription>
         <ul className="max-h-44 divide-y divide-line overflow-y-auto">{selected.map(a => <li key={a.id} className="flex items-start gap-2 py-3 text-sm"><span className="min-w-0 flex-1">{a.title}<span className="mt-1 block text-xs text-ink-4">{bodyReady(a) ? '正文可读' : '缺少正文'}</span></span><Button size="sm" tone="ghost" disabled={busy} aria-label={'移除 ' + a.title} onClick={() => setSelected(items => items.filter(item => item.id !== a.id))}>移除</Button></li>)}</ul>
         <Button disabled={busy || !selected.length} onClick={() => { setOptionsOpen(false); void extract(); }}>{extracting ? '正在补齐…' : '补齐所选正文 / 日期'}</Button>
-        {!binding && <><label className="text-sm text-ink-2">目标页面（选填）<Input value={target} onChange={e => setTarget(e.target.value)} placeholder="https://www.chipshow.com/..." className="mt-2"/></label><label className="text-sm text-ink-2">内容类型<Input value={pageType} onChange={e => setPageType(e.target.value)} className="mt-2"/></label><DirectPublish materialIds={selected.map(a => a.id)} disabled={busy || !data.generation.ready || missingBodies > 0} onQueued={() => {setSelected([]); setOptionsOpen(false); switchTab('tasks');}}/><Button disabled={busy || !selected.length || missingBodies > 0 || !targetValid} onClick={async () => {await create(); setOptionsOpen(false);}}>另存为 Agent 文件任务</Button><p className="text-xs leading-5 text-ink-4">直接上线沿用当前设置；打开此面板不会切换发布模式或调用模型。</p></>}
+        {!binding && <><label className="text-sm text-ink-2">目标页面（选填）<Input value={target} onChange={e => setTarget(e.target.value)} placeholder="https://www.chipshow.com/..." className="mt-2"/></label><label className="text-sm text-ink-2">内容类型<Input value={pageType} onChange={e => setPageType(e.target.value)} className="mt-2"/></label><DirectPublish materialIds={selected.map(a => a.id)} disabled={busy || !data.generation.ready || missingBodies > 0} onQueued={() => {setSelected([]); setOptionsOpen(false); switchTab('tasks');}}/><Button disabled={busy || !selected.length || missingBodies > 0 || !targetValid} onClick={async () => {await create(); setOptionsOpen(false);}}>另存为 Agent 文件任务</Button><p className="text-xs leading-5 text-ink-4">{delivery.wordpressWritesAllowed ? '直接上线沿用当前设置；打开此面板不会切换发布模式或调用模型。' : '这里设置本次选材与写作要求，成稿后继续审稿。'}</p></>}
       </DialogContent></Dialog>
     </>}
     {tab==='tasks'&&<Card title="采编任务">

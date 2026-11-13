@@ -33,6 +33,26 @@ type Document = {
 type SourceSnapshot = { binding: { article_id: string; url: string }; title: string; body_text: string | null };
 type Finding = { ruleId: string; severity: 'BLOCK' | 'WARN'; field: string; start: number; end: number; quote: string; reason: string };
 type Issue = { id: string; fingerprint: string; ruleId: string; severity: 'BLOCK' | 'WARN'; title: string; group: 'required' | 'recommended'; confirmable: boolean; count: number; occurrences: Finding[] };
+const issueRemedies: Record<string, string> = {
+  D1: '按上方具体原因核对当前稿件、绑定原文及编辑计划。只修改允许编辑的内容；需要依据时先补证据，原文保留段保持不变。',
+  D2: '核对排名所依据的独立评测与比较条件。缺少依据时，删除排名承诺，保留可核对的事实。',
+  D3: '核对原始发布日期，把“最新”等时效断言改成有依据的日期描述。日期未知时先补证据。',
+  D4: '对照原文或权威名称记录核实专名。没有可靠中文名时保留原文名称。',
+  D5: '逐字核对认证主体、标准、适用范围和可信记录。无法核实时，删去本方认证承诺。',
+  D6: '核对商务记录中的对象、日期与条件。第三方报价和历史信息需保留归属，不能改成本方承诺。',
+  D7: '核对比较对象、出处与适用范围。缺少依据时，删除品牌或技术路线的负面结论。',
+  D8: '核对客户或项目身份、可披露范围与授权。授权不足时，去掉未获准披露的信息。',
+  D9: '补齐市场数字的来源、统计期间和定义范围。没有可核对的依据时，删去该数字。',
+  D10: '核对图片的可信使用授权。无法确认时，更换为已获授权的图片或移除该图片。',
+  W1: '核对原始日期与材料用途。旧资料可作技术解释；日期不明时补证据，避免当作近期新闻。',
+  W2: '检查关键说法是否有独立依据。补充可追溯来源，或把说法限定为现有来源的报道。',
+  W3: '从当前转述追溯一手原文，核对引用内容与日期；同一研究的转载不能作为独立互证。',
+  W4: '对照原文核实指标对象、测试条件和适用范围。缺少条件时补证据，避免把结果推广到其他场景。',
+  W5: '逐字核对本篇主题、应用边界和事实归属，确认它帮助读者解决的具体问题。',
+  W6: '在术语首次出现处补充准确释义，并保持全文名称一致。',
+  W7: '逐点核对当前英文的数字、单位、消息状态和归属，保留尚未证实的限定及原日期。',
+  W8: '与已发布内容对照，确认新增信息；缺少历史时先人工查重，无法判断的部分保留待核对。',
+};
 type WordPressReceipt = { version: number; kind: string; section: string; editUrl: string | null; recoveryKey: string | null } & (
   { state: 'pushed'; media: 'set' | 'not_configured' | 'not_applied'; metaDescription: string } |
   { state: 'unknown'; httpStatus?: number } | { state: 'mismatch'; reason?: string } | { state: 'pending' | 'blocked' }
@@ -217,6 +237,7 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
   const documentInput = useRef(row.document);
   const [englishReviewed,setEnglishReviewed]=useState(false);
   const [fulltextOpen, setFulltextOpen] = useState(false);
+  const [location, setLocation] = useState<{ field: string; finding?: Finding } | null>(null);
   const [revisionGoals, setRevisionGoals] = useState<string[]>(['clarify_buyer_answer']);
   const [metadataOpen, setMetadataOpen] = useState('');
   const [recoveryWait, setRecoveryWait] = useState<{ version: number; until: number; request: string } | null>(null);
@@ -304,30 +325,42 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
     : !allConfirmed ? '还有待确认的问题，全部核对后可审核。'
     : row.review_sync?.status === 'stale' && !englishReviewed ? '请先勾选“已按当前英文主稿核对”，再确认审核通过。'
     : null;
-  const locate = (f: Finding) => {
+  const locate = (f?: Finding) => {
+    const targetField = f?.field ?? 'body_en';
     setStage('review');
     setFulltextOpen(true);
-    setTab(f.field === 'source.body_text'||f.field.startsWith('source[') ? 'source' : f.field.endsWith('_zh') ? 'zh' : 'en');
-    if (f.field === 'meta_description_en' || f.field === 'keyword_hypothesis') setMetadataOpen('metadata');
-    setTimeout(() => {
-      const el = document.querySelector('[data-field="' + f.field + '"]');
-      if (!el) return;
-      const details = el.closest('details');
-      if (details) details.open = true;
-      el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
-      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
-        el.focus(); el.setSelectionRange(f.start, f.end);
-      } else if (el.firstChild) {
+    setTab(targetField === 'source.body_text'||targetField.startsWith('source[') ? 'source' : targetField.endsWith('_zh') ? 'zh' : 'en');
+    if (targetField === 'meta_description_en' || targetField === 'keyword_hypothesis') setMetadataOpen('metadata');
+    setLocation({ field: targetField, finding: f });
+  };
+  const focusLocation = useCallback((el: HTMLElement | null) => {
+    // Tabs and disclosures can mount their children after the parent has committed.
+    if (!el || !location || el.dataset.field !== location.field) return;
+    const details = el.closest('details');
+    if (details) details.open = true;
+    el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+    el.focus({ preventScroll: true });
+    const f = location.finding;
+    const text = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el.value : el.textContent ?? '';
+    // A local edit may have moved the old finding. Open its field without selecting unrelated text.
+    if (f && text.slice(f.start, f.end) === f.quote) {
+      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) el.setSelectionRange(f.start, f.end);
+      else if (el.firstChild?.nodeType === Node.TEXT_NODE) {
         const range = document.createRange();
         range.setStart(el.firstChild, Math.min(f.start, el.firstChild.textContent?.length ?? 0));
         range.setEnd(el.firstChild, Math.min(f.end, el.firstChild.textContent?.length ?? 0));
         const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
       }
-    }, 50);
-  };
+    } else if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) el.setSelectionRange(0, 0);
+    else window.getSelection()?.removeAllRanges();
+    setLocation(null);
+  }, [location]);
   const issueList = (group: 'required' | 'recommended') => <ul className="space-y-3">
     {row.issues.items.filter(i => i.group === group).map(i => {
       const checked = i.confirmable && confirmed.includes(i.id);
+      const suggestions = (row.suggestions ?? []).filter(s => s.issueId === i.id);
+      const first = i.occurrences[0];
+      const sourceFinding = first?.field === 'source.body_text' || first?.field.startsWith('source[');
       return <li key={i.id} className="rounded-card border border-line p-3.5">
         <div className="flex items-start gap-3">
           {i.confirmable ? <Checkbox id={'confirm-' + i.id} aria-label={'确认 ' + i.title} disabled={busy || dirty} checked={checked} onCheckedChange={value => setConfirmed(v => value === true ? [...v, i.id] : v.filter(id => id !== i.id))} className="mt-0.5" /> : <ShieldAlert className="mt-0.5 size-5 shrink-0 text-hot" aria-hidden="true" />}
@@ -337,11 +370,18 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
             <p className="mt-1 text-xs leading-5 text-ink-3">{i.confirmable ? '核对原文后勾选，确认仅对当前版本有效。' : '人审模式下需要修改内容，不能勾选放行。'}</p>
           </div>
         </div>
-        {i.occurrences[0] && <blockquote className="mt-3 whitespace-pre-wrap break-words border-l-2 border-line pl-3 text-sm leading-6">{quoteText(i.occurrences[0].quote).slice(0, 240)}{quoteText(i.occurrences[0].quote).length > 240 && '…'}</blockquote>}
-        {(row.suggestions??[]).filter(s=>s.issueId===i.id).map(s=><div key={s.id} className="mt-3 space-y-2 rounded-control bg-bg-sunk p-3">
+        {first && <blockquote lang={first.field.endsWith('_en') ? 'en' : undefined} className="mt-3 whitespace-pre-wrap break-words border-l-2 border-line pl-3 text-sm leading-6">{quoteText(first.quote).slice(0, 240)}{quoteText(first.quote).length > 240 && '…'}</blockquote>}
+        {!suggestions.length && <div className="mt-3 space-y-2">
+          {first?.reason && <p className="break-words text-xs leading-6 text-ink-2">{first.reason}</p>}
+          <p className="break-words text-xs leading-6 text-ink-2"><span className="font-medium">处理建议：</span>{Object.hasOwn(issueRemedies, i.ruleId) ? issueRemedies[i.ruleId] : '按提示对照绑定原文与当前稿件。证据不足时补齐依据，或修改可编辑的表述后保存，再重新核对。'}</p>
+          <Button size="sm" onClick={() => locate(first)}><LocateFixed aria-hidden="true" />{sourceFinding ? '查看对应原文' : first ? '定位并核对' : '打开英文稿核对'}</Button>
+        </div>}
+        {suggestions.map(s=><div key={s.id} className="mt-3 space-y-2 border-t border-line pt-3">
           <p className="text-xs font-medium text-ink">建议修改英文主稿</p>
-          <p className="break-words text-xs leading-6 text-ink-2">{s.before}</p>
-          <p className="break-words text-xs leading-6 text-ink-2">建议结果：{s.after || '删除这句无依据的表述，保留其余内容。'}</p>
+          <p className="text-xs text-ink-3">当前表述</p>
+          <p lang="en" className="break-words text-sm leading-6 text-ink-2">{s.before}</p>
+          <p className="text-xs text-ink-3">修改后</p>
+          {s.after ? <p lang="en" className="break-words text-sm leading-6 text-ink-2">{s.after}</p> : <p className="text-sm leading-6 text-ink-2">删除这句无依据的表述，保留其余内容。</p>}
           <p className="text-xs leading-5 text-ink-3">{s.explanation}</p>
           <Button className="w-full" disabled={dirty||busy} onClick={()=>void run('POST',`/api/admin/studio/drafts/${row.id}/apply-edit`,{version:row.version,issueId:i.id,fingerprint:i.fingerprint,suggestionId:s.id})}>{s.label}</Button>
         </div>)}
@@ -368,7 +408,7 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
     setD(next);
   };
   const field = (key: keyof Document, title: string, large = false) => <div className="mb-5"><Field label={title}>
-    {large ? <Textarea data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} aria-describedby={key === 'body_en' ? 'draft-body-edit-help' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} className={'min-h-[440px] text-[15px] leading-8' + (key === 'body_en' ? ' draft-english-body' : '')} /> : <Input data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} />}
+    {large ? <Textarea ref={focusLocation} data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} aria-describedby={key === 'body_en' ? 'draft-body-edit-help' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} className={'min-h-[440px] text-[15px] leading-8' + (key === 'body_en' ? ' draft-english-body' : '')} /> : <Input ref={focusLocation} data-field={key} lang={key.endsWith('_en') ? 'en' : undefined} readOnly={busy} value={String(d[key])} onChange={e => change(key, e.target.value)} />}
   </Field></div>;
   const history = <div className="divide-y divide-line">
     {row.history.map((h, i) => <div className="py-3 text-xs leading-6" key={i}>
@@ -483,12 +523,12 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
               </div>
               <details className="rounded-control border border-line p-4">
                 <summary className="cursor-pointer text-sm font-medium text-accent">展开稿件绑定版本的原文正文</summary>
-                <pre data-field="source.body_text" className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-7">{row.source_snapshot.body_text}</pre>
+                <pre ref={focusLocation} data-field="source.body_text" tabIndex={-1} className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-7">{row.source_snapshot.body_text}</pre>
               </details>
               {(row.source_snapshots??[]).length>1&&<div className="mt-4 space-y-3">{row.source_snapshots!.map(s=><details key={s.binding.article_id} className="rounded-control border border-line p-4">
                 <summary className="cursor-pointer text-sm font-medium text-accent">{s.title}</summary>
                 <a className="my-2 block break-all text-xs text-accent" href={s.binding.url} target="_blank" rel="noreferrer">打开此条原文</a>
-                <pre data-field={`source[${s.binding.article_id}].body_text`} className="whitespace-pre-wrap break-words font-sans text-sm leading-7">{s.body_text}</pre>
+                <pre ref={focusLocation} data-field={`source[${s.binding.article_id}].body_text`} tabIndex={-1} className="whitespace-pre-wrap break-words font-sans text-sm leading-7">{s.body_text}</pre>
               </details>)}</div>}
               {d.camos && <details className="mt-4 rounded-control border border-line p-4 text-xs leading-6">
                 <summary className="cursor-pointer font-medium text-ink-3">CAMOS 方法引用</summary>

@@ -448,8 +448,9 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(approve).toBeDisabled();
 
     const bodyIssue = page.getByRole('listitem').filter({ has: page.getByText('正文尺寸数字需与原文一致', { exact: true }) });
-    await bodyIssue.getByRole('button', { name: '查看原因与 1 处原文', exact: true }).click();
-    await bodyIssue.getByRole('button', { name: '定位到稿件', exact: true }).click();
+    await expect(bodyIssue.getByRole('button', { name: '查看原因与 1 处原文', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    await expect(bodyIssue.getByText('请把这处计算结果与绑定原文对照。', { exact: true })).toBeVisible();
+    await bodyIssue.getByRole('button', { name: '定位并核对', exact: true }).click();
     await expect(page.getByRole('tab', { name: '英文交付', exact: true })).toHaveAttribute('aria-selected', 'true');
     const body = page.getByLabel('英文正文（源稿）', { exact: true });
     await expect(body).toBeFocused();
@@ -459,8 +460,8 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(page.getByText(/查看本次旧页改动/)).toHaveCount(0);
 
     const metaIssue = page.getByRole('listitem').filter({ has: page.getByText('搜索摘要数字需与原文一致', { exact: true }) });
-    await metaIssue.getByRole('button', { name: '查看原因与 1 处原文', exact: true }).click();
-    await metaIssue.getByRole('button', { name: '定位到稿件', exact: true }).click();
+    await metaIssue.getByRole('button', { name: '定位并核对', exact: true }).focus();
+    await page.keyboard.press('Enter');
     await expect(page.getByRole('button', { name: '搜索摘要与消息状态', exact: true })).toHaveAttribute('aria-expanded', 'true');
     const description = page.getByLabel('Meta description', { exact: true });
     await expect(description).toBeFocused();
@@ -472,6 +473,7 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(approve).toBeEnabled();
     await expect(page.getByRole('button', { name: '暂存核对结果', exact: true })).toHaveAccessibleDescription('用于稍后继续核对。确认审核通过时会同时保存当前勾选，无需提前暂存。内容或来源变化后需要重新核对。');
     assert.equal(fixture.writes.length, 0, 'viewing evidence and checking issues do not approve, publish, or modify the draft');
+    await captureReviewState(page, 'actionable-remedies', width);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 
     await approve.click();
@@ -492,6 +494,39 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     assert.equal(fixture.writes.some(write => /\/(publish|wordpress)$/.test(write.path)), false, 'human approval does not initiate a publishing request');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);
+  } finally { await browser?.close(); await web.stop(); }
+});
+
+test('review remedies open the bound source and position-free review without writes or guessed locations', async () => {
+  const fixture = reviewFixture();
+  Object.assign(fixture.draft.issues.items[0], { ruleId: 'W3', title: '追溯一手研究', occurrences: [{
+    ruleId: 'W3', severity: 'WARN', field: 'source.body_text', start: 0, end: 4, quote: '6 × ', reason: '原文含二次转述线索，请追溯一手。',
+  }] });
+  Object.assign(fixture.draft.issues.items[1], { ruleId: 'W5', title: '新领域首篇逐字核对', occurrences: [], count: 0 });
+  const web = await startWebServer(fixture.api);
+  let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
+    await expect(page.getByRole('tab', { name: '原文与证据', exact: true })).toBeHidden();
+    const sourceIssue = page.getByRole('listitem').filter({ has: page.getByText('追溯一手研究', { exact: true }) });
+    await sourceIssue.getByRole('button', { name: '查看对应原文', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('tab', { name: '原文与证据', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const source = page.locator('[data-field="source.body_text"]');
+    await expect(source).toBeVisible();
+    await expect(source).toBeFocused();
+    assert.equal(await page.evaluate(() => getSelection()?.toString()), '6 × ');
+    const wholeReview = page.getByRole('listitem').filter({ has: page.getByText('新领域首篇逐字核对', { exact: true }) });
+    await wholeReview.getByRole('button', { name: '打开英文稿核对', exact: true }).click();
+    const body = page.getByLabel('英文正文（源稿）', { exact: true });
+    await expect(body).toBeFocused();
+    await expect(body).toHaveValue(fixture.draft.document.body_en);
+    await expect(page.getByRole('button', { name: '确认审核通过', exact: true })).toBeDisabled();
+    assert.equal(fixture.writes.length, 0, 'inspection never mutates, verifies facts, or approves');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await captureReviewState(page, 'source-remedy', 390);
   } finally { await browser?.close(); await web.stop(); }
 });
 
@@ -569,6 +604,14 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
 
     await page.getByRole('button', { name: '展开完整稿件', exact: true }).click();
     await page.getByLabel('中文正文', { exact: true }).fill('修改后的内容需要重新保存和核对。');
+    const bodyIssue = page.getByRole('listitem').filter({ has: page.getByText('正文尺寸数字需与原文一致', { exact: true }) });
+    await bodyIssue.getByRole('button', { name: '定位并核对', exact: true }).click();
+    const body = page.getByLabel('英文正文（源稿）', { exact: true });
+    const localBody = 'Locally clarified context. ' + fixture.draft.document.body_en;
+    await body.fill(localBody);
+    await bodyIssue.getByRole('button', { name: '定位并核对', exact: true }).click();
+    await expect(body).toBeFocused();
+    await expect(body).toHaveValue(localBody);
     await expect(first).toBeDisabled(); await expect(second).toBeDisabled();
     await expect(approve).toBeDisabled();
     await expect(page.getByRole('button', { name: '暂存核对结果', exact: true })).toBeDisabled();
@@ -590,6 +633,8 @@ test('a BLOCK draft can save progress and adopt an exact English suggestion with
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
     await expect(page.getByRole('button',{name:'暂存核对结果',exact:true})).toBeEnabled();
     await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeDisabled();
+    const suggestion = page.getByRole('listitem').filter({ has: page.getByText('正文尺寸数字需与原文一致', { exact: true }) });
+    await expect(suggestion.getByText(fixture.draft.document.body_en, { exact: true })).toHaveAttribute('lang', 'en');
     await page.getByRole('button',{name:'采纳修改：删去这句待核实表述',exact:true}).click();
     await expect.poll(()=>fixture.writes.length).toBe(1);
     assert.deepEqual(fixture.writes[0],{path:'/api/admin/studio/drafts/review-fixture/apply-edit',body:{version:7,issueId:issue.id,fingerprint:issue.fingerprint,suggestionId:'current-edit'}});

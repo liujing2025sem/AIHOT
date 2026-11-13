@@ -667,6 +667,32 @@ test('editorial decisions allow zero drafts and only describe the assessed mater
  assert.equal(overview.rows.find(a=>a.id===article)!.editorial,null);
 });
 
+test('material suggestions use only the latest analysis of the current revision without starting work',async()=>{
+ const id=`studio-analysis-${suffix}`;
+ await sql`INSERT INTO articles(id,source_id,identity_key,url,title,discovered_at,timeline_at,body_status,body_text)
+   VALUES (${id},${source},${id},${`https://example.com/${id}`},'LED control firmware notes',now(),now(),'ok','The supplier describes the firmware release and its compatible controller.')`;
+ const read=async()=> (await studioOverview({source,quality:''})).rows.find(a=>a.id===id)!;
+ assert.equal((await read()).analysis,null,'an unread material gets no invented recommendation');
+ await sql`INSERT INTO analyses(article_id,input_revision,origin,category,reason_zh,output)
+   VALUES (${id},1,'rule','components-ics','Older judgment',${sql.json({itemType:'product_launch'})})`;
+ await sql`INSERT INTO analyses(article_id,input_revision,origin,category,reason_zh,output)
+   VALUES (${id},1,'rule','control-software','固件更新及兼容控制器，先核对原厂版本说明。',${sql.json({itemType:'tool_or_prompt'})})`;
+ const counts=async()=>({
+   receipts:[...await sql`SELECT count(*)::int AS count FROM receipts`],
+   tasks:[...await sql`SELECT count(*)::int AS count FROM studio_tasks`],
+   analyses:[...await sql`SELECT * FROM analyses WHERE article_id=${id} ORDER BY id`],
+ });
+ const before=await counts();
+ assert.deepEqual((await read()).analysis,{category:'control-software',item_type:'tool_or_prompt',reason_zh:'固件更新及兼容控制器，先核对原厂版本说明。'});
+ await read();
+ assert.deepEqual(await counts(),before,'overview reads neither buy analysis nor create a writing task');
+ await sql`UPDATE articles SET revision=2 WHERE id=${id}`;
+ assert.equal((await read()).analysis,null,'old input judgments are not presented for changed materials');
+ await sql`INSERT INTO analyses(article_id,input_revision,origin,category,reason_zh,output)
+   VALUES (${id},2,'rule',NULL,NULL,${sql.json({})})`;
+ assert.deepEqual((await read()).analysis,{category:null,item_type:null,reason_zh:null},'missing fields never fall back to an older analysis');
+});
+
 test('writing readiness explains missing setup and allows a genuine zero-draft API result',async()=>{
  const {task,response}=await input();
  const dir=await mkdtemp(path.join(tmpdir(),'studio-readiness-'));

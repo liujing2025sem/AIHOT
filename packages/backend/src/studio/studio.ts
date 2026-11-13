@@ -53,6 +53,9 @@ export async function studioOverview(f: { q?: string; source?: string; quality?:
   const [rows, count, stats, sources, tasks, drafts] = await Promise.all([
     sql`SELECT a.id,a.title,a.url,a.source_id,s.name AS source_name,a.published_at,a.publication_time,a.discovered_at,a.body_status,
       length(a.body_text) AS body_length,a.revision,
+      (SELECT jsonb_build_object('category',n.category,'item_type',n.output->>'itemType','reason_zh',n.reason_zh)
+        FROM analyses n WHERE n.article_id=a.id AND n.input_revision=a.revision
+        ORDER BY n.id DESC LIMIT 1) AS analysis,
       (SELECT jsonb_build_object('decision',d->>'decision','reason_zh',d->>'reason_zh','task_id',t.id)
         FROM studio_tasks t CROSS JOIN LATERAL jsonb_array_elements(t.response->'decisions') d
         CROSS JOIN LATERAL jsonb_array_elements(t.request->'articles') original
