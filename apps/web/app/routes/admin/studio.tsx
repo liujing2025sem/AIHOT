@@ -4,8 +4,6 @@ import type { Route } from './+types/studio';
 import { adminGet } from '../../lib/admin.server';
 import { useAdminAction } from '../../features/admin/action';
 import { AdminPage, Badge, Button, ButtonLink, Card, healthTone, Input, Stat, Time } from '../../features/admin/ui';
-import { DirectPublish } from '../../features/admin/publishing';
-import { useDelivery } from '../../features/admin/delivery';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { ArrowRight, BookOpenText, ExternalLink, FileCheck2, Newspaper, SlidersHorizontal, X } from 'lucide-react';
 import { Checkbox } from '../../components/ui/primitives/checkbox';
@@ -90,7 +88,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 export const meta = () => [{ title: '采编工作台 · Chipshow Studio' }];
 export default function Studio({ loaderData: data }: Route.ComponentProps) {
   const [sp, setSp] = useSearchParams();
-  const delivery = useDelivery();
   const navigate=useNavigate(),bindingTask=sp.get('bind_task'),bindingCard=sp.get('bind_card');
   const binding=bindingCard||bindingTask;
   const tab = sp.get('tab') || 'materials';
@@ -286,7 +283,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
         {!binding && currentInspection && <div className="rounded-control bg-bg-sunk p-3 text-sm" role="status"><p>初步识别 {currentInspection.counts.independent_events} 个事件，{currentInspection.counts.eligible_independent_events} 个符合短讯选材条件。</p>{currentInspection.duplicates.map(group => <p key={group.article_ids.join('|')} className="mt-2 text-xs leading-5 text-amber-ink">同一事件线索：{group.article_ids.map(id => currentInspection.materials.find(item => item.article_id === id)?.title ?? id).join(' / ')}。依据：{group.matched_by.map(basis => duplicateBasisLabels[basis] ?? basis).join('、')}。请核对后只保留一条。</p>)}</div>}
         <ul className="max-h-64 divide-y divide-line overflow-y-auto">{selected.map(a => {const checkedMaterial = currentInspection?.materials.find(item => item.article_id === a.id);return <li key={a.id} className="flex items-start gap-2 py-3 text-sm"><span className="min-w-0 flex-1 break-words">{a.title}<span className="mt-1 block text-xs text-ink-4">{checkedMaterial?.date_basis === 'observed_version' ? '依据新版本观察时间' : checkedMaterial?.window_days ? `新闻时效窗口 ${checkedMaterial.window_days} 天` : bodyReady(a) ? '正文可读' : '缺少正文'}</span>{checkedMaterial?.issues.map(issue => <span key={issue.code} className="mt-1 block text-xs leading-5 text-amber-ink">{issue.message_zh} 建议：{issue.action_zh}</span>)}{checkedMaterial?.issues.some(issue => ['missing_date','invalid_date','future_date','invalid_url'].includes(issue.code)) && <Link to={`/admin/studio/materials/${a.id}`} className="mt-1 inline-block text-xs text-accent">打开材料详情核对</Link>}</span><Button size="sm" tone="ghost" disabled={busy} aria-label={'移除 ' + a.title} onClick={() => setSelected(items => items.filter(item => item.id !== a.id))}>移除</Button></li>;})}</ul>
         <Button disabled={busy || !selected.length} onClick={() => { setOptionsOpen(false); void extract(); }}>{extracting ? '正在补齐…' : '补齐所选正文 / 日期'}</Button>
-        {!binding && <><label className="block text-sm text-ink-2">目标页面（选填）<Input value={target} onChange={e => setTarget(e.target.value)} placeholder="https://www.chipshow.com/..." className="mt-2"/></label><label className="block text-sm text-ink-2">内容类型<Input value={pageType} onChange={e => setPageType(e.target.value)} className="mt-2"/></label><DirectPublish materialIds={selected.map(a => a.id)} disabled={busy || !data.generation.ready || missingBodies > 0} onQueued={() => {setSelected([]); setOptionsOpen(false); switchTab('tasks');}}/><Button disabled={busy || !selected.length || missingBodies > 0 || !targetValid} onClick={async () => {await create(); setOptionsOpen(false);}}>另存为 Agent 文件任务</Button><p className="text-xs leading-5 text-ink-4">{delivery.wordpressWritesAllowed ? '直接上线沿用当前设置；打开此面板不会切换发布模式或调用模型。' : '这里设置本次选材与写作要求，成稿后继续审稿。'}</p></>}
+        {!binding && <><label className="block text-sm text-ink-2">目标页面（选填）<Input value={target} onChange={e => setTarget(e.target.value)} placeholder="https://www.chipshow.com/..." className="mt-2"/></label><label className="block text-sm text-ink-2">内容类型<Input value={pageType} onChange={e => setPageType(e.target.value)} className="mt-2"/></label><Button disabled={busy || !selected.length || missingBodies > 0 || !targetValid} onClick={async () => {await create(); setOptionsOpen(false);}}>另存为 Agent 文件任务</Button><p className="text-xs leading-5 text-ink-4">成稿先进入人工审稿，确认后由运营手工交付。</p></>}
       </DialogContent></Dialog>
     </>}
     {tab==='tasks'&&<Card title="采编任务">

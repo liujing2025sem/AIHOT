@@ -119,7 +119,7 @@ for (const width of [1440, 390, 320]) test(`candidate choices expose stored cont
     await options.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: '所选材料与写作设置', exact: true })).toBeVisible();
-    await expect(dialog).toContainText('这里设置本次选材与写作要求，成稿后继续审稿。');
+    await expect(dialog).toContainText('成稿先进入人工审稿，确认后由运营手工交付。');
     await expect(dialog.getByText(/直接上线|一键成文并上线/)).toHaveCount(0);
     await screenshot('manual-options');
     await page.keyboard.press('Escape');
