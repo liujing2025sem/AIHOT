@@ -88,7 +88,7 @@ test('authenticated compose API produces one review-only draft, double clicks re
   await sql`UPDATE articles SET revision=revision+1 WHERE id=${ids[4]}`;
   await assert.rejects(reviewStudioDraft(draft.id, { version: draft.version, action: 'approve', english_reviewed: true,
     confirmations: draft.issues.items.filter(item => item.confirmable).map(item => ({ issueId: item.id, fingerprint: item.fingerprint })) }, actor), /原文已更新/);
-  await sql`UPDATE articles SET body_status='partial' WHERE id=${ids[4]}`;
+  await sql`UPDATE articles SET body_status='unconfirmed' WHERE id=${ids[4]}`;
   const changedInspection = await app.inject({ method: 'GET', url: inspectionUrl, headers: { cookie } });
   assert.equal(changedInspection.statusCode, 200);
   assert.equal(changedInspection.json().can_compose, false);
