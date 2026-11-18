@@ -227,7 +227,7 @@ test('pitch desk keeps raw text private and generates only after explicit outlin
     await preview.click();await consent.check();await save.click();
     await page.waitForURL('**/admin/studio/pitch?id='+id);
     await expect(page.getByRole('heading',{name:'正在准备资料与大纲'})).toBeVisible();
-    await expect(page.getByRole('heading',{name:'证据不足'})).toBeVisible({timeout:9000});
+    await expect(page.getByRole('heading',{name:'待补依据'})).toBeVisible({timeout:9000});
     await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toHaveCount(0);
     await expect(page.getByText('公司事实黑名单未配置。',{exact:false})).toBeVisible();
     assert.deepEqual(writes,[{method:'POST',path:redact,body:{question:raw}},{method:'POST',path:redact,body:{question:raw+'?'}},
