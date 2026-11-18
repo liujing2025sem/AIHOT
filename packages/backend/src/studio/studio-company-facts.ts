@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
-import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet, Response } from '@aihot/contracts/studio-handoff';
 import type { Finding } from './editorial-gate.ts';
 
 const schema=z.array(z.object({id:z.string().min(1),match:z.string().min(2).max(300),action:z.enum(['deny','confirm']),conservative:z.string().min(1).max(500)}).strict()).max(30);

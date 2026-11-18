@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet, Response } from '@aihot/contracts/studio-handoff';
 import type { Finding, GateReport } from './editorial-gate.ts';
 
 export type EditorialDraft = Response['drafts'][number];

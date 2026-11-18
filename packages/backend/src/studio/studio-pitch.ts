@@ -12,7 +12,7 @@ import { chatJson, type ChatJsonOptions, type ChatJsonResult } from '../provider
 import { createStudioTask, extractStudioMaterial, generateStudioTask, studioMaterial, studioGenerationStatus } from './studio.ts';
 import { redactPitch, normalizePitch, searchPitchMaterials } from './studio-pitch-evidence.ts';
 import { companyFactRules } from './studio-company-facts.ts';
-import { pitchType, pitchPlanSchema, pitchKeywordsSchema, pitchSchema, editorialChoicesSchema, type EditorialChoices, type Pitch, type OperatorFact } from '../../../../scripts/editorial-pitch-lib.ts';
+import { pitchType, pitchPlanSchema, pitchKeywordsSchema, pitchSchema, editorialChoicesSchema, type EditorialChoices, type Pitch, type OperatorFact } from '@aihot/contracts/studio-pitch';
 import type { ResearchReport, discoverPitchEvidence } from './studio-pitch-research.ts';
 
 function invalid(message:string):never {throw Object.assign(new Error(message),{statusCode:400});}

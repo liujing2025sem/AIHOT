@@ -11,5 +11,8 @@
     "./modules/web": "./modules/web.ts",
     "./pages/*": "./pages/*",
     "./brand/*": "./brand/*"
+  },
+  "peerDependencies": {
+    "react-router": "8.4.0"
   }
 }

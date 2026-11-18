@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { responseSchema, validateResponse, type Packet, type Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import { responseSchema, type Packet, type Response } from '@aihot/contracts/studio-handoff';
+import { validateResponse } from './studio-handoff.ts';
 import { editedFragmentPacket } from './studio-review-edits.ts';
 
 export const revisionGoalSchema = z.enum(['clarify_buyer_answer', 'shorten', 'evidence_only']);

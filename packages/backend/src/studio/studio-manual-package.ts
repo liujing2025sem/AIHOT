@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { sql } from '../db.ts';
 import { Conflict } from '../audit.ts';
 import { lockStudioPublication } from './studio.ts';
-import { sanitizeReviewedHtml } from './studio-wordpress.ts';
+import { sanitizeReviewedHtml } from './studio-reviewed-html.ts';
 import { storedStudioCovers, selectedStudioCover, readStudioCover, studioDeliveryConfirmed } from './studio-covers.ts';
 import { previewStudioDraftMedia } from './studio-draft-media.ts';
 import { studioUpgradeContext } from './studio-upgrade.ts';

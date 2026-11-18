@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import type { Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet } from '@aihot/contracts/studio-handoff';
 import { Conflict } from '../audit.ts';
-import { assembleFragments } from './studio-pitch-fragments.ts';
+import { assembleFragments, splitPage } from './studio-pitch-fragments.ts';
 import { sameWordPressHtml } from './studio-publishing-content.ts';
 
 export const publicStudioTitle = (title: string) => title.replace(/\[UPDATE\]\s*/gi, '').trim();
@@ -22,21 +22,35 @@ export function studioUpgradeContext(packet: Packet) {
   if (!isUpdate) return null;
   const urls = [packet.pitch?.output_type === 'update' ? packet.pitch.existing_url : '',
     packet.editorial_plan?.action === 'update_page' ? packet.editorial_plan.existing_url : ''].filter(Boolean);
-  const target = urls[0];
-  if (!target || urls.some(url => !samePage(target, url)) || !packet.articles.some(a => samePage(a.binding.url, target))) {
+  const [target] = urls;
+  const source = target && packet.articles.find(article => samePage(article.binding.url, target));
+  if (!target || urls.some(url => !samePage(target, url)) || !source) {
     throw new Conflict('升级任务的原页绑定缺失或冲突；请核对任务材料，不能改为新建文章。');
   }
   const plan = packet.pitch?.fragments_plan;
   const queryId = Number(new URL(target).searchParams.get('p'));
   const baseline = !!plan?.source_html && !!plan.original_title;
+  const boundPlan = baseline && plan.original_title === source.title && (plan.facts ?? []).every(fact =>
+    fact.kind !== 'page' || fact.article_id !== source.binding.article_id || fact.revision === undefined || fact.revision === source.binding.revision);
+  const paragraphs = new Map((plan?.paragraphs ?? []).map(paragraph => [paragraph.id, paragraph]));
+  const diff = boundPlan ? assembleFragments(plan.paragraphs, plan.edit_plan, plan.fragments ?? []).diff : [];
+  const text = (html: string) => splitPage(html).map(paragraph => paragraph.text).filter(Boolean).join('\n').trim() || null;
   return {
     delivery: 'shadow_draft' as const,
     target_existing_url: target,
     target_post_id: Number.isSafeInteger(queryId) && queryId > 0 ? queryId : null,
     baseline_sha256: baseline ? updateBaselineHash(plan.original_title, plan.source_html) : null,
-    changes: (plan?.edit_plan ?? []).filter(edit => edit.op !== 'keep').map(edit => ({
-      operation: edit.op, paragraph: edit.paragraph, reason: edit.reason ?? edit.heading ?? '请核对该段修改',
-    })),
+    source_revision: source.binding.revision,
+    changes: plan?.edit_plan.flatMap((edit, index) => {
+      if (edit.op === 'keep') return [];
+      const paragraph = paragraphs.get(edit.paragraph);
+      const original = boundPlan && paragraph?.html && plan.source_html.includes(paragraph.html) ? text(paragraph.html) : null;
+      const revised = diff.find(change => change.op_index === index && change.status === 'done');
+      return [{
+        operation: edit.op, paragraph: edit.paragraph, reason: edit.reason ?? edit.heading ?? '请核对该段修改',
+        original_text: original, replacement_text: original && revised ? text(revised.after) : null,
+      }];
+    }) ?? [],
     notice: '这是独立影子预览稿，不修改原页面。请勿在 WordPress 直接发布影子稿；覆盖原页需单独确认。',
   };
 }

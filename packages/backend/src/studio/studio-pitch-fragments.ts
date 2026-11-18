@@ -2,6 +2,8 @@ import { load } from 'cheerio';
 import type { AnyNode } from 'domhandler';
 import sanitizeHtml from 'sanitize-html';
 
+export const editorialAdditions={comparison:'用可核对条件做对照表',checklist:'给买家可执行的核对清单',decision_summary:'英文正文先给结论与适用条件；中文对照只写入 zh_review'} as const;
+
 export type Paragraph = { id: string; html: string; text: string };
 export type Fact = {
   id: string;

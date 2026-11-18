@@ -3,7 +3,7 @@ import { load } from 'cheerio';
 import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import { ENTITIES } from '@aihot/industry/taxonomy';
-import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet, Response } from '@aihot/contracts/studio-handoff';
 import { config } from '../config.ts';
 import { isBlockedAddress } from '../lib/url.ts';
 import { evaluateDraft, type Finding } from './editorial-gate.ts';

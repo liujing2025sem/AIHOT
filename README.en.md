@@ -1,3 +1,9 @@
+# AIHOT · Chipshow editorial workbench
+
+Operators resume a saved pitch or draft at `/admin/workbench`, review the English article and its sources, then deliver the approved version. The [project README](README.md) maps each action to its route, state owner, implementation and tests. See [LIVE](docs/LIVE.md) for current decisions and deployment status.
+
+## Upstream industry news framework
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">

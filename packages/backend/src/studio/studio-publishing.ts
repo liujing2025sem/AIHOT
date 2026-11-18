@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
-import { packetSchema, responseSchema, safeId, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import { responseSchema, safeId, type Packet } from '@aihot/contracts/studio-handoff';
+import { sha256 } from '../lib/ids.ts';
+import { packetSchema } from './studio-handoff.ts';
 import { resolveWordPressPlacement, studioWordPressReceipt, studioWordPressSlug, wordpressClient, wordpressSettings, WordPressError } from './studio-wordpress.ts';
 import { audit, Conflict } from '../audit.ts';
 import { sql, type Db, type Tx } from '../db.ts';
