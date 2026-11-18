@@ -29,7 +29,7 @@ function reviewExcerpt(review: string) {
     const line = lines[index].trim();
     const heading = /^#{1,6}(?:\s|$)/.test(line);
     const rule = /^(?:-{3,}|\*{3,}|_{3,})$/.test(line);
-    const underlinedHeading = line && /^(?:=+|-+)$/.test(lines[index + 1]?.trim() ?? '');
+    const underlinedHeading = line !== '' && /^(?:=+|-+)$/.test(lines[index + 1]?.trim() ?? '');
     if (!line || heading || rule || underlinedHeading) {
       if (paragraph.length) break;
       if (underlinedHeading) index++;

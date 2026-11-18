@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium, expect, type Page } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 type FixtureRevision = { status: string; version: number; goals: string[]; note: string; receipt_id?: number; error?: string };
@@ -423,6 +423,40 @@ test('an older unknown delivery can be checked from an unapproved current draft 
       mkdirSync(process.env.AIHOT_VISUAL_DIR, { recursive: true });
       await page.screenshot({ path: path.join(process.env.AIHOT_VISUAL_DIR, 'delivery-390.png'), fullPage: true });
     }
+  } finally { await browser?.close(); await web.stop(); }
+});
+
+test('review excerpt shows the first paragraph and preserves the full Chinese Markdown', async () => {
+  const fixture = reviewFixture();
+  const snapshotPath = process.env.AIHOT_MIP_REVIEW_SNAPSHOT;
+  const mipAnswer = 'MiP（Micro LED in Package）封装尺寸描述器件本身，不等于成品屏的亮度、对比度或透过率。本稿将器件与屏体分开读，供买家核对报价。内容依据晶台（Kinglight）2026年10月23日的原文；这是技术解释文，不把旧材料写成当天新闻。';
+  const mipReview = snapshotPath
+    ? JSON.parse(readFileSync(snapshotPath, 'utf8')).document.review_zh
+    : `## 核心答案\n\n${mipAnswer}\n\n## 买家核对路径\n\n核对测试条件。`;
+  const noBody = '当前没有中文正文，可查看英文稿与依据。';
+  const cases = [
+    { review: mipReview, expected: mipAnswer },
+    { review: '核心答案\n========\n\n先核对适用条件。\n然后确认买家用途。', expected: '先核对适用条件。 然后确认买家用途。' },
+    { review: fixture.draft.document.review_zh, expected: fixture.draft.document.review_zh },
+    { review: '## 核心答案\n\n### 依据\n', expected: noBody },
+    { review: '', expected: noBody },
+  ];
+  const web = await startWebServer(fixture.api);
+  let browser;
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    const summary = page.locator('section').filter({ has: page.getByRole('heading', { name: '这篇文章要确认什么', exact: true }) });
+    for (const { review, expected } of cases) {
+      fixture.draft.document.review_zh = review;
+      await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
+      await expect(summary.getByText(expected, { exact: true })).toBeVisible();
+      await expect(summary.getByText('## 核心答案', { exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: '展开完整稿件', exact: true }).click();
+      await page.getByRole('tab', { name: '中文对照', exact: true }).click();
+      await expect(page.getByLabel('中文正文', { exact: true })).toHaveValue(review);
+    }
+    assert.equal(fixture.writes.length, 0);
   } finally { await browser?.close(); await web.stop(); }
 });
 
