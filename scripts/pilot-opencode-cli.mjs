@@ -17,7 +17,7 @@ const env = { ...process.env,
   XDG_CONFIG_HOME: path.join(runtime, 'config'), XDG_DATA_HOME: path.join(runtime, 'data'), XDG_STATE_HOME: path.join(runtime, 'state'),
   XDG_CACHE_HOME: process.env.OPENCODE_PILOT_CACHE || path.join(runtime, 'cache'),
   OPENCODE_DISABLE_CLAUDE_CODE: 'true', OPENCODE_DISABLE_EXTERNAL_SKILLS: 'true', OPENCODE_DISABLE_LSP_DOWNLOAD: 'true',
-  OPENCODE_CONFIG_CONTENT: JSON.stringify({ model, small_model: model, enabled_providers: ['opencode-go'], autoupdate: false, snapshot: false, share: 'disabled', permission: 'deny', provider: { 'opencode-go': { options: { apiKey: '{env:LLM_API_KEY}', baseURL: 'https://opencode.ai/inference/go/openai/v1', maxRetries: 0 }, models: { 'deepseek-v4.1-flash': { options: { thinking: { type: 'disabled' } } } } } }),
+  OPENCODE_CONFIG_CONTENT: JSON.stringify({ model, small_model: model, enabled_providers: ['opencode-go'], autoupdate: false, snapshot: false, share: 'disabled', permission: 'deny', provider: { 'opencode-go': { options: { apiKey: '{env:LLM_API_KEY}', baseURL: 'https://opencode.ai/inference/go/openai/v1', maxRetries: 0 }, models: { 'deepseek-v4.1-flash': { options: { thinking: { type: 'disabled' } } } } } } }),
 };
 // The native coding harness does not need the site's database or administrator credentials.
 for (const key of ['DATABASE_URL', 'POSTGRES_PASSWORD', 'ADMIN_PASSWORD', 'SESSION_SECRET', 'IMG_PROXY_SIGN_SECRET']) delete env[key];

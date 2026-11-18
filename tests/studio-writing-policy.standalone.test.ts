@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { writingPolicyBundle, WritingPolicyError, type WritingPolicyPhase } from '../packages/backend/src/studio/writing-policy-bundle.ts';
@@ -123,9 +123,10 @@ test('complete source and runtime projection changes both affect the recorded bu
 
 test('the reader rejects escaped files and oversized projection without truncating methods', t => {
   const roots = fixture(t);
-  const selected = path.join(roots.privateRoot, `skills/${profiles[0]}/references/rules.md`);
-  const outside = put(roots.dir, 'outside.md', 'Outside configured private root.');
-  unlinkSync(selected); symlinkSync(outside, selected);
+  const selected = path.join(roots.privateRoot, `skills/${profiles[0]}/references`);
+  const outside = path.join(roots.dir, 'outside-references');
+  renameSync(selected, outside);
+  symlinkSync(outside, selected, 'junction');
   assert.throws(() => writingPolicyBundle({ writing: { site: 'chipshow.com' } }, 'draft', roots), isCode('WRITING_POLICY_PATH_INVALID'));
   put(roots.publicRoot, 'humanizer/runtime.md', 'x'.repeat(2_001));
   assert.throws(() => writingPolicyBundle({}, 'draft', roots), isCode('WRITING_POLICY_FILE_INVALID'));

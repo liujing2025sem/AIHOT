@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import type { Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet } from '@aihot/contracts/studio-handoff';
 import { buildFigure, type FigureSpec } from './studio-figures.ts';
 import type { EditorialDraft, PublicationIssue } from './studio-publishing-content.ts';
 

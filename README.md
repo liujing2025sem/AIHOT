@@ -1,3 +1,53 @@
+# AIHOT · Chipshow 英文采编工作台
+
+运营从 `/admin/workbench` 继续最近的稿件或选题。从买家问题、行业新闻或现有页面开始，系统准备材料和英文初稿，运营核对事实、选图，再把批准的版本交给网站。新环境的启动方式见[部署说明](docs/studio-deployment.md)。项目当期决定、原机版本与下一篇真实稿件见 [LIVE](docs/LIVE.md)。
+
+### 从运营动作找到代码
+
+| 想做什么 | 工作台入口与动作 | 谁保存什么 | 实现与验证 |
+|---|---|---|---|
+| 继续旧稿或旧选题 | `/admin/workbench`，按已有 ID 打开 | 首页只读取稿件、选题与任务 | [工作台](apps/web/app/routes/admin/workbench.tsx) · [入口用例](apps/web/tests/studio-shell.test.ts) |
+| 选新闻、做一期短讯 | `/admin/studio?tab=materials`，选材后创建短讯 | 选择保留在界面。创建后由服务端记录材料、任务与回执 | [选材](apps/web/app/routes/admin/studio.tsx) · [短讯接口](apps/api/src/routes/admin-studio-brief.ts) · [短讯用例](tests/studio-brief.test.ts) |
+| 用买家问题定方向、升级原页 | `/admin/studio/pitch`，检查客户信息、选证据和范围，再确认 | 选题 ID、备料版本、原页来源和原任务关联由服务端保存 | [选题](packages/backend/src/studio/studio-pitch.ts) · [旧页对照](packages/backend/src/studio/studio-upgrade.ts) · [选题用例](apps/web/tests/studio-planning.test.ts) |
+| 返回正文、查看英文或原文 | `/admin/studio/drafts/:id?stage=review` | 阶段导航只读取，不改批准、版本或任务。未保存的编辑由界面提示 | [编辑器](apps/web/app/routes/admin/studio-draft.tsx) · [审稿用例](apps/web/tests/studio-review-workbench.test.ts) |
+| 修改勾选的事实、提交审稿或批准 | 同一稿件的 `/review` 接口，分别用 `update_confirmations`、`submit`、`approve` | 服务端按稿件版本核对。确认集合变化才更新版本，已批准稿退回待审；重复保存同一集合保留版本 | [审稿状态](packages/backend/src/studio/studio.ts) · [接口用例](tests/studio.test.ts) |
+| 请 AI 按要求修改 | 在正文审稿中选目标，发起 `request_revision` | 原稿回到待编辑，任务记录版本、目标和回执；未知结果从原任务恢复 | [修订与回执](packages/backend/src/studio/studio.ts) · [修订用例](tests/studio.test.ts) |
+| 配图、下载或推送 | 同一稿件的 `?stage=cover` 与 `?stage=delivery` | 批准的正文版本绑定封面与交付确认。手工档下载文件；启用 WordPress 时由现有模式控制推送，旧页使用影子草稿 | [封面](packages/backend/src/studio/studio-covers.ts) · [手工包](packages/backend/src/studio/studio-manual-package.ts) · [交付用例](apps/web/tests/studio-manual-delivery.test.ts) |
+
+历史客户端的审稿指令 `confirm` 和 `return` 继续可用。批量交互演示的卡片选择与撤销使用浏览器本地状态。正式选材、成稿、审稿、交付均走上表的后台接口。[演示状态实现](apps/web/app/features/admin/batch-session.ts)
+
+### 工程入口
+
+下图按业务数据流向阅读。公共阅读和后台采编使用同一套信源数据，发布去向各自由对应模块负责。
+
+```mermaid
+flowchart LR
+  source["信源与外部推送"] --> ingest["采集、提取、去重"]
+  ingest --> db[("PostgreSQL：来源、任务、版本与回执")]
+  config["industry 与 site：信源、提示、规则、品牌"] --> worker["Worker：评分、写作、聚簇、编刊"]
+  worker <--> db
+  worker --> publicread["publication 与 reports"]
+  publicread --> outlets["网站、RSS、API、MCP"]
+  operator["运营工作台"] --> api["管理 API"]
+  api --> studio["选题、短讯、旧页片段、审稿"]
+  studio <--> db
+  studio --> jobs["采编任务与模型回执"]
+  jobs --> worker
+  contracts["contracts：任务包、返回稿、选题格式"] --> studio
+  config --> studio
+  studio --> approved["已批准版本、配图、交付确认"]
+  approved --> files["英文文件、手工包"]
+  approved --> wp["WordPress 草稿、影子草稿或配置的发布模式"]
+  approved --> social["社媒派生与独立审阅"]
+  modules["可选站点模块"] --> api
+  modules --> outlets
+```
+
+业务逻辑在 [backend](packages/backend/src)，共享数据格式在 [contracts](packages/contracts/src)。脚本复用正式采编合同。进程、站点定制和模块扩展见[架构说明](docs/architecture.md)，编辑操作见[运营指南](docs/operator-guide.md)。品牌写作包按目标站点装载，安装路径与核验办法见[写作规则](docs/writing-rules.md)。
+
+<details>
+<summary>上游 AIHOT 行业热点框架说明、示例站与通用安装</summary>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
@@ -185,3 +235,5 @@ AIHOT 曾经只是我无数个深夜里，一个很小、很小的念头。
 ## 许可
 
 代码使用 [MIT 许可证](LICENSE)。AIHOT 的名字和 Logo 不在许可范围内。字体有自己的许可，见 [NOTICE](NOTICE)。
+
+</details>

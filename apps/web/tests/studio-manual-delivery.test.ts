@@ -6,7 +6,7 @@ import { chromium, expect, type Locator, type Page } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
 
 // Original HTTP boundary with synthetic data. Real image validation and ZIP contents are backend tests.
-for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption and confirmation separate at ${width}`, async () => {
+for (const width of [1440, 768, 390]) test(`manual delivery keeps upload, adoption and confirmation separate at ${width}`, async () => {
   const delivery = { mode: 'manual', wordpressWritesAllowed: false, draftPushAllowed: false, readOnlyRecoveryAllowed: true, message: '当前工作台采用手工交付。请下载已批准版本后，由运营上传。' };
   // Neutral schematic for isolated UI checks; it is not a product photo.
   const image = 'data:image/png;base64,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';
@@ -70,21 +70,16 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     const resume = page.getByRole('region', { name: draft.document.title_zh, exact: true });
     await expect(resume.getByText('正文已通过', { exact: true })).toBeVisible();
     await expect(resume.getByText('可交付', { exact: true })).toHaveCount(0);
-    const flowGuide = resume.locator('summary').filter({ hasText: '四步采编流程' });
-    await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeHidden();
-    await flowGuide.focus(); await page.keyboard.press('Enter');
-    await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeVisible();
-    await expect(resume.getByText('下载已批准版本，运营上传', { exact: true })).toBeVisible();
-    await screenshot('home-flow-guide');
-    await page.keyboard.press('Space');
-    await expect(resume.getByText('选题、材料、事实与回答范围', { exact: true })).toBeHidden();
     await expect(page.getByRole('link', { name: /隔离样本：采购前如何确认 LED 箱体尺寸/ })).toHaveAttribute('href', '/admin/studio/pitch?id=original-pitch');
-    const tools = page.getByRole('region', { name: '采编工具', exact: true });
+    const tools = page.locator('details').filter({ has: page.getByText('更多工具', { exact: true }) });
+    const showTools = tools.getByText('更多工具', { exact: true });
+    await expect(tools.getByRole('link', { name: /^新闻材料/ })).toBeHidden();
+    await showTools.focus(); await page.keyboard.press('Enter');
     for (const [label, destination] of [
-      ['今日选稿', '/admin/studio?tab=materials'], ['选题与旧页升级', '/admin/studio/planning'],
-      ['采编任务', '/admin/studio?tab=tasks'], ['社媒派生', '/admin/studio/social'],
-      ['信源与采集', '/admin/studio?tab=sources'], ['审稿策略与观察', '/admin/studio?tab=review'],
-      ['内容诊断', '/admin/content'], ['发布历史', '/admin/studio/published'],
+      ['新闻材料', '/admin/studio?tab=materials'], ['选题与旧页升级', '/admin/studio/planning'],
+      ['处理进度', '/admin/studio?tab=tasks'], ['改写社媒稿', '/admin/studio/social'],
+      ['信源与采集', '/admin/studio?tab=sources'], ['审稿设置', '/admin/studio?tab=review'],
+      ['内容诊断', '/admin/content'], ['发布记录', '/admin/studio/published'],
       ['模型连接', '/admin/channels'], ['运行记录', '/admin/runs'],
     ]) {
       const link = tools.getByRole('link', { name: new RegExp('^' + label) });
@@ -95,9 +90,23 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     assert.ok(reads.includes('/api/admin/studio/pitches'), 'home reads the original pitch API');
     assert.equal(writes.length, 0, 'opening home does not create or generate content');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    await screenshot('home');
-    await page.getByRole('heading', { name: '今天，从这篇继续', exact: true }).click();
-    await expect(flowGuide).not.toBeFocused();
+    await screenshot('home-more-tools');
+    await page.keyboard.press('Space');
+    await expect(tools.getByRole('link', { name: /^新闻材料/ })).toBeHidden();
+    const mobile = width < 1024;
+    if (mobile) await page.getByRole('button', { name: '打开工作台导航', exact: true }).click();
+    const workspaceNav = page.getByRole('navigation', { name: mobile ? '移动工作台导航' : '工作台导航', exact: true });
+    await expect(workspaceNav.getByRole('link')).toHaveCount(3);
+    for (const [name, destination] of [['工作台', '/admin/workbench'], ['选题', '/admin/studio?tab=materials'], ['稿件', '/admin/studio?tab=drafts']]) {
+      await expect(workspaceNav.getByRole('link', { name, exact: true })).toHaveAttribute('href', destination);
+    }
+    const manage = workspaceNav.getByRole('button', { name: '管理与工具', exact: true });
+    await expect(manage).toHaveAttribute('aria-expanded', 'false');
+    await manage.click();
+    await expect(workspaceNav.getByRole('link', { name: '发布记录', exact: true })).toHaveAttribute('href', '/admin/studio/published');
+    await expect(page.getByRole('link', { name: '工作台设置', exact: true })).toHaveAttribute('href', '/admin/settings');
+    if (mobile) await page.keyboard.press('Escape');
+    else await manage.click();
     await screenshot('home-default');
     if (width === 390) {
       await page.setViewportSize({ width: 320, height: 900 });
@@ -105,10 +114,10 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       const directory = process.env.AIHOT_UI_REVIEW_DIR;
       if (directory) await page.screenshot({ path: path.join(directory, 'original-workbench-home-320.png'), fullPage: true });
-      await flowGuide.focus(); await page.keyboard.press('Enter');
-      await expect(resume.getByText('下载已批准版本，运营上传', { exact: true })).toBeVisible();
+      await showTools.focus(); await page.keyboard.press('Enter');
+      await expect(tools.getByRole('link', { name: /^新闻材料/ })).toBeVisible();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      if (directory) await page.screenshot({ path: path.join(directory, 'original-workbench-home-flow-guide-320.png'), fullPage: true });
+      if (directory) await page.screenshot({ path: path.join(directory, 'original-workbench-home-more-tools-320.png'), fullPage: true });
       await page.keyboard.press('Space');
       await page.setViewportSize({ width, height: 900 });
     }
@@ -116,10 +125,14 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     const overviewReads = reads.filter(read => read === '/api/admin/studio').length;
     const recent = page.getByRole('region', { name: '最近的稿件', exact: true }).getByRole('link', { name: /隔离样本：LED 箱体尺寸核对/ });
     await recent.click();
-    await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByText('本次不带封面。运营可在网站上传时另行配图。', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '确认当前成品', exact: true })).toBeEnabled();
     assert.equal(writes.length, 0, 'the approved draft entry only opens the described delivery step');
     await visit(page, web.origin + '/admin/studio/drafts/manual-fixture?stage=review');
     assert.equal(reads.filter(read => read === '/api/admin/studio').length, overviewReads, 'opening a draft reads capabilities without reloading the full overview');
+    await expect(page.getByText('本版没有待勾选项', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存问题确认', exact: true })).toHaveCount(0);
     await page.getByText('对照稿件说法与原文依据', { exact: false }).click();
     await expect(page.getByRole('heading', { name: '稿件中的说法', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '对应原文摘录', exact: true })).toBeVisible();
@@ -128,8 +141,12 @@ for (const width of [1440, 390]) test(`manual delivery keeps upload, adoption an
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await screenshot('review-evidence');
 
-    await visit(page, web.origin + '/admin/studio/drafts/manual-fixture?stage=cover');
-    await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('link', { name: '定方向' })).toHaveAttribute('href', '/admin/studio/pitch?id=original-pitch');
+    await page.getByRole('button', { name: '查看交付', exact: true }).click();
+    await expect(page.getByRole('button', { name: '确认当前成品', exact: true })).toBeEnabled();
+    assert.equal(writes.length, 0, 'skipping optional cover work only opens delivery');
+
+    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '配图', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('link', { name: '选题' })).toHaveAttribute('href', '/admin/studio/pitch?id=original-pitch');
     await page.getByLabel('封面图片文件', { exact: true }).setInputFiles({ name: 'cabinet.png', mimeType: 'image/png', buffer: Buffer.from(image.split(',')[1], 'base64') });
     await page.getByLabel('封面英文替代文字', { exact: true }).fill(coverAlt);
     await page.getByRole('button', { name: '上传为候选', exact: true }).click();
@@ -268,7 +285,7 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     await visit(page, web.origin + '/admin/workbench');
     await page.getByRole('link', { name: /封面保护样本一/ }).click();
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
-    await flow.getByRole('button', { name: '配封面', exact: true }).click();
+    await flow.getByRole('button', { name: '配图', exact: true }).click();
     const file = page.getByLabel('封面图片文件', { exact: true });
     const alt = page.getByLabel('封面英文替代文字', { exact: true });
     const caption = page.getByLabel('封面英文图注', { exact: true });
@@ -280,13 +297,13 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     const expectRetained = async () => {
       await expect(alt).toHaveValue(altText); await expect(caption).toHaveValue(captionText);
       assert.deepEqual(await file.evaluate(input => Array.from((input as HTMLInputElement).files ?? [], f => ({ name: f.name, size: f.size }))), [{ name: image.name, size: image.buffer.length }]);
-      await expect(flow.getByRole('button', { name: '配封面', exact: true })).toHaveAttribute('aria-current', 'step');
+      await expect(flow.getByRole('button', { name: '配图', exact: true })).toHaveAttribute('aria-current', 'step');
     };
     fixture.drafts[0].version++;
-    await flow.getByRole('button', { name: '配封面', exact: true }).click();
+    await flow.getByRole('button', { name: '配图', exact: true }).click();
     assert.equal(dialogs.length, 0, 'the current step retains its buffer without a leave decision');
     for (const navigate of [
-      () => flow.getByRole('button', { name: '手工交付', exact: true }).click(),
+      () => flow.getByRole('button', { name: '交付', exact: true }).click(),
       () => page.getByRole('button', { name: '继续手工交付', exact: true }).click(),
       () => page.getByRole('link', { name: '返回稿件', exact: true }).click(),
       () => page.evaluate(() => history.back()),
@@ -309,9 +326,9 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
 
     discard = true;
     await page.getByRole('button', { name: '继续手工交付', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await expect(flow.getByRole('button', { name: '交付', exact: true })).toHaveAttribute('aria-current', 'step');
     const afterDiscard = dialogs.length;
-    await flow.getByRole('button', { name: '配封面', exact: true }).click();
+    await flow.getByRole('button', { name: '配图', exact: true }).click();
     await expect(alt).toHaveValue(''); await expect(caption).toHaveValue('');
     assert.equal(await file.evaluate(input => (input as HTMLInputElement).files?.length), 0);
     assert.equal(dialogs.length, afterDiscard, 'explicit discard leaves a clean buffer');
@@ -320,20 +337,20 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     for (const field of [alt, caption]) {
       await field.fill('Only this unsaved field');
       const before = dialogs.length;
-      await flow.getByRole('button', { name: '审正文', exact: true }).click();
+      await flow.getByRole('button', { name: '审稿', exact: true }).click();
       await expect.poll(() => dialogs.length).toBe(before + 1);
       await expect(field).toHaveValue('Only this unsaved field');
       await field.fill('');
     }
     await file.setInputFiles(image);
     const beforeFileOnly = dialogs.length;
-    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await flow.getByRole('button', { name: '审稿', exact: true }).click();
     await expect.poll(() => dialogs.length).toBe(beforeFileOnly + 1);
     assert.equal(await file.evaluate(input => (input as HTMLInputElement).files?.length), 1);
     discard = true;
     await page.getByRole('link', { name: '返回稿件', exact: true }).click();
     await page.getByRole('link', { name: /封面保护样本二/ }).click();
-    await flow.getByRole('button', { name: '配封面', exact: true }).click();
+    await flow.getByRole('button', { name: '配图', exact: true }).click();
     await expect(alt).toHaveValue(''); await expect(caption).toHaveValue('');
     assert.equal(await file.evaluate(input => (input as HTMLInputElement).files?.length), 0, 'another draft never receives the abandoned file');
     assert.equal(fixture.writes.length, 0);
@@ -369,8 +386,8 @@ for (const width of [1440, 390]) test(`a pending cover upload blocks navigation 
     });
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
     await expect(page.getByRole('button', { name: '正在保存候选…', exact: true })).toBeDisabled();
-    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '配封面', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '交付', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '配图', exact: true })).toHaveAttribute('aria-current', 'step');
     await expect(alt).toHaveValue('Synthetic panel during upload');
     assert.equal(fixture.writes.length, 0, 'the held file read has not started a request');
     await page.evaluate(() => (window as unknown as { releaseCoverReads: () => void }).releaseCoverReads());
@@ -387,8 +404,8 @@ for (const width of [1440, 390]) test(`a pending cover upload blocks navigation 
     assert.equal(fixture.writes.length, 1, 'rapid repeated submission produces only one POST');
     assert.equal(fixture.covers[0].candidates.length, 1);
     assert.equal(fixture.covers[0].selectedHash, null, 'successful upload remains an unadopted candidate');
-    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '交付', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '交付', exact: true })).toHaveAttribute('aria-current', 'step');
     assert.equal(dialogs.length, 0, 'successful upload clears its leave warning');
   } finally { response.resolve(); await browser?.close(); await web.stop(); }
 });
@@ -461,10 +478,10 @@ test('a confirmed cover upload allows departure while the candidate refresh is s
     await expect(alt).toHaveValue('');
     assert.equal(fixture.covers[0].candidates.length, 1);
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
-    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
-    await flow.getByRole('button', { name: '审正文', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '审正文', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '交付', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '审稿', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '审稿', exact: true })).toHaveAttribute('aria-current', 'step');
     assert.equal(dialogs.length, 0, 'a read-only refresh does not hold a completed write open');
     assert.equal(fixture.writes.length, 1);
   } finally { refresh.resolve(); await browser?.close(); await web.stop(); }
@@ -522,7 +539,7 @@ test('cover protection works with Tab, Enter and Space at 820px and 200% CSS zoo
     await page.keyboard.press('Tab'); await expect(caption).toBeFocused();
     await page.keyboard.type('A keyboard review sample.');
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
-    const delivery = flow.getByRole('button', { name: '手工交付', exact: true });
+    const delivery = flow.getByRole('button', { name: '交付', exact: true });
     await tabTo(delivery); await page.keyboard.press('Enter');
     await expect.poll(() => dialogs.length).toBe(1);
     await expect(alt).toHaveValue('Synthetic panel entered with the keyboard');
@@ -559,12 +576,12 @@ for (const { width, zoom } of [{ width: 1440, zoom: 1 }, { width: 390, zoom: 1 }
       await page.getByRole('link', { name: /封面保护样本一/ }).click();
       if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
       const flow = page.getByRole('navigation', { name: '当前稿件流程', exact: true });
-      const review = flow.getByRole('button', { name: '审正文', exact: true });
-      const cover = flow.getByRole('button', { name: '配封面', exact: true });
-      const delivery = flow.getByRole('button', { name: '手工交付', exact: true });
-      const reviewHeading = page.getByRole('heading', { name: '审正文', exact: true });
-      const coverHeading = page.getByRole('heading', { name: '配封面', exact: true });
-      const deliveryHeading = page.getByRole('heading', { name: '手工交付', exact: true });
+      const review = flow.getByRole('button', { name: '审稿', exact: true });
+      const cover = flow.getByRole('button', { name: '配图', exact: true });
+      const delivery = flow.getByRole('button', { name: '交付', exact: true });
+      const reviewHeading = page.getByRole('heading', { name: '审稿', exact: true });
+      const coverHeading = page.getByRole('heading', { name: '配图', exact: true });
+      const deliveryHeading = page.getByRole('heading', { name: '交付', exact: true });
       await expect(reviewHeading).toBeVisible();
       await expect(reviewHeading).not.toBeFocused();
       await review.focus(); await page.keyboard.press('Space');
@@ -621,8 +638,8 @@ for (const { width, zoom } of [{ width: 1440, zoom: 1 }, { width: 390, zoom: 1 }
       await review.focus(); await page.keyboard.press('Enter');
       await expect(review).toHaveAttribute('aria-current', 'step');
       await expect(reviewHeading).toBeFocused();
-      await expect(page.getByRole('heading', { name: '配封面', exact: true })).toHaveCount(0);
-      await expect(page.getByRole('heading', { name: '手工交付', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: '配图', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: '交付', exact: true })).toHaveCount(0);
       assert.equal(fixture.writes.length, 0);
       assert.deepEqual(errors, []);
       if (zoom === 2) {

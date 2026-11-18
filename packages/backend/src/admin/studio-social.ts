@@ -7,7 +7,9 @@ import { evaluateDraft, type GateReport } from '../studio/editorial-gate.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialConfirmation, type EditorialDraft } from '../studio/editorial-issues.ts';
 import { publicationStatus } from '../studio/studio-publication.ts';
 import { assertPublicEnglish } from '../../../../site/editorial.ts';
-import { packetSchema, responseSchema, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import { responseSchema, type Packet } from '@aihot/contracts/studio-handoff';
+import { sha256 } from '../lib/ids.ts';
+import { packetSchema } from '../studio/studio-handoff.ts';
 
 const fail = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 const draftSchema = responseSchema.shape.drafts.element;

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
 import type { AnyNode } from 'domhandler';
-import type { Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet } from '@aihot/contracts/studio-handoff';
 import type { EditorialDraft, EditorialIssue, EditorialIssues } from './editorial-issues.ts';
 import { assembleFragments } from './studio-pitch-fragments.ts';
 

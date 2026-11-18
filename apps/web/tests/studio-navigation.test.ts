@@ -4,14 +4,11 @@ import { isWorkbenchNavActive, workbenchNavigation } from '../app/features/admin
 
 const cases = [
   ['/admin/workbench', '', '工作台'],
-  ['/admin/studio', '', '今日选稿'],
-  ['/admin/studio', '?tab=materials&q=MiP&page=2', '今日选稿'],
-  ['/admin/studio/materials/example', '', '今日选稿'],
-  ['/admin/studio/pitch', '', '专业内容'],
-  ['/admin/studio/pitch', '?question_id=example', '专业内容'],
-  ['/admin/studio', '?tab=drafts&status=in_review', '我的稿件'],
-  ['/admin/studio/drafts/example', '', '我的稿件'],
-  ['/admin/studio/published', '', '发布记录'],
+  ['/admin/studio', '', '选题'],
+  ['/admin/studio', '?tab=materials&q=MiP&page=2', '选题'],
+  ['/admin/studio/materials/example', '', '选题'],
+  ['/admin/studio', '?tab=drafts&status=in_review', '稿件'],
+  ['/admin/studio/drafts/example', '', '稿件'],
 ] as const;
 
 for (const [pathname, search, expected] of cases) {
@@ -26,6 +23,7 @@ test('advanced destinations never activate a main workbench tab', () => {
   for (const [pathname, search] of [
     ['/admin/studio', '?tab=tasks'], ['/admin/studio', '?tab=sources'],
     ['/admin/studio', '?tab=review'], ['/admin/studio/planning', ''],
+    ['/admin/studio/pitch', '?question_id=example'], ['/admin/studio/published', ''],
     ['/admin/settings', ''], ['/admin/studio/pitchfork', ''],
   ]) assert.equal(workbenchNavigation.some(entry => isWorkbenchNavActive(pathname, search, entry.to)), false);
 });

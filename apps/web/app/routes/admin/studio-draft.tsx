@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useCallback, type Ref } from 'react';
-import { Link, useBeforeUnload, useBlocker, useRevalidator, useSearchParams, type BlockerFunction } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { ExternalLink, FileCheck2, FileText, History, Link2, LocateFixed, MessageSquareText, Save, ShieldAlert } from 'lucide-react';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import type { Route } from './+types/studio-draft';
 import { adminGet } from '../../lib/admin.server';
 import { scrollBehavior } from '../../lib/motion';
 import { useAdminAction } from '../../features/admin/action';
-import { toast } from '../../features/admin/toast';
 import { AdminPage, Card, Button, Badge, Field, Input, Select, Textarea, Time } from '../../features/admin/ui';
 import { DirectPublish } from '../../features/admin/publishing';
 import { useDelivery, type DeliveryCapability } from '../../features/admin/delivery';
 import { ArticleWorkflow, type DraftStage } from '../../features/admin/workflow';
 import { DraftCovers } from '../../features/admin/draft-covers';
+import { useDraftEditNavigation } from '../../features/admin/draft-edit-navigation';
+import { DraftRevisionStatus, useDraftRevision, type DraftRevisionRequest } from '../../features/admin/draft-revision';
 import { Checkbox } from '../../components/ui/primitives/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/primitives/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../../components/ui/primitives/accordion';
@@ -19,6 +20,24 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '..
 function quoteText(value: string) {
   const entities: Record<string, string> = { '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
   return value.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, token => entities[token]).replace(/\s+/g, ' ').trim();
+}
+
+function reviewExcerpt(review: string) {
+  const lines = review.split(/\r\n?|\n/);
+  const paragraph: string[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index].trim();
+    const heading = /^#{1,6}(?:\s|$)/.test(line);
+    const rule = /^(?:-{3,}|\*{3,}|_{3,})$/.test(line);
+    const underlinedHeading = line && /^(?:=+|-+)$/.test(lines[index + 1]?.trim() ?? '');
+    if (!line || heading || rule || underlinedHeading) {
+      if (paragraph.length) break;
+      if (underlinedHeading) index++;
+      continue;
+    }
+    paragraph.push(line);
+  }
+  return paragraph.join(' ').slice(0, 220);
 }
 
 type Document = {
@@ -57,16 +76,20 @@ type WordPressReceipt = { version: number; kind: string; section: string; editUr
   { state: 'pushed'; media: 'set' | 'not_configured' | 'not_applied'; metaDescription: string } |
   { state: 'unknown'; httpStatus?: number } | { state: 'mismatch'; reason?: string } | { state: 'pending' | 'blocked' }
 );
+type UpgradeContext = {
+  target_existing_url: string; source_revision?: number; notice: string;
+  changes: { operation: string; paragraph: string; reason: string; original_text?: string | null; replacement_text?: string | null }[];
+};
 type Detail = {
   delivery?: DeliveryCapability;
   pitch_id?: string | null;
   editorial_context?: { question: string; scope_question?: string; unanswered_questions: string[]; additions?: string[] } | null;
-  revision_request?: { status: 'queued' | 'running' | 'done' | 'failed' | 'unknown' | 'cancelled'; version: number; goals: string[]; note: string; error?: string; receipt_id?: number } | null;
+  revision_request?: DraftRevisionRequest | null;
   source_snapshots?: SourceSnapshot[];
   suggestions?: {id:string;issueId:string;fingerprint:string;field:string;before:string;after:string;label:string;explanation:string}[];
   review_sync?: {status:'stale';english_hash:string}|null;
   manual_edit_recovery?: { available: boolean } | null;
-  upgrade_context?: {target_existing_url:string;target_post_id:number|null;baseline_sha256:string|null;changes:{operation:string;paragraph:string;reason:string}[];notice:string}|null;
+  upgrade_context?: UpgradeContext | null;
   engineer_review?: {mode:'conservative'|'engineer';name:string;reply:string;answers:{question_id:string;choice:string;note?:string}[]}|null;
   source_snapshot: { body_text: string | null; title: string };
   issues: { items: Issue[]; summary: { findingCount: number; issueCount: number; requiredCount: number; recommendedCount: number } };
@@ -83,7 +106,12 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 }
 const label: Record<string, string> = { draft: '待编辑', in_review: '待审稿', approved: '审核通过' };
 export default function DraftPage({ loaderData: row }: Route.ComponentProps) {
+  return <DraftWorkspace key={row.id} row={row} />;
+}
+
+function DraftWorkspace({ row }: { row: Detail }) {
   const [search] = useSearchParams();
+  const [note, setNote] = useState('');
   const requestedStage = search.get('stage');
   const stage: DraftStage = requestedStage === 'cover' || requestedStage === 'delivery' ? requestedStage : 'review';
   const stageHeading = useRef<HTMLHeadingElement>(null);
@@ -94,12 +122,37 @@ export default function DraftPage({ loaderData: row }: Route.ComponentProps) {
     // Only a committed step change moves focus. Saving, loading and cancelled exits do not.
     if (before.id === row.id && before.stage !== stage) stageHeading.current?.focus();
   }, [row.id, stage]);
-  return <Editor key={row.id + ':' + row.version} row={row} stage={stage} stageHeadingRef={stageHeading} />;
+  return <Editor key={row.version} row={row} stage={stage} stageHeadingRef={stageHeading} note={note} setNote={setNote} />;
 }
 
 function editableDocument(document: Document) {
   const { title_zh, title_en, review_zh, body_en, keyword_hypothesis, meta_description_en, questions_zh, news_status = 'reported' } = document;
   return { title_zh, title_en, review_zh, body_en, keyword_hypothesis, meta_description_en, questions_zh, news_status };
+}
+
+const upgradeOperation: Record<string, string> = { revise: '调整原段', insert_after: '在原段后新增' };
+
+function UpgradeChanges({ context }: { context: UpgradeContext }) {
+  const url = evidenceUrl(context.target_existing_url);
+  return <details className="mb-4 rounded-control border border-line p-3 text-sm leading-6">
+    <summary className="cursor-pointer rounded-control p-2 font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">查看本次旧页改动（{context.changes.length} 项）</summary>
+    <dl className="space-y-1 px-2 py-1">
+      <div><dt className="font-medium">目标原页</dt><dd className="break-all">{url ? <a href={url} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">{context.target_existing_url}</a> : context.target_existing_url}</dd></div>
+      {context.source_revision != null && <div><dt className="inline font-medium">绑定原文版本 </dt><dd className="inline">{context.source_revision}</dd></div>}
+    </dl>
+    {context.changes.length ? <ol className="mt-3 space-y-3">{context.changes.map((change, index) => <li key={index} className="space-y-2 break-words rounded-control border border-line p-3">
+      <h3 className="font-medium">{upgradeOperation[change.operation] ?? '计划改动'} · 原文位置 {change.paragraph}</h3>
+      <p className="text-ink-3">{change.reason}</p>
+      {change.original_text ? <>
+        <p className="text-xs font-medium">绑定原文</p>
+        <blockquote lang="en" className="whitespace-pre-wrap border-l-2 border-line pl-3">{change.original_text}</blockquote>
+        {change.replacement_text && <>
+          <p className="text-xs font-medium">已记录的改动片段</p>
+          <p lang="en" className="whitespace-pre-wrap rounded-control border border-accent/30 p-3">{change.replacement_text}</p>
+        </>}
+      </> : <p className="text-ink-3">当前版本缺少绑定段落，请打开目标原页核对。</p>}
+    </li>)}</ol> : <p className="mt-2 text-ink-3">当前没有分段改动记录，请对照目标原页核对本次修改。</p>}
+  </details>;
 }
 
 function WordPressDraft({ row, dirty, busy, run }: { row: Detail; dirty: boolean; busy: boolean; run: ReturnType<typeof useAdminAction>['run'] }) {
@@ -220,111 +273,59 @@ function EvidenceDesk({ document, snapshots, onOpenSources }: { document: Docume
   </details>;
 }
 
-function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStage; stageHeadingRef: Ref<HTMLHeadingElement> }) {
+function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; stage: DraftStage; stageHeadingRef: Ref<HTMLHeadingElement>; note: string; setNote: (value: string) => void }) {
   const inheritedDelivery = useDelivery();
   const delivery = row.delivery ?? inheritedDelivery;
   const [, setSearch] = useSearchParams();
   const setStage = (value: DraftStage) => {
     if (value === stage) return;
-    setSearch(previous => { const next = new URLSearchParams(previous); next.set('stage', value); return next; }, { replace: true });
+    setSearch(previous => { const next = new URLSearchParams(previous); next.set('stage', value); return next; });
   };
   const [confirmed, setConfirmed] = useState<string[]>(row.confirmed_issues.map(c => c.issueId));
+  const hasIssues = row.issues.items.length > 0;
+  const hasConfirmableIssues = row.issues.items.some(issue => issue.confirmable);
   const confirmations = row.issues.items.filter(i => i.confirmable && confirmed.includes(i.id)).map(i => ({ issueId: i.id, fingerprint: i.fingerprint }));
   const allConfirmed = row.issues.items.every(i => i.confirmable && confirmed.includes(i.id));
   const remaining = row.issues.items.filter(i => !i.confirmable || !confirmed.includes(i.id)).length;
   const [substantive, setSubstantive] = useState(false), [categories, setCategories] = useState<string[]>([]), [minutes, setMinutes] = useState(''), [fullReview, setFullReview] = useState(false);
-  const [d, setD] = useState(row.document), [tab, setTab] = useState(row.review_sync?.status==='stale'?'en':'zh'), [note, setNote] = useState('');
+  const [d, setD] = useState(row.document), [tab, setTab] = useState('en');
   const documentInput = useRef(row.document);
   const [englishReviewed,setEnglishReviewed]=useState(false);
   const [fulltextOpen, setFulltextOpen] = useState(false);
+  const fulltextToggle = useRef<HTMLElement>(null);
   const [location, setLocation] = useState<{ field: string; finding?: Finding } | null>(null);
   const [revisionGoals, setRevisionGoals] = useState<string[]>(['clarify_buyer_answer']);
   const [metadataOpen, setMetadataOpen] = useState('');
-  const [recoveryWait, setRecoveryWait] = useState<{ version: number; until: number; request: string } | null>(null);
-  const [recoveryTimedOut, setRecoveryTimedOut] = useState(false);
-  const [coverEdit, setCoverEdit] = useState({ dirty: false, busy: false });
-  const leaveProtection = useRef({ dirty: false, cover: { dirty: false, busy: false } });
-  const reportCoverEdit = useCallback((state: { dirty: boolean; busy: boolean }) => {
-    leaveProtection.current.cover = state;
-    setCoverEdit(state);
-  }, []);
   const [coverReset, setCoverReset] = useState(0);
   const { run, busy: actionBusy, pending } = useAdminAction();
-  const revisionActive = ['queued', 'running', 'unknown'].includes(row.revision_request?.status ?? '');
-  const busy = actionBusy || revisionActive || recoveryWait !== null || coverEdit.busy;
-  const { revalidate, state: revalidationState } = useRevalidator();
-  const revisionSnapshot = JSON.stringify(row.revision_request ?? null);
-  useEffect(() => {
-    if (!recoveryWait) return;
-    const status = row.revision_request?.status ?? '';
-    if (row.version !== recoveryWait.version || ['done', 'cancelled'].includes(status)
-      || (['failed', 'unknown'].includes(status) && revisionSnapshot !== recoveryWait.request)) {
-      setRecoveryWait(null);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setRecoveryWait(null);
-      setRecoveryTimedOut(true);
-    }, Math.max(0, recoveryWait.until - Date.now()));
-    return () => window.clearTimeout(timer);
-  }, [row.version, row.revision_request?.status, revisionSnapshot, recoveryWait]);
-  useEffect(() => {
-    if ((!recoveryWait && !['queued', 'running'].includes(row.revision_request?.status ?? '')) || revalidationState !== 'idle') return;
-    const timer = window.setTimeout(() => void revalidate(), 3500);
-    return () => window.clearTimeout(timer);
-  }, [row.revision_request?.status, recoveryWait, revalidationState, revalidate]);
-  const recoverRevision = async () => {
-    setRecoveryTimedOut(false);
-    const result = await run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'recover_revision' }, { success: '已安排核对现有修订回执，未重新调用模型。', revalidate: false });
-    if (!result) return;
-    setRecoveryWait({ version: row.version, until: Date.now() + 20_000, request: revisionSnapshot });
-    void revalidate();
-  };
+  const draftEndpoint = '/api/admin/studio/drafts/' + row.id;
+  const reviewEndpoint = draftEndpoint + '/review';
+  const revision = useDraftRevision(reviewEndpoint, row.version, row.revision_request, run);
   const dirty = JSON.stringify(editableDocument(d)) !== JSON.stringify(editableDocument(row.document));
-  // Stable listeners read the synchronous input state, including before router effects catch up.
-  useBeforeUnload(useCallback((event: BeforeUnloadEvent) => {
-    const current = leaveProtection.current;
-    if (current.dirty || current.cover.dirty || current.cover.busy) { event.preventDefault(); event.returnValue = ''; }
-  }, []));
-  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
-    const current = leaveProtection.current;
-    return (current.dirty || current.cover.dirty || current.cover.busy) &&
-      (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search);
-  }, []);
-  const blocker = useBlocker(shouldBlock);
-  const handledBlocker = useRef<typeof blocker | null>(null);
-  useEffect(() => {
-    if (blocker.state !== 'blocked') { handledBlocker.current = null; return; }
-    // Clearing inputs can render before the router commits proceeding. Decide once per attempt.
-    if (handledBlocker.current === blocker) return;
-    handledBlocker.current = blocker;
-    if (blocker.state === 'blocked') {
-      const current = leaveProtection.current;
-      if (current.cover.busy) {
-        blocker.reset();
-        toast('封面操作尚未完成，请稍候再切换。', 'info');
-        return;
-      }
-      const message = current.dirty && current.cover.dirty ? '正文或封面还有未保存的修改。确定放弃修改并继续？'
-        : current.cover.dirty ? '封面还有未上传的图片或说明。确定放弃这些输入并继续？'
-        : '稿件还有未保存的修改。确定放弃修改并继续？';
-      if (window.confirm(message)) {
-        documentInput.current = row.document;
-        leaveProtection.current.dirty = false;
-        setD(row.document);
-        reportCoverEdit({ dirty: false, busy: false });
-        setCoverReset(value => value + 1);
-        blocker.proceed();
-      }
-      else blocker.reset();
-    }
-  }, [blocker, row.document, dirty, coverEdit, reportCoverEdit]);
+  const saveDocument = (revalidate = true) => run('PATCH', draftEndpoint, { version: row.version, ...editableDocument(documentInput.current) }, { success: '已保存为待编辑稿。', revalidate });
+  const navigation = useDraftEditNavigation({
+    dirty, canSave: !actionBusy && !revision.active,
+    discardDocument: () => { documentInput.current = row.document; setD(row.document); },
+    discardCover: () => setCoverReset(value => value + 1),
+    saveDocument: async () => (await saveDocument(false)) !== null,
+  });
+  const busy = actionBusy || revision.active || navigation.coverBusy;
+  const sendReview = async (action: 'update_confirmations' | 'request_revision' | 'submit' | 'approve', data: object, success: string) => {
+    const body = { version: row.version, action, ...data };
+    if (await run('POST', reviewEndpoint, body, { label: JSON.stringify(body), success }) && action !== 'update_confirmations') setNote('');
+  };
   const approvalHold = busy ? '正在处理当前稿件，请稍候。'
     : dirty ? '保存修改后再核对并审核。'
     : row.gate.blocked ? '先处理上方需要修改的问题。'
     : !allConfirmed ? '还有待确认的问题，全部核对后可审核。'
     : row.review_sync?.status === 'stale' && !englishReviewed ? '请先勾选“已按当前英文主稿核对”，再确认审核通过。'
     : null;
+  const openDraft = (readingTab?: 'en' | 'zh' | 'source') => {
+    if (readingTab) setTab(readingTab);
+    setFulltextOpen(true);
+    fulltextToggle.current?.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+    fulltextToggle.current?.focus({ preventScroll: true });
+  };
   const locate = (f?: Finding) => {
     const targetField = f?.field ?? 'body_en';
     setStage('review');
@@ -404,7 +405,7 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
   const change = (key: keyof Document, value: string) => {
     const next = { ...documentInput.current, [key]: key === 'questions_zh' ? value.split('\n').filter(Boolean) : value };
     documentInput.current = next;
-    leaveProtection.current.dirty = JSON.stringify(editableDocument(next)) !== JSON.stringify(editableDocument(row.document));
+    navigation.reportDocumentDirty(JSON.stringify(editableDocument(next)) !== JSON.stringify(editableDocument(row.document)));
     setD(next);
   };
   const field = (key: keyof Document, title: string, large = false) => <div className="mb-5"><Field label={title}>
@@ -412,13 +413,14 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
   </Field></div>;
   const history = <div className="divide-y divide-line">
     {row.history.map((h, i) => <div className="py-3 text-xs leading-6" key={i}>
-      <p>{({ 'studio.draft.confirm': '暂存核对结果', 'studio.draft.save': '保存稿件', 'studio.draft.apply-edit':'采纳英文修改', 'studio.draft.submit': '提交审稿', 'studio.draft.approve': '审核通过', 'studio.draft.return': '退回修改' } as Record<string, string>)[h.action] || h.action} · {h.actor} · <Time at={h.created_at} /></p>
+      <p>{({ 'studio.draft.confirm': '保存问题确认', 'studio.draft.save': '保存稿件', 'studio.draft.apply-edit':'采纳英文修改', 'studio.draft.submit': '提交审稿', 'studio.draft.approve': '审核通过', 'studio.draft.return': '请求 AI 修订' } as Record<string, string>)[h.action] || h.action} · {h.actor} · <Time at={h.created_at} /></p>
       {h.reason && <p className="mt-1 text-ink-3">{h.reason}</p>}
     </div>)}
     {!row.history.length && <p className="py-3 text-xs text-ink-3">由 Agent 结果导入，尚无人工修改。</p>}
   </div>;
 
   return <AdminPage title={row.document.title_zh} subtitle={<span><Badge tone={row.status === 'approved' ? 'ok' : 'warn'}>{label[row.status]}</Badge><span className="ml-2">版本 {row.version} · <Time at={row.updated_at} /></span></span>} actions={<Link to="/admin/studio?tab=drafts" className="text-sm font-medium text-accent">返回稿件</Link>}>
+    {navigation.prompt}
     <ArticleWorkflow current={stage} draftId={row.id} directionTo={row.pitch_id ? '/admin/studio/pitch?id=' + encodeURIComponent(row.pitch_id) : '/admin/studio/pitch'} onStage={setStage} stageHeadingRef={stageHeadingRef} />
     <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-xs text-ink-3">
       <span className="inline-flex items-center gap-2"><FileText className="size-4 text-accent" aria-hidden="true" />中文核对，英文交付</span>
@@ -427,39 +429,21 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
       {row.material?.revision !== d.source.revision && <span className="text-hot">原文版本已变化，请重新建立采编任务核对。</span>}
     </div>
 
-    {dirty && stage !== 'review' && <p role="status" className="mb-5 rounded-control bg-amber-soft p-4 text-sm leading-7 text-amber-ink">正文还有未保存的修改。先回到审正文保存，再继续配图和交付。<Button className="ml-3" onClick={() => setStage('review')}>返回审正文</Button></p>}
+    {dirty && stage !== 'review' && <p role="status" className="mb-5 rounded-control bg-amber-soft p-4 text-sm leading-7 text-amber-ink">正文还有未保存的修改。先保存，再继续配图和交付。<Button className="ml-3" onClick={() => setStage('review')}>返回审稿</Button></p>}
     <div hidden={stage !== 'review'}>
-    <Card title="中文决策摘要" className="mb-5 draft-decision-summary">
+    <Card title="这篇文章要确认什么" className="mb-5 draft-decision-summary">
       <p className="text-sm font-semibold leading-6">这篇帮助读者解决：{row.editorial_context?.scope_question || row.editorial_context?.question || row.document.title_zh}</p>
-      <p className="mt-2 text-sm leading-6">{row.review_sync?.status === 'stale' ? '英文已更新，中文全文对照暂未同步。请按下方原句和建议核对当前英文。' : row.document.review_zh.split(/\n/).find(line => line.trim())?.slice(0, 220)}</p>
-      <p className="mt-2 text-sm leading-6">需要你决定 {remaining} 项。先看待确认原句和修改建议，完整稿件可随时展开。</p>
+      <p className="mt-2 text-sm leading-6">{row.review_sync?.status === 'stale' ? '英文已更新，中文全文对照暂未同步。请按下方原句和建议核对当前英文。' : reviewExcerpt(row.document.review_zh) || '当前没有中文正文，可查看英文稿与依据。'}</p>
+      {remaining > 0 && <p className="mt-2 text-sm leading-6">还有 {remaining} 项需要处理。</p>}
       {!!row.editorial_context?.unanswered_questions.length && <div className="mt-3 rounded-control bg-amber/10 p-3 text-sm leading-6">
         <p className="font-medium">本次明确未回答</p>
         <ul className="list-disc pl-4">{row.editorial_context.unanswered_questions.map((question, i) => <li key={i}>{question}</li>)}</ul>
       </div>}
-      <Button className="mt-3" onClick={() => { setFulltextOpen(true); document.getElementById('draft-fulltext')?.scrollIntoView({ block: 'start', behavior: scrollBehavior() }); }}>展开完整稿件</Button>
-      {row.revision_request && <p role="status" className="mt-3 text-sm leading-6">{
-        row.revision_request.status === 'queued' ? '已安排按所选目标修订。当前仍展示原版本，完成后需重新审稿。'
-        : row.revision_request.status === 'running' ? '正在修订。原版本与审核记录保留，暂不代表修改已完成。'
-        : row.revision_request.status === 'done' ? '修订已返回，请核对当前版本。'
-        : row.revision_request.status === 'cancelled' ? '已保留原稿，结束本次修订等待。可以继续审阅。'
-        : row.revision_request.status === 'unknown' ? '修订调用结果未知，可能已计费。已保留回执，不会自动重试。'
-        : '修订未完成，原稿仍保留。'}{row.revision_request.error ? ' ' + row.revision_request.error : ''}</p>}
-      {recoveryWait && <p role="status" className="mt-2 text-sm leading-6">正在核对已有修订结果，最多等待 20 秒；可随时保留原稿继续。</p>}
-      {recoveryTimedOut && <p role="status" className="mt-2 text-sm leading-6 text-amber-ink">本次核对尚未返回新结果，可稍后再查或保留原稿继续。未重新调用付费模型。</p>}
-      {['queued', 'running', 'unknown', 'failed'].includes(row.revision_request?.status ?? '') && <div className="mt-3 space-y-2">
-        <p className="text-xs leading-6 text-ink-3">核对已有回执可取回已返回的结果；保留原稿可结束本次等待。这两个操作均不重新调用付费模型，原审核要求保留。</p>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={pending !== null || dirty || recoveryWait !== null} onClick={() => void recoverRevision()}>核对修订结果</Button>
-          <Button disabled={pending !== null || dirty} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'keep_revision_original' }, { success: '已保留原稿并退出本次修订等待。' })}>保留原稿继续</Button>
-        </div>
-      </div>}
+      <Button className="mt-3" onClick={() => openDraft()}>展开完整稿件</Button>
+      <DraftRevisionStatus revision={row.revision_request} control={revision} disabled={pending !== null || dirty} />
     </Card>
 
-    <EvidenceDesk document={d} snapshots={row.source_snapshots ?? []} onOpenSources={() => {
-      setFulltextOpen(true); setTab('source');
-      setTimeout(() => document.getElementById('draft-fulltext')?.scrollIntoView({ block: 'start', behavior: scrollBehavior() }), 50);
-    }} />
+    <EvidenceDesk document={d} snapshots={row.source_snapshots ?? []} onOpenSources={() => openDraft('source')} />
     <div className="draft-review-layout grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="order-2 min-w-0 space-y-5 xl:order-1">
         {row.review_sync?.status==='stale'&&<div role="status" className="rounded-card border border-amber-ink/20 bg-amber-ink/5 p-4 text-sm leading-6 text-amber-ink">英文主稿已变更。中文对照是旧版，仅供参考；请核对当前英文后批准。保存与采纳修改都不会上线。</div>}
@@ -467,35 +451,27 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
           <p className="draft-manuscript-caption">当前英文稿</p>
           <h2 lang="en">{d.title_en}</h2>
           <div lang="en">{d.body_en.trim().split(/\n\s*\n/).filter(Boolean).slice(0, 3).map((paragraph, index) => <p key={index}>{quoteText(paragraph.replace(/^(?:#{1,6}|>|[-*])\s+/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')).slice(0, 650)}</p>)}</div>
-          <Button onClick={() => { setFulltextOpen(true); setTab('en'); }}>阅读完整英文并编辑</Button>
+          <Button onClick={() => openDraft('en')}>阅读完整英文并编辑</Button>
         </section>}
         <details id="draft-fulltext" open={fulltextOpen} onToggle={event => setFulltextOpen(event.currentTarget.open)}>
-          <summary className="mb-3 cursor-pointer rounded-card border border-line bg-surface p-4 text-sm font-medium text-accent">完整稿件与原文（随时展开）</summary>
+          <summary ref={fulltextToggle} className="mb-3 cursor-pointer rounded-card border border-line bg-surface p-4 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">完整稿件与原文</summary>
           <Card title="审阅与编辑" right={<span>{dirty ? '有修改未保存' : '当前版本已保存'}</span>}>
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList aria-label="稿件阅读方式" className="w-full justify-start">
-              <TabsTrigger value="zh">中文审稿</TabsTrigger>
-              <TabsTrigger value="en">英文交付</TabsTrigger>
-              <TabsTrigger value="source">原文与证据</TabsTrigger>
+              <TabsTrigger value="en">英文正文</TabsTrigger>
+              <TabsTrigger value="zh">中文对照</TabsTrigger>
+              <TabsTrigger value="source">查看依据</TabsTrigger>
             </TabsList>
             <TabsContent value="zh">
-              <p className="mb-4 text-xs leading-6 text-ink-3">中文仅用于内部理解。修改中文不会改写待发布英文；需要修改文章时，请使用建议卡或英文交付页。</p>
+              <p className="mb-4 text-xs leading-6 text-ink-3">中文供内部核对；修改文章请使用建议卡或英文正文。</p>
               {field('title_zh', '中文标题')}
               {field('review_zh', '中文正文', true)}
               <Field label="待核实问题（每行一项）"><Textarea readOnly={busy} value={d.questions_zh.join('\n')} onChange={e => change('questions_zh', e.target.value)} className="min-h-28 leading-6" /></Field>
             </TabsContent>
             <TabsContent value="en">
-              <p className="mb-4 text-xs leading-6 text-ink-3">公开交付为英文，位置为 Chipshow Blog；中文仅内部审稿。具体网站路径待 CMS 映射。限定语、原日期和出处会进入英文导出。</p>
+              <p className="mb-4 text-xs leading-6 text-ink-3">在这里修改待交付的英文正文，保留限定条件、日期和出处。</p>
               {field('title_en', 'English title')}
-              {row.upgrade_context && <details className="mb-4 rounded-control border border-line p-3 text-sm leading-6">
-                <summary className="cursor-pointer font-medium text-accent">查看本次旧页改动（{row.upgrade_context.changes.length} 项）</summary>
-                <a href={row.upgrade_context.target_existing_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-accent">对照目标原页</a>
-                {row.upgrade_context.changes.length ? <ul className="mt-3 space-y-2">{row.upgrade_context.changes.map((change, index) => <li key={index} className="break-words">
-                  <p>{({ revise: '调整原段', insert_after: '在原段后新增' } as Record<string, string>)[change.operation] ?? '计划改动'}，原文位置 {change.paragraph}</p>
-                  <p className="text-ink-3">{change.reason}</p>
-                </li>)}</ul> : <p className="mt-2 text-ink-3">当前没有提供分段改动清单，请先对照原文核对本次修改。</p>}
-                <p className="mt-3 text-xs text-ink-3">清单说明计划位置与理由；正文中的可改范围尚未高亮。</p>
-              </details>}
+              {row.upgrade_context && <UpgradeChanges context={row.upgrade_context} />}
               <p id="draft-body-edit-help" className="mb-3 text-xs leading-6 text-ink-3">沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。</p>
               {field('body_en', '英文正文（源稿）', true)}
               <Accordion type="single" collapsible value={metadataOpen} onValueChange={setMetadataOpen}>
@@ -548,7 +524,7 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
               <AccordionTrigger>人工全审参考</AccordionTrigger>
               <AccordionContent>
                 <p className="text-xs leading-6 text-ink-3">先判断变化是否值得写、是否与已有内容重复。再核对型号、数字、条件、日期、归属和消息状态；认证、商务承诺、客户案例和新领域首篇逐字确认。人审档的所有 WARN 仍须逐项确认，数量不会改变放行规则。</p>
-                <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => { setFulltextOpen(true); setTab('source'); }}>看原文与证据</Button><Button size="sm" onClick={() => { setFulltextOpen(true); setTab('zh'); }}>审中文</Button><Button size="sm" onClick={() => { setFulltextOpen(true); setTab('en'); }}>核对英文出口</Button></div>
+                <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => openDraft('source')}>看原文与证据</Button><Button size="sm" onClick={() => openDraft('zh')}>审中文</Button><Button size="sm" onClick={() => openDraft('en')}>核对英文出口</Button></div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -556,9 +532,9 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
       </div>
 
       <aside className="order-1 min-w-0 space-y-5 xl:order-2" aria-label="审稿确认与交付">
-        <Card title={<span className="inline-flex items-center gap-2">{row.gate.blocked ? <ShieldAlert className="size-4 text-hot" aria-hidden="true" /> : <FileCheck2 className="size-4 text-accent" aria-hidden="true" />}{row.gate.blocked ? '需要修改' : '待你确认'}</span>} right={<Badge tone={row.gate.blocked ? 'bad' : remaining ? 'warn' : 'ok'}>{row.gate.blocked ? '人审待修改' : remaining ? '剩余 ' + remaining + ' 项' : '逐项核对完成'}</Badge>}>
-          <p className="mb-4 text-xs leading-6 text-ink-3">系统把 {row.issues.summary.findingCount} 处提示整理为 {row.issues.summary.issueCount} 个问题。查看对应原文，再勾选确认。</p>
-          {row.gate.blocked && <p className="mb-4 rounded-control bg-hot-soft p-3 text-xs leading-6 text-hot">还有 {remaining} 个未处理问题，可以继续修改、保存和记录已核对项。批准及人审交付继续拦截未解的否决项。</p>}
+        <Card title={<span className="inline-flex items-center gap-2">{row.gate.blocked ? <ShieldAlert className="size-4 text-hot" aria-hidden="true" /> : <FileCheck2 className="size-4 text-accent" aria-hidden="true" />}{row.gate.blocked ? '需要修改' : hasIssues ? '问题确认' : '核对稿件'}</span>} right={<Badge tone={row.gate.blocked ? 'bad' : !hasIssues ? 'muted' : remaining ? 'warn' : 'ok'}>{row.gate.blocked ? '人审待修改' : !hasIssues ? '本版没有待勾选项' : remaining ? '剩余 ' + remaining + ' 项' : '当前问题均已勾选'}</Badge>}>
+          {hasIssues && <p className="mb-4 text-xs leading-6 text-ink-3">查看对应原文，再勾选确认。</p>}
+          {row.gate.blocked && <p className="mb-4 rounded-control bg-hot-soft p-3 text-xs leading-6 text-hot">请先处理阻断问题，再确认通过。可以随时保存修改和核对进度。</p>}
           {issueList('required')}
           {row.issues.summary.recommendedCount > 0 && <Accordion type="single" collapsible className="mt-2">
             <AccordionItem value="recommended">
@@ -566,35 +542,40 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
               <AccordionContent>{issueList('recommended')}</AccordionContent>
             </AccordionItem>
           </Accordion>}
-          {row.issues.items.length === 0 && <div className={'flex items-start gap-2 rounded-control p-3 text-sm leading-6 ' + (row.gate.blocked ? 'bg-hot-soft text-hot' : 'bg-bg-sunk text-ink-3')}>{row.gate.blocked ? <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <FileCheck2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}<p>{row.gate.blocked ? '当前未提供可勾选的放行项。请查看稿件与原文，处理否决项后再审核。' : '当前未列出可勾选的问题，请继续核对事实与原文。没有提示不代表事实已获批准。'}</p></div>}
+          {!hasIssues && <div className={'flex items-start gap-2 rounded-control p-3 text-sm leading-6 ' + (row.gate.blocked ? 'bg-hot-soft text-hot' : 'bg-bg-sunk text-ink-3')}>{row.gate.blocked ? <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <FileCheck2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}<p>{row.gate.blocked ? '当前未提供可勾选的放行项。请查看稿件与原文，处理否决项后再审核。' : '请核对正文中的事实与原文。'}</p></div>}
           {dirty && <p className="mt-3 text-xs leading-6 text-amber-ink">先保存修改，系统会按新版本重新核对。</p>}
-          <Button className="mt-4 w-full" aria-describedby="draft-confirmation-help" disabled={busy || dirty} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'confirm', confirmations, note }, { success: '核对结果已暂存，可稍后继续审稿。' })}>暂存核对结果</Button>
-          <p id="draft-confirmation-help" className="mt-2 text-xs leading-6 text-ink-3">用于稍后继续核对。确认审核通过时会同时保存当前勾选，无需提前暂存。内容或来源变化后需要重新核对。</p>
+          {hasConfirmableIssues && <>
+            <Button className="mt-4 w-full" aria-describedby="draft-confirmation-help" disabled={busy || dirty} onClick={() => void sendReview('update_confirmations', { confirmations }, '已保存问题确认，可稍后继续审稿。')}>保存问题确认</Button>
+            <p id="draft-confirmation-help" className="mt-2 text-xs leading-6 text-ink-3">下次可继续；确认通过时也会保存当前勾选。内容或来源变化后需重新核对。</p>
+          </>}
         </Card>
 
         <Card title="当前动作">
-          <Button tone={dirty ? 'primary' : 'secondary'} className="w-full" disabled={busy || !dirty} onClick={() => void run('PATCH', '/api/admin/studio/drafts/' + row.id, { version: row.version, ...editableDocument(d) }, { success: '已保存为待编辑稿。' })}><Save aria-hidden="true" />保存修改</Button>
+          <Button tone={dirty ? 'primary' : 'secondary'} className="w-full" disabled={busy || !dirty} onClick={() => void saveDocument()}><Save aria-hidden="true" />保存修改</Button>
           <p className="my-2 text-xs leading-5 text-ink-3">{dirty ? '有修改尚未保存。保存后将按新版本重新审核。' : '当前版本已保存。'}</p>
           {['draft', 'in_review'].includes(row.status) && row.manual_edit_recovery?.available && <div className="my-3 space-y-2">
             <p className="text-xs leading-6 text-ink-3">已保存的修改需要重新核对。正文保持不变，完成后请继续审稿。</p>
             <Button className="w-full" disabled={busy || dirty} onClick={() => void run('PATCH', '/api/admin/studio/drafts/' + row.id, { version: row.version, ...editableDocument(row.document) }, { success: '已重新保存，请继续核对并提交审稿。' })}>重新核对已存修改</Button>
           </div>}
-          <fieldset disabled={busy || dirty} className="my-4 space-y-2">
-            <legend className="mb-2 text-sm font-semibold">让系统怎样修改（可多选）</legend>
-            <p className="text-xs leading-6 text-ink-3">选择修改目标，系统据此修订。补充意见可留空，修订后仍需审核。</p>
-            {([['clarify_buyer_answer', '更直接回答买家问题'], ['shorten', '压缩篇幅与重复内容'], ['evidence_only', '只保留有依据的说法']] as const).map(([key, text]) => <label key={key} className="flex items-center gap-2 text-sm">
-              <Checkbox checked={revisionGoals.includes(key)} onCheckedChange={value => setRevisionGoals(goals => value === true ? [...goals, key] : goals.filter(goal => goal !== key))} />{text}
-            </label>)}
-          </fieldset>
-          <div className="my-4"><Field label="审稿意见（选填）" hint="有额外逻辑再补充。留空也能按所选目标修改。"><Textarea aria-label="审稿意见" value={note} disabled={busy} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="额外要求，可留空" className="min-h-20" /></Field></div>
+          <div className="my-4"><Field label="审稿意见（选填）" hint="可补充人工审稿意见或 AI 修订要求。"><Textarea aria-label="审稿意见" value={note} disabled={busy} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="可留空" className="min-h-20" /></Field></div>
+          <details className="my-4 border-y border-line py-1">
+            <summary className="min-h-12 cursor-pointer rounded-control py-3 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">AI 修订设置</summary>
+            <fieldset disabled={busy || dirty} className="my-4 space-y-2">
+              <legend className="mb-2 text-sm font-semibold">修订目标（可多选）</legend>
+              <p className="text-xs leading-6 text-ink-3">选择修改目标，生成新版本后再核对。</p>
+              {([['clarify_buyer_answer', '更直接回答买家问题'], ['shorten', '压缩篇幅与重复内容'], ['evidence_only', '只保留有依据的说法']] as const).map(([key, text]) => <label key={key} htmlFor={'draft-revision-' + key} className="flex min-h-12 items-center gap-2 text-sm">
+                <Checkbox id={'draft-revision-' + key} checked={revisionGoals.includes(key)} onCheckedChange={value => setRevisionGoals(goals => value === true ? [...goals, key] : goals.filter(goal => goal !== key))} />{text}
+              </label>)}
+            </fieldset>
+            <Button className="mb-3 w-full" disabled={busy || dirty || (!revisionGoals.length && !note.trim())} onClick={() => void sendReview('request_revision', { revision_goals: revisionGoals, note }, '已提交 AI 修订请求。完成后请重新审稿。')}>请求 AI 修订</Button>
+            {!revisionGoals.length && !note.trim() && <p className="mb-3 text-xs text-ink-3">请选择修改目标，或填写审稿意见。</p>}
+          </details>
           {row.review_sync?.status==='stale'&&<label className="mb-3 flex items-start gap-2 text-xs leading-6"><Checkbox checked={englishReviewed} onCheckedChange={value=>setEnglishReviewed(value===true)} disabled={busy||dirty} aria-label="已按当前英文主稿核对" className="mt-1" />已按当前英文主稿核对，未以旧中文代替审稿</label>}
           <div className="flex flex-wrap gap-2">
-            {row.status === 'draft' && <Button tone="primary" className="w-full" disabled={busy || dirty} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'submit', note }, { success: '已提交审稿。' })}>提交审稿</Button>}
-            {row.status === 'in_review' && <Button tone="primary" className="w-full" disabled={approvalHold !== null} aria-describedby="approval-hint" onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'approve', note, confirmations,...(row.review_sync?.status==='stale'?{english_reviewed:englishReviewed}:{}) }, { success: '审核通过，可以导出。' })}>确认审核通过</Button>}
-            <Button className="w-full" disabled={busy || dirty || (!revisionGoals.length && !note.trim()) || row.revision_request?.status === 'queued' || row.revision_request?.status === 'running' || row.revision_request?.status === 'unknown'} onClick={() => void run('POST', '/api/admin/studio/drafts/' + row.id + '/review', { version: row.version, action: 'return', revision_goals: revisionGoals, note }, { success: '已安排按所选目标修订。完成后请重新审稿。' })}>按选择修订</Button>
+            {row.status === 'draft' && <Button tone={dirty ? 'secondary' : 'primary'} className="w-full" disabled={busy || dirty} onClick={() => void sendReview('submit', { note }, '已提交审稿。')}>提交审稿</Button>}
+            {row.status === 'in_review' && <Button tone={dirty ? 'secondary' : 'primary'} className="w-full" disabled={approvalHold !== null} aria-describedby="approval-hint" onClick={() => void sendReview('approve', { note, confirmations, ...(row.review_sync?.status === 'stale' ? { english_reviewed: englishReviewed } : {}) }, '审核通过，可以导出。')}>确认通过</Button>}
           </div>
           {row.status === 'in_review' && <p id="approval-hint" role="status" className="mt-3 text-xs leading-6 text-ink-3">{approvalHold ?? '确认审核只记录审稿结果，不会自动公开。'}</p>}
-          {!revisionGoals.length && !note.trim() && <p className="mt-2 text-[11px] text-ink-4">选择至少一个修改目标即可，无需填写意见。</p>}
         </Card>
 
         {row.engineer_review&&<Card title="工程师确认记录"><Badge tone={row.engineer_review.mode==='engineer'?'ok':'warn'}>{row.engineer_review.mode==='engineer'?'已有人工回复':'保守写法 · 未获工程署名'}</Badge>
@@ -621,23 +602,27 @@ function Editor({ row, stage, stageHeadingRef }: { row: Detail; stage: DraftStag
         </Card>
       </aside>
     </div>
-    {row.status === 'approved' && <div className="mt-5 flex justify-end"><Button tone="primary" disabled={busy || dirty} onClick={() => setStage('cover')}>继续配封面</Button></div>}
+    {row.status === 'approved' && <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+      <p className="text-xs text-ink-3">配图可选。</p>
+      <Button disabled={busy || dirty} onClick={() => setStage('delivery')}>查看交付</Button>
+      <Button tone="primary" disabled={busy || dirty} onClick={() => setStage('cover')}>继续配图</Button>
+    </div>}
     </div>
 
-    <section hidden={stage !== 'cover'} aria-label="配封面" className="draft-stage-content space-y-5">
-      {stage === 'cover' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="cover" onEditStateChange={reportCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
+    <section hidden={stage !== 'cover'} aria-label="配图" className="draft-stage-content space-y-5">
+      {stage === 'cover' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="cover" onEditStateChange={navigation.reportCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
       <DraftFigures id={row.id} version={row.version} />
     </section>
 
-    <section hidden={stage !== 'delivery'} aria-label="手工交付" className="draft-stage-content space-y-5">
-      {stage === 'delivery' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="delivery" onEditStateChange={reportCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
+    <section hidden={stage !== 'delivery'} aria-label="交付" className="draft-stage-content space-y-5">
+      {stage === 'delivery' && <DraftCovers key={coverReset} id={row.id} version={row.version} approved={row.status === 'approved'} disabled={busy || dirty} stage="delivery" onEditStateChange={navigation.reportCoverEdit} onDelivery={() => setStage('delivery')} onReview={() => setStage('review')} />}
       <Card title="当前稿件与交付版本">
         <dl className="space-y-2 text-sm" aria-label="稿件版本对应">
           <div className="flex justify-between gap-3"><dt>当前稿件</dt><dd>版本 {row.version}{dirty && '，尚有未保存修改'}</dd></div>
           <div className="flex justify-between gap-3"><dt>最近人工批准</dt><dd>{row.wordpress.approvedVersion != null ? '版本 ' + row.wordpress.approvedVersion : '尚未批准'}</dd></div>
           <div className="flex justify-between gap-3"><dt>已核对送达 WP</dt><dd>{row.wordpress.syncedVersion != null ? '版本 ' + row.wordpress.syncedVersion : '尚未核对送达'}</dd></div>
         </dl>
-        <p className="mt-3 text-sm leading-7 text-ink-3">{row.wordpress.currentSynced && !dirty ? '当前版本与已核对的 WordPress 草稿对应。' : delivery.wordpressWritesAllowed ? '修改稿件后，需要审核当前版本，再更新原 WordPress 草稿。' : '正文变更后重新审核。采用封面后，确认当前成品再下载交付包。'}</p>
+        <p className="mt-3 text-sm leading-7 text-ink-3">{row.wordpress.currentSynced && !dirty ? '当前版本与已核对的 WordPress 草稿对应。' : delivery.wordpressWritesAllowed ? '修改稿件后，需要审核当前版本，再更新原 WordPress 草稿。' : '正文变更后重新审核。确认当前成品后可下载交付包。'}</p>
       </Card>
       <Card title="单独下载正文">
         {row.status === 'approved' && !dirty ? <div className="flex flex-wrap gap-3">

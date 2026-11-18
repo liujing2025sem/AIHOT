@@ -4,10 +4,10 @@ import { BookOpenText, FileCheck2, Image, Download } from 'lucide-react';
 
 export type DraftStage = 'review' | 'cover' | 'delivery';
 const steps = [
-  { key: 'direction', label: '定方向', icon: BookOpenText },
-  { key: 'review', label: '审正文', icon: FileCheck2 },
-  { key: 'cover', label: '配封面', icon: Image },
-  { key: 'delivery', label: '手工交付', icon: Download },
+  { key: 'direction', label: '选题', icon: BookOpenText },
+  { key: 'review', label: '审稿', icon: FileCheck2 },
+  { key: 'cover', label: '配图', icon: Image },
+  { key: 'delivery', label: '交付', icon: Download },
 ] as const;
 
 /** Navigation only. Saving, generation, review and export retain their original API gates. */

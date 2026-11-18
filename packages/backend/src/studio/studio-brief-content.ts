@@ -1,58 +1,17 @@
 // A brief is one reviewable document. Its evidence remains scoped to each independent event.
 import { createHash } from 'node:crypto';
 import { load } from 'cheerio';
-import { z } from 'zod';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
-import { figureSpecSchema } from '../../../../scripts/editorial-pitch-lib.ts';
-import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import { briefMetadataSchema, type BriefSelection, type BriefMetadata, type GeneratedBrief, type Packet, type Response, type SourceBinding } from '@aihot/contracts/studio-handoff';
 import type { Finding, GateContext, GateReport } from './editorial-gate.ts';
 
-const id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/);
-const sourceBinding = z.object({ article_id: id, revision: z.number().int().positive(), content_sha256: z.string().regex(/^[a-f0-9]{64}$/), url: z.url(), published_at: z.string().nullable() }).strict();
-const section = z.enum(CATEGORIES.map(c => c.key));
-const evidence = z.object({ article_id: id, claim: z.string().min(1).max(1500), quote: z.string().min(1).max(350) }).strict();
-export const briefSelectionSchema = z.object({
-  schema: z.literal('aihot-brief-selection/1'),
-  events: z.array(z.object({ article_id: id, event_id: z.string().nullable(), section,
-    publication_time: z.string().nullable(), source_utc_offset: z.string(),
-    date_basis: z.enum(['published', 'observed_version']), observed_version_at: z.string().nullable(),
-  }).strict()).min(5).max(12),
-  pages: z.array(z.object({ url: z.url(), title: z.string() }).strict()).max(30),
-}).strict();
-export const briefMetadataSchema = z.object({
-  schema: z.literal('aihot-brief/1'),
-  highlight_event_ids: z.array(id).length(3),
-  items: z.array(z.object({ event_id: id, sources: z.array(sourceBinding).min(1).max(12), section,
-    evidence: z.array(evidence).min(1).max(8),
-  }).strict()).min(5).max(12),
-}).strict();
-export type BriefSelection = z.infer<typeof briefSelectionSchema>;
-export type BriefMetadata = z.infer<typeof briefMetadataSchema>;
+export { briefSelectionSchema, briefMetadataSchema, briefGenerationSchema, type BriefSelection, type BriefMetadata } from '@aihot/contracts/studio-handoff';
 
-const plain = z.string().trim().min(1);
-const generatedItem = z.object({
-  event_key: id, article_ids: z.array(id).min(1).max(12), primary_article_id: id, section,
-  title_en: plain.max(200), body_en: plain.max(2400), title_zh: plain.max(200), review_zh: plain.max(2400),
-  news_status: z.enum(['reported', 'unconfirmed']).default('reported'),
-  hook_anchor_quote: plain.max(350), evidence: z.array(evidence).min(1).max(8),
-  why_it_matters_en: plain.max(800).optional(),
-  go_deeper: z.object({ url: z.url(), label_en: plain.max(140) }).strict().optional(),
-}).strict();
-export const briefGenerationSchema = z.discriminatedUnion('decision', [
-  z.object({ decision: z.literal('hold'), reason_zh: plain.max(1000) }).strict(),
-  z.object({ decision: z.literal('draft'), title_en: plain.max(250), title_zh: plain.max(250),
-    in_5_seconds: z.array(z.object({ event_key: id, text_en: plain.max(250) }).strict()).length(3),
-    items: z.array(generatedItem).min(5).max(12),
-    questions_zh: z.array(z.string().max(1000)).max(30), keyword_hypothesis: plain.max(2000), meta_description_en: plain.max(2000),
-    camos_rule_ids: z.array(z.string()).optional(), figures: z.array(figureSpecSchema).max(3).optional(),
-  }).strict(),
-]);
-type GeneratedBrief = Extract<z.infer<typeof briefGenerationSchema>, { decision: 'draft' }>;
 type Draft = Response['drafts'][number];
 const esc = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const fail = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };
-const sameBinding = (a: z.infer<typeof sourceBinding>, b: z.infer<typeof sourceBinding>) => a.article_id === b.article_id && a.revision === b.revision && a.content_sha256 === b.content_sha256 && a.url === b.url && a.published_at === b.published_at;
+const sameBinding = (a: SourceBinding, b: SourceBinding) => a.article_id === b.article_id && a.revision === b.revision && a.content_sha256 === b.content_sha256 && a.url === b.url && a.published_at === b.published_at;
 const dom = (html: string) => load(html, { xml: { xmlMode: false, withStartIndices: true, withEndIndices: true } }, false);
 function range(node: { startIndex?: number | null; endIndex?: number | null } | undefined) {
   if (node?.startIndex == null || node.endIndex == null) return null;

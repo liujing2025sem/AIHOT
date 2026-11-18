@@ -1,8 +1,8 @@
 # 给 Agent 的说明
 
-这是一个行业热点网站的框架：采集信源、用模型筛选和写作、归组事件、出日报周报月报，并通过网站、RSS、公开 API、Agent Markdown 和 MCP 对外提供。默认配置是一个 AI 行业的示例站。先读 README，再按任务读 `docs/` 里对应的文档。
+当前项目是 Chipshow 英文采编工作台。先读 [README 的运营动作与工程入口](README.md)，当期决定、实际部署版本与真实稿件顺序以 [LIVE](docs/LIVE.md) 为准。修改审稿或交付时沿已有路由、稿件版本和回执核对；按需阅读对应模块的用例。
 
-## 最常见的任务：改成另一个行业
+## 维护上游行业热点框架时
 
 按 `docs/customize.md` 的顺序做。这个站自己的东西在 `site/`：站名文案（`site.ts`）、每一步的模型（`models.ts`）、品牌与 Logo（`brand/`）、条款页（`pages/`）、发布在网站根目录的固定文件（`public/`，替换占位符后发布）、更新日志（`changelog.json`）。行业知识在 `industry/`：分类标签（`taxonomy.ts`）、主题（`topics.json`）、示范信源（`sources.json`）、提示词（`prompts/`）、门槛（`selection.ts`）。通常不需要改 `apps/` 和 `packages/`；框架里没有、只有这个站要的功能，做成模块放进 `modules/`（`docs/architecture.md` 的“模块”）。
 

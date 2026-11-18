@@ -72,7 +72,7 @@ function reviewFixture() {
         draft.status = input.action === 'approve' ? 'approved' : 'in_review';
         draft.version++;
       }
-      if (url.pathname.endsWith('/review') && input.action === 'confirm') {
+      if (url.pathname.endsWith('/review') && input.action === 'update_confirmations') {
         if (input.version !== draft.version) {
           _res.statusCode = 409;
           return { code: 'conflict', detail: '稿件版本已更新，请重新核对后暂存。' };
@@ -80,7 +80,7 @@ function reviewFixture() {
         draft.confirmed_issues = input.confirmations as typeof draft.confirmed_issues;
         draft.version++;
       }
-      if (url.pathname.endsWith('/review') && input.action === 'return') {
+      if (url.pathname.endsWith('/review') && input.action === 'request_revision') {
         draft.version++;
         draft.status = 'draft';
         setRevision({ status: 'queued', version: draft.version, goals: input.revision_goals as string[], note: input.note as string });
@@ -97,10 +97,10 @@ function reviewFixture() {
 }
 
 async function openEnglishDraft(page: Page) {
-  await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审正文', exact: true })).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审稿', exact: true })).toHaveAttribute('aria-current', 'step');
   const expand = page.getByRole('button', { name: '展开完整稿件', exact: true });
   if (await expand.isVisible()) await expand.click();
-  await page.getByRole('tab', { name: '英文交付', exact: true }).click();
+  await page.getByRole('tab', { name: '英文正文', exact: true }).click();
   return page.getByLabel('英文正文（源稿）', { exact: true });
 }
 
@@ -155,7 +155,7 @@ for (const width of [1440, 390]) test('saved fragment changes can be rechecked w
     await expect.poll(() => fixture.draft.version).toBe(8);
     await expect(recovery).toHaveCount(0);
     await expect(page.getByRole('button', { name: '提交审稿', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '确认审核通过', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '确认通过', exact: true })).toHaveCount(0);
     await expect(await openEnglishDraft(page)).toHaveValue(savedText);
     assert.deepEqual(fixture.writes, [{ path: '/api/admin/studio/drafts/review-fixture', body: expected }]);
     assert.equal(fixture.draft.status, 'draft');
@@ -189,7 +189,7 @@ test('saved-edit recovery requires the server capability and an editable draft s
     Object.assign(fixture.draft.issues.items[0], { ruleId: 'D1', severity: 'BLOCK', confirmable: false });
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
     await expect(page.getByRole('button', { name: '重新核对已存修改', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '确认审核通过', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '确认通过', exact: true })).toBeDisabled();
     assert.equal(fixture.writes.length, 0, 'capability checks and ordinary D1 issues never trigger a repair');
   } finally { await browser?.close(); await web.stop(); }
 });
@@ -245,35 +245,35 @@ test('dirty step navigation keeps local text across another page saving and an o
     await expect(remote.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
     assert.equal(fixture.draft.document.body_en, remoteText);
 
-    const dialogs: string[] = [];
-    let discard = false;
-    local.on('dialog', async dialog => {
-      dialogs.push(dialog.message());
-      await (discard ? dialog.accept() : dialog.dismiss());
-    });
+    const dialog = local.getByRole('dialog', { name: '稿件还有未保存的修改' });
     const flow = local.getByRole('navigation', { name: '当前稿件流程' });
-    for (const step of ['配封面', '手工交付']) {
-      const before = dialogs.length;
-      await flow.getByRole('button', { name: step, exact: true }).click();
-      await expect.poll(() => dialogs.length).toBe(before + 1);
+    for (const step of ['配图', '交付']) {
+      const destination = flow.getByRole('button', { name: step, exact: true });
+      await destination.click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: '继续编辑', exact: true }).click();
+      await expect(destination).toBeFocused();
       await expect(localBody).toHaveValue(localText);
-      await expect(flow.getByRole('button', { name: '审正文', exact: true })).toHaveAttribute('aria-current', 'step');
+      await expect(flow.getByRole('button', { name: '审稿', exact: true })).toHaveAttribute('aria-current', 'step');
       await expect(local).toHaveURL(url);
     }
-    await local.getByRole('button', { name: '保存修改', exact: true }).click();
-    await expect(local.getByText('这篇稿件已被修改，请刷新查看最新版本后再保存。', { exact: true })).toBeVisible();
+    await flow.getByRole('button', { name: '交付', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存并离开', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toHaveText('保存未完成。修改还在，可以继续编辑或重试保存。');
+    await expect(local).toHaveURL(url);
+    await dialog.getByRole('button', { name: '继续编辑', exact: true }).click();
     await expect(localBody).toHaveValue(localText);
     assert.equal(fixture.draft.document.body_en, remoteText);
     assert.equal(fixture.draft.version, 8);
     assert.equal(fixture.writes.length, 2, 'only the remote save and rejected local save reach the API');
     assert.equal(fixture.writes[1].body.version, 7, 'the rejected buffer retains its original version');
 
-    discard = true;
-    await flow.getByRole('button', { name: '配封面', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '配封面', exact: true })).toHaveAttribute('aria-current', 'step');
-    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await flow.getByRole('button', { name: '配图', exact: true }).click();
+    await dialog.getByRole('button', { name: '放弃修改', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '配图', exact: true })).toHaveAttribute('aria-current', 'step');
+    await flow.getByRole('button', { name: '审稿', exact: true }).click();
     await expect(await openEnglishDraft(local)).toHaveValue(remoteText);
-    assert.equal(dialogs.length, 3, 'only dirty transitions ask for a discard decision');
+    await expect(dialog).toHaveCount(0);
     assert.equal(fixture.writes.length, 2, 'discarding and switching steps do not save or publish');
   } finally { await browser?.close(); await web.stop(); }
 });
@@ -288,35 +288,31 @@ test('discarding dirty step navigation restores the saved text without changing 
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture?stage=review');
     const body = await openEnglishDraft(page);
     await body.fill('An unsaved note that the operator decides to discard.');
-    const dialogs: string[] = [];
-    let discard = false;
-    page.on('dialog', async dialog => {
-      dialogs.push(dialog.message());
-      await (discard ? dialog.accept() : dialog.dismiss());
-    });
+    const dialog = page.getByRole('dialog', { name: '稿件还有未保存的修改' });
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
-    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
-    await expect.poll(() => dialogs.length).toBe(1);
+    await flow.getByRole('button', { name: '交付', exact: true }).click();
+    await dialog.getByRole('button', { name: '继续编辑', exact: true }).focus();
+    await page.keyboard.press('Escape');
     await expect(body).toHaveValue('An unsaved note that the operator decides to discard.');
-    discard = true;
-    await flow.getByRole('button', { name: '手工交付', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '手工交付', exact: true })).toHaveAttribute('aria-current', 'step');
-    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await flow.getByRole('button', { name: '交付', exact: true }).click();
+    await dialog.getByRole('button', { name: '放弃修改', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '交付', exact: true })).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByRole('heading', { name: '交付', exact: true })).toBeFocused();
+    await page.getByRole('button', { name: '返回审稿', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '审稿', exact: true })).toBeFocused();
     await expect(await openEnglishDraft(page)).toHaveValue(savedText);
-    assert.equal(dialogs.length, 2, 'returning after explicit discard is clean');
     assert.equal(fixture.draft.version, 7);
-    assert.equal(fixture.writes.length, 0, 'discard does not write an unchanged document');
+    assert.equal(fixture.writes.length, 0, 'discard and return to review never write the draft');
 
     const newText = 'A deliberately saved cabinet installation note.';
     await body.fill(newText);
-    await page.getByRole('button', { name: '保存修改', exact: true }).click();
+    await flow.getByRole('button', { name: '配图', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存并离开', exact: true }).click();
     await expect.poll(() => fixture.draft.version).toBe(8);
-    await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
-    await flow.getByRole('button', { name: '配封面', exact: true }).click();
-    await expect(flow.getByRole('button', { name: '配封面', exact: true })).toHaveAttribute('aria-current', 'step');
-    await flow.getByRole('button', { name: '审正文', exact: true }).click();
+    await expect(flow.getByRole('button', { name: '配图', exact: true })).toHaveAttribute('aria-current', 'step');
+    await page.goBack();
     await expect(await openEnglishDraft(page)).toHaveValue(newText);
-    assert.equal(dialogs.length, 2, 'a saved draft switches steps without asking to discard');
+    await expect(dialog).toHaveCount(0);
     assert.equal(fixture.writes.length, 1);
   } finally { await browser?.close(); await web.stop(); }
 });
@@ -335,9 +331,10 @@ test('clicking the active draft step keeps unsaved text when the server has a ne
     fixture.draft.document.body_en = 'A newer server version.';
     const dialogs: string[] = [];
     page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
-    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审正文', exact: true }).click();
+    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审稿', exact: true }).click();
     await page.waitForLoadState('networkidle');
     await expect(body).toHaveValue(localText);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     assert.equal(dialogs.length, 0, 'the active step does not ask to leave itself');
     assert.equal(fixture.writes.length, 0);
   } finally { await browser?.close(); await web.stop(); }
@@ -392,7 +389,7 @@ test('five-event evidence keeps each canonical source and never guesses the firs
       await expect(desk.getByText('这条摘录暂时无法唯一定位来源。', { exact: true })).toBeVisible();
     }
     await desk.getByRole('button', { name: '查看全部绑定原文', exact: true }).click();
-    await expect(page.getByRole('tab', { name: '原文与证据', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '查看依据', exact: true })).toHaveAttribute('aria-selected', 'true');
     for (const source of snapshots) await expect(page.getByText(source.title, { exact: true })).toBeVisible();
     assert.equal(fixture.writes.length, 0, 'source lookup and opening bound originals do not generate, approve or publish');
     assert.equal(fixture.draft.version, 7);
@@ -438,20 +435,21 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
-    await expect(page.getByRole('heading', { name: '中文决策摘要', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '这篇文章要确认什么', exact: true })).toBeVisible();
     await expect(page.getByLabel('中文正文', { exact: true })).toBeHidden();
     await page.getByRole('button', { name: '展开完整稿件', exact: true }).click();
-    await expect(page.getByRole('tab', { name: '中文审稿', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '英文正文', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: '中文对照', exact: true }).click();
     await expect(page.getByLabel('中文正文', { exact: true })).toHaveValue(fixture.draft.document.review_zh);
     await expect(page.getByRole('complementary', { name: '审稿确认与交付', exact: true })).toBeVisible();
-    const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
+    const approve = page.getByRole('button', { name: '确认通过', exact: true });
     await expect(approve).toBeDisabled();
 
     const bodyIssue = page.getByRole('listitem').filter({ has: page.getByText('正文尺寸数字需与原文一致', { exact: true }) });
     await expect(bodyIssue.getByRole('button', { name: '查看原因与 1 处原文', exact: true })).toHaveAttribute('aria-expanded', 'false');
     await expect(bodyIssue.getByText('请把这处计算结果与绑定原文对照。', { exact: true })).toBeVisible();
     await bodyIssue.getByRole('button', { name: '定位并核对', exact: true }).click();
-    await expect(page.getByRole('tab', { name: '英文交付', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '英文正文', exact: true })).toHaveAttribute('aria-selected', 'true');
     const body = page.getByLabel('英文正文（源稿）', { exact: true });
     await expect(body).toBeFocused();
     await expect(body).toBeInViewport();
@@ -473,7 +471,7 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
     await expect(approve).toBeDisabled();
     await page.getByRole('checkbox', { name: '确认 搜索摘要数字需与原文一致', exact: true }).check();
     await expect(approve).toBeEnabled();
-    await expect(page.getByRole('button', { name: '暂存核对结果', exact: true })).toHaveAccessibleDescription('用于稍后继续核对。确认审核通过时会同时保存当前勾选，无需提前暂存。内容或来源变化后需要重新核对。');
+    await expect(page.getByRole('button', { name: '保存问题确认', exact: true })).toHaveAccessibleDescription('下次可继续；确认通过时也会保存当前勾选。内容或来源变化后需重新核对。');
     assert.equal(fixture.writes.length, 0, 'viewing evidence and checking issues do not approve, publish, or modify the draft');
     await captureReviewState(page, 'actionable-remedies', width);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -490,7 +488,7 @@ for (const width of [1440, 390]) test('review workbench locates evidence and sub
         ],
       },
     });
-    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '手工交付', exact: true }).click();
+    await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '交付', exact: true }).click();
     await expect(page.getByRole('link', { name: '英文 HTML', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '直接上线', exact: true })).toHaveCount(0);
     assert.equal(fixture.writes.some(write => /\/(publish|wordpress)$/.test(write.path)), false, 'human approval does not initiate a publishing request');
@@ -511,11 +509,11 @@ test('review remedies open the bound source and position-free review without wri
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
-    await expect(page.getByRole('tab', { name: '原文与证据', exact: true })).toBeHidden();
+    await expect(page.getByRole('tab', { name: '查看依据', exact: true })).toBeHidden();
     const sourceIssue = page.getByRole('listitem').filter({ has: page.getByText('追溯一手研究', { exact: true }) });
     await sourceIssue.getByRole('button', { name: '查看对应原文', exact: true }).focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('tab', { name: '原文与证据', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '查看依据', exact: true })).toHaveAttribute('aria-selected', 'true');
     const source = page.locator('[data-field="source.body_text"]');
     await expect(source).toBeVisible();
     await expect(source).toBeFocused();
@@ -528,7 +526,7 @@ test('review remedies open the bound source and position-free review without wri
     await expect(body).toBeFocused();
     await expect(body).toBeInViewport();
     await expect(body).toHaveValue(fixture.draft.document.body_en);
-    await expect(page.getByRole('button', { name: '确认审核通过', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '确认通过', exact: true })).toBeDisabled();
     assert.equal(fixture.writes.length, 0, 'inspection never mutates, verifies facts, or approves');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await captureReviewState(page, 'source-remedy', 390);
@@ -548,9 +546,10 @@ test('temporarily saved review checks survive a failed request and reload withou
     const first = page.getByRole('checkbox', { name: '确认 正文尺寸数字需与原文一致', exact: true });
     const second = page.getByRole('checkbox', { name: '确认 搜索摘要数字需与原文一致', exact: true });
     const english = page.getByRole('checkbox', { name: '已按当前英文主稿核对', exact: true });
-    const saveChecks = page.getByRole('button', { name: '暂存核对结果', exact: true });
+    const saveChecks = page.getByRole('button', { name: '保存问题确认', exact: true });
     await first.check();
     await english.check();
+    await page.getByLabel('审稿意见', { exact: true }).fill('这条审稿意见留待正式审稿。');
     const endpoint = '**/api/admin/studio/drafts/review-fixture/review';
     await page.route(endpoint, route => route.fulfill({ status: 503, json: { code: 'unavailable', detail: '本次暂存未完成，请稍后重试。' } }));
     await saveChecks.click();
@@ -567,23 +566,23 @@ test('temporarily saved review checks survive a failed request and reload withou
     await expect(first).toBeChecked();
     await expect(second).not.toBeChecked();
     await expect(english).not.toBeChecked();
+    await expect(page.getByLabel('审稿意见', { exact: true })).toHaveValue('这条审稿意见留待正式审稿。');
     assert.equal(fixture.draft.status, 'in_review');
-    assert.deepEqual(fixture.writes.map(write => write.body.action), ['confirm']);
-    assert.deepEqual(fixture.writes[0].body.confirmations, [{ issueId: 'body-number', fingerprint: 'body-number-v7-source3' }]);
-    assert.equal(fixture.writes[0].body.english_reviewed, undefined, 'temporary check saving never becomes the final English acknowledgement');
+    assert.deepEqual(fixture.writes.map(write => write.body.action), ['update_confirmations']);
+    assert.deepEqual(fixture.writes[0].body, { version: 7, action: 'update_confirmations', confirmations: [{ issueId: 'body-number', fingerprint: 'body-number-v7-source3' }] });
 
     await visit(page, url);
     await expect(first).toBeChecked();
     await expect(second).not.toBeChecked();
     await captureReviewState(page, 'temporarily-saved-checks', 390);
     await second.check();
-    const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
+    const approve = page.getByRole('button', { name: '确认通过', exact: true });
     await expect(approve).toBeDisabled();
     await english.check();
     await expect(approve).toBeEnabled();
     await approve.click();
     await expect.poll(() => fixture.draft.status).toBe('approved');
-    assert.deepEqual(fixture.writes.map(write => write.body.action), ['confirm', 'approve']);
+    assert.deepEqual(fixture.writes.map(write => write.body.action), ['update_confirmations', 'approve']);
     assert.equal(fixture.writes[1].body.version, 8);
     assert.equal(fixture.writes[1].body.english_reviewed, true);
     assert.equal((fixture.writes[1].body.confirmations as unknown[]).length, 2);
@@ -604,10 +603,11 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
     const first = page.getByRole('checkbox', { name: '确认 正文尺寸数字需与原文一致', exact: true });
     const second = page.getByRole('checkbox', { name: '确认 搜索摘要数字需与原文一致', exact: true });
     await first.check(); await second.check();
-    const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
+    const approve = page.getByRole('button', { name: '确认通过', exact: true });
     await expect(approve).toBeEnabled();
 
     await page.getByRole('button', { name: '展开完整稿件', exact: true }).click();
+    await page.getByRole('tab', { name: '中文对照', exact: true }).click();
     await page.getByLabel('中文正文', { exact: true }).fill('修改后的内容需要重新保存和核对。');
     const bodyIssue = page.getByRole('listitem').filter({ has: page.getByText('正文尺寸数字需与原文一致', { exact: true }) });
     await bodyIssue.getByRole('button', { name: '定位并核对', exact: true }).click();
@@ -620,7 +620,7 @@ for (const width of [1440, 390]) test('unsaved draft changes disable issue confi
     await expect(body).toHaveValue(localBody);
     await expect(first).toBeDisabled(); await expect(second).toBeDisabled();
     await expect(approve).toBeDisabled();
-    await expect(page.getByRole('button', { name: '暂存核对结果', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '保存问题确认', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
     await expect(page.getByText('先保存修改，系统会按新版本重新核对。', { exact: true })).toBeVisible();
     assert.equal(fixture.writes.length, 0, 'editing local text never manufactures a review or starts publication');
@@ -637,8 +637,8 @@ test('a BLOCK draft can save progress and adopt an exact English suggestion with
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width:1440,height:900}});
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
-    await expect(page.getByRole('button',{name:'暂存核对结果',exact:true})).toBeEnabled();
-    await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:'保存问题确认',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'确认通过',exact:true})).toBeDisabled();
     const suggestion = page.getByRole('listitem').filter({ has: page.getByText('正文尺寸数字需与原文一致', { exact: true }) });
     await expect(suggestion.getByText(fixture.draft.document.body_en, { exact: true })).toHaveAttribute('lang', 'en');
     await page.getByRole('button',{name:'采纳修改：删去这句待核实表述',exact:true}).click();
@@ -650,7 +650,15 @@ test('a BLOCK draft can save progress and adopt an exact English suggestion with
 
 for (const width of [1440, 390]) test('a stale Chinese review explains the English acknowledgement and a bound upgrade has no publish button at '+width,async()=>{
   const fixture=reviewFixture();
-  Object.assign(fixture.draft,{review_sync:{status:'stale',english_hash:'test-current-hash'},upgrade_context:{target_existing_url:'https://example.test/original-6098',target_post_id:6098,baseline_sha256:'original-hash',changes:[{operation:'revise',paragraph:'p3',reason:'像素取整'}],notice:'独立影子预览，不修改原页面。'}});
+  const target = 'https://example.test/original-6098';
+  const boundText = 'Original paragraph recorded on the previous page.';
+  const replacement = 'Check pixel dimensions against the full cabinet layout.';
+  Object.assign(fixture.draft, { review_sync: { status: 'stale', english_hash: 'test-current-hash' }, upgrade_context: {
+    target_existing_url: target, source_revision: 3, notice: '独立影子预览，不修改原页面。', changes: [
+      { operation: 'revise', paragraph: 'p3', reason: '像素取整', original_text: boundText, replacement_text: replacement },
+      { operation: 'insert_after', paragraph: 'p7', reason: '补充安装条件', original_text: null, replacement_text: null },
+    ],
+  } });
   fixture.draft.document.body_en = '<p id="kept-source">A whole-cabinet layout is 5760 mm wide.</p>\n<p>Confirm cabinet alignment before installation.</p>';
   const savedBody = fixture.draft.document.body_en;
   const web=await startWebServer(fixture.api);let browser;
@@ -658,20 +666,22 @@ for (const width of [1440, 390]) test('a stale Chinese review explains the Engli
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width,height:900}});
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
     await page.getByRole('button',{name:'展开完整稿件',exact:true}).click();
-    await expect(page.getByRole('tab',{name:'英文交付',exact:true})).toHaveAttribute('aria-selected','true');
+    await expect(page.getByRole('tab',{name:'英文正文',exact:true})).toHaveAttribute('aria-selected','true');
     const sourceDraft = page.getByLabel('英文正文（源稿）', { exact: true });
     await expect(sourceDraft).toHaveValue(savedBody);
     await expect(sourceDraft).toHaveAccessibleDescription('沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。');
-    await page.getByText('查看本次旧页改动（1 项）', { exact: true }).click();
-    await expect(page.getByText('调整原段，原文位置 p3', { exact: true })).toBeVisible();
+    await page.getByText('查看本次旧页改动（2 项）', { exact: true }).click();
+    await expect(page.getByRole('heading', { name: '调整原段 · 原文位置 p3', exact: true })).toBeVisible();
     await expect(page.getByText('像素取整', { exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: '对照目标原页', exact: true })).toHaveAttribute('href', 'https://example.test/original-6098');
-    await expect(page.getByText('清单说明计划位置与理由；正文中的可改范围尚未高亮。', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: target, exact: true })).toHaveAttribute('href', target);
+    await expect(page.getByText(boundText, { exact: true })).toBeVisible();
+    await expect(page.getByText(replacement, { exact: true })).toBeVisible();
+    await expect(page.getByText('当前版本缺少绑定段落，请打开目标原页核对。', { exact: true })).toBeVisible();
     await captureReviewState(page, 'planned-edit-help', width);
     assert.equal(fixture.writes.length, 0, 'opening saved plan context never changes or formats the manuscript');
     await page.getByRole('checkbox',{name:'确认 正文尺寸数字需与原文一致',exact:true}).check();
     await page.getByRole('checkbox',{name:'确认 搜索摘要数字需与原文一致',exact:true}).check();
-    const approve=page.getByRole('button',{name:'确认审核通过',exact:true});await expect(approve).toBeDisabled();
+    const approve=page.getByRole('button',{name:'确认通过',exact:true});await expect(approve).toBeDisabled();
     const englishHint='请先勾选“已按当前英文主稿核对”，再确认审核通过。';
     const hint=page.getByText(englishHint,{exact:true});
     await expect(hint).toBeVisible();
@@ -706,7 +716,7 @@ test('approval explanations prioritize unsaved changes, BLOCKs and outstanding i
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
-    const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
+    const approve = page.getByRole('button', { name: '确认通过', exact: true });
     const englishHint = '请先勾选“已按当前英文主稿核对”，再确认审核通过。';
     await expect(approve).toBeDisabled();
     await expect(approve).toHaveAccessibleDescription('先处理上方需要修改的问题。');
@@ -745,7 +755,7 @@ test('a pending approval stays disabled with a processing explanation until the 
     await page.getByRole('checkbox', { name: '确认 正文尺寸数字需与原文一致', exact: true }).check();
     await page.getByRole('checkbox', { name: '确认 搜索摘要数字需与原文一致', exact: true }).check();
     await page.getByRole('checkbox', { name: '已按当前英文主稿核对', exact: true }).check();
-    const approve = page.getByRole('button', { name: '确认审核通过', exact: true });
+    const approve = page.getByRole('button', { name: '确认通过', exact: true });
     await expect(approve).toBeEnabled();
     let pending = false;
     const wait = new Promise<void>(resolve => { release = resolve; });
@@ -775,21 +785,23 @@ test('review revision goals accept empty optional notes and do not approve or pu
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width:390,height:900}});
     await visit(page,web.origin+'/admin/studio/drafts/review-fixture');
-    await expect(page.getByRole('heading',{name:'中文决策摘要',exact:true})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'这篇文章要确认什么',exact:true})).toBeVisible();
     await expect(page.getByText('本次不承诺具体库存与交期',{exact:true})).toBeVisible();
     await expect(page.getByLabel('审稿意见',{exact:true})).toHaveValue('');
+    await page.getByText('AI 修订设置', { exact: true }).click();
     await expect(page.getByRole('checkbox',{name:'更直接回答买家问题',exact:true})).toBeChecked();
     await page.getByRole('checkbox',{name:'只保留有依据的说法',exact:true}).check();
-    const revise=page.getByRole('button',{name:'按选择修订',exact:true});
+    const revise=page.getByRole('button',{name:'请求 AI 修订',exact:true});
     await expect(revise).toBeEnabled();
     assert.equal(fixture.writes.length,0,'selecting goals does not start a model or change review state');
     await revise.click();
     await expect.poll(()=>fixture.writes.length).toBe(1);
-    assert.deepEqual(fixture.writes,[{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'return',revision_goals:['clarify_buyer_answer','evidence_only'],note:''}}]);
+    assert.deepEqual(fixture.writes,[{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'request_revision',revision_goals:['clarify_buyer_answer','evidence_only'],note:''}}]);
     await expect(page.getByText('已安排按所选目标修订。当前仍展示原版本，完成后需重新审稿。',{exact:true})).toBeVisible();
+    await page.getByText('AI 修订设置', { exact: true }).click();
     await expect(revise).toBeDisabled();
     await expect(page.getByRole('button',{name:'提交审稿',exact:true})).toBeDisabled();
-    await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'确认通过',exact:true})).toHaveCount(0);
     assert.equal(fixture.writes.some(write=>/\/(publish|wordpress)$/.test(write.path)),false);
   }finally{await browser?.close();await web.stop();}
 });
@@ -815,20 +827,22 @@ for(const status of ['queued','running','unknown','failed'] as const)test(`revis
     assert.deepEqual(fixture.writes[1],{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:7,action:'keep_revision_original'}});
     await expect(page.getByText('已保留原稿，结束本次修订等待。可以继续审阅。',{exact:true})).toBeVisible();
     await expect(recover).toHaveCount(0);await expect(keep).toHaveCount(0);
-    await expect(page.getByRole('button',{name:'按选择修订',exact:true})).toBeEnabled();
+    await page.getByText('AI 修订设置', { exact: true }).click();
+    await expect(page.getByRole('button',{name:'请求 AI 修订',exact:true})).toBeEnabled();
     await page.getByRole('button',{name:'展开完整稿件',exact:true}).click();
+    await page.getByRole('tab', { name: '中文对照', exact: true }).click();
     await expect(page.getByLabel('中文正文',{exact:true})).toBeEditable();
-    await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'确认通过',exact:true})).toHaveCount(0);
     await page.getByRole('button',{name:'提交审稿',exact:true}).click();
     await expect.poll(()=>fixture.writes.length).toBe(3);
     assert.deepEqual(fixture.writes[2],{path:'/api/admin/studio/drafts/review-fixture/review',body:{version:8,action:'submit',note:''}});
-    const approve=page.getByRole('button',{name:'确认审核通过',exact:true});await expect(approve).toBeDisabled();
+    const approve=page.getByRole('button',{name:'确认通过',exact:true});await expect(approve).toBeDisabled();
     await page.getByRole('checkbox',{name:'确认 正文尺寸数字需与原文一致',exact:true}).check();
     await page.getByRole('checkbox',{name:'确认 搜索摘要数字需与原文一致',exact:true}).check();
     await expect(approve).toBeEnabled();
     const {revision_request: _cancelledRevision,...retained}=fixture.draft.document;
     assert.deepEqual(retained,original);
-    assert.equal(fixture.writes.some(write=>write.body.action==='return'||write.body.action==='approve'||/\/(publish|wordpress)$/.test(write.path)),false);
+    assert.equal(fixture.writes.some(write=>write.body.action==='request_revision'||write.body.action==='approve'||/\/(publish|wordpress)$/.test(write.path)),false);
   }finally{await browser?.close();await web.stop();}
 });
 
@@ -843,7 +857,7 @@ test('same-version revision metadata updates leave both recovery exits usable wi
     await expect(page.getByText('已安排按所选目标修订。当前仍展示原版本，完成后需重新审稿。',{exact:true})).toBeVisible();
     fixture.setRevision({status:'running',version:7,goals:['clarify_buyer_answer'],note:'',receipt_id:27});
     await page.clock.runFor(3600);
-    await expect(page.getByText('正在修订。原版本与审核记录保留，暂不代表修改已完成。',{exact:true})).toBeVisible();
+    await expect(page.getByText('正在修改，完成后请核对新版本。',{exact:true})).toBeVisible();
     await expect(page.getByRole('button',{name:'核对修订结果',exact:true})).toBeEnabled();
     await expect(page.getByRole('button',{name:'保留原稿继续',exact:true})).toBeEnabled();
     await expect(page.getByText('先保存修改，系统会按新版本重新核对。',{exact:true})).toHaveCount(0);

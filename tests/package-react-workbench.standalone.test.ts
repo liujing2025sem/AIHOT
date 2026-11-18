@@ -156,7 +156,7 @@ test('rejects private files and symlinks in the compiled build', () => {
   assert.equal(existsSync(privateBuild.out), false);
 
   const symlinkBuild = fixture();
-  symlinkSync(path.join(symlinkBuild.repo, '.env'), path.join(symlinkBuild.repo, 'apps/web/build/client/linked.txt'));
+  symlinkSync(path.join(symlinkBuild.repo, 'runtime'), path.join(symlinkBuild.repo, 'apps/web/build/client/linked-runtime'), 'junction');
   const symlinkResult = symlinkBuild.run();
   assert.notEqual(symlinkResult.status, 0);
   assert.match(symlinkResult.stderr, /Build symlinks are not allowed/);
