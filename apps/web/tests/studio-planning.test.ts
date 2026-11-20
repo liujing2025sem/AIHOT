@@ -342,7 +342,7 @@ for (const width of [1440, 768, 390]) test(`operator sidebar has one current des
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     await visit(page, web.origin + '/admin/studio');
-    await expect(page.getByRole('heading', { name: '选题', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '新闻材料', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '继续审稿', exact: true })).toHaveAttribute('href', '/admin/studio/drafts/' + fixture.draft.id);
     const trigger = page.getByRole('button', { name: '打开工作台导航', exact: true });
     const dialog = page.getByRole('dialog');
@@ -350,12 +350,12 @@ for (const width of [1440, 768, 390]) test(`operator sidebar has one current des
       await trigger.click(); await expect(dialog).toBeVisible();
     }
     const nav = page.getByRole('navigation', { name: width < 1024 ? '移动工作台导航' : '工作台导航', exact: true });
-    for (const name of ['工作台', '选题', '稿件']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
-    await expect(nav.getByRole('link', { name: '选题', exact: true })).toHaveAttribute('aria-current', 'page');
+    for (const name of ['工作台', '新闻材料', '稿件']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+    await expect(nav.getByRole('link', { name: '新闻材料', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
     await nav.getByRole('button', { name: '管理与工具' }).click();
     await expect(nav.getByRole('link', { name: '买家问题', exact: true })).toHaveAttribute('href', '/admin/studio/pitch');
-    await expect(nav.getByRole('link', { name: '发布记录', exact: true })).toHaveAttribute('href', '/admin/studio/published');
+    await expect(nav.getByRole('link', { name: '上线后抽查', exact: true })).toHaveAttribute('href', '/admin/studio/published');
     if (width < 1024) {
       await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
       await trigger.click();
@@ -364,7 +364,7 @@ for (const width of [1440, 768, 390]) test(`operator sidebar has one current des
     await page.waitForURL(url => url.pathname === '/admin/studio' && url.searchParams.get('tab') === 'drafts');
     if (width < 1024) { await expect(dialog).toHaveCount(0); await trigger.click(); }
     await expect(nav.getByRole('link', { name: '稿件', exact: true })).toHaveAttribute('aria-current', 'page');
-    await expect(nav.getByRole('link', { name: '选题', exact: true })).not.toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: '新闻材料', exact: true })).not.toHaveAttribute('aria-current', 'page');
     await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
     if (width < 1024) await page.keyboard.press('Escape');
 

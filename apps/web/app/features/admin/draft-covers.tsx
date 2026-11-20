@@ -116,28 +116,32 @@ export function DraftCovers({ id, version, approved, disabled, stage, onDelivery
     if (saved) await load();
   }
   const selected = state?.candidates.find(cover => cover.hash === state.selectedHash);
+  const candidates = state ? [...state.candidates].sort((a, b) => Number(b.hash === state.selectedHash) - Number(a.hash === state.selectedHash)) : [];
   const confirmed = !!state?.confirmed && state.confirmedVersion === version;
   return <div className="space-y-5">
     {error && <div role="alert" className="rounded-control border border-hot/20 bg-hot-soft p-4 text-sm leading-6"><p>{error}</p><Button className="mt-3" disabled={loading} onClick={() => void load()}>重新读取封面</Button></div>}
     {loading && !state && <p role="status" className="p-4 text-sm text-ink-3">正在读取当前稿件的封面…</p>}
     {stage === 'cover' && <>
-      <Card title="上传封面候选" right={<Badge tone="muted">正文版本 {version}</Badge>}>
-        <p className="mb-4 text-sm leading-7 text-ink-3">上传后先进入候选区。选择“采用这张”后，才进入本次成品。</p>
-        <div className="draft-cover-upload">
-          <Field label="图片文件" hint="JPG、PNG 或 WebP，最大 4 MB。最多保留 8 张候选。"><Input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || !state} aria-label="封面图片文件" onChange={event => { changeInput({ file: event.target.files?.[0] ?? null }); setError(''); }} /></Field>
-          <Field label="英文替代文字" hint="描述图片中实际呈现的内容，便于读屏和网站上传。"><Input aria-label="封面英文替代文字" value={alt} maxLength={500} disabled={busy} onChange={event => changeInput({ alt: event.target.value })} placeholder="例如：Outdoor LED display mounted on a building" /></Field>
-          <Field label="英文图注（选填）"><Textarea aria-label="封面英文图注" value={caption} maxLength={1000} rows={2} disabled={busy} onChange={event => changeInput({ caption: event.target.value })} /></Field>
-        </div>
-        <Button className="mt-4" disabled={busy || !state || !file || !alt.trim() || state.candidates.length >= 8} onClick={() => void upload()}><ImagePlus aria-hidden="true" />{reading || actionBusy ? '正在保存候选…' : '上传为候选'}</Button>
-        {!!state && state.candidates.length >= 8 && <p className="mt-3 text-sm leading-7 text-ink-3">已有 8 张候选。移除一张未采用的候选后，可以继续上传。</p>}
-      </Card>
-      {state && <Card title="选择本次封面" right={<Badge tone={selected ? 'ok' : 'muted'}>{selected ? '已选 1 张' : '暂不带封面'}</Badge>}>
-        {state.candidates.length ? <div className="draft-cover-candidates">{state.candidates.map(cover => <article key={cover.hash} className="draft-cover-candidate" data-selected={state.selectedHash === cover.hash}>
+      {state && <Card title={selected ? '本次封面' : '选择本次封面'} right={<Badge tone={selected ? 'ok' : 'muted'}>{selected ? '已选 1 张' : '暂不带封面'}</Badge>}>
+        <div className="mb-5 flex flex-wrap gap-3"><Button tone={selected ? 'primary' : 'secondary'} disabled={busy} onClick={onDelivery}>检查交付文件</Button>{state.selectedHash && <Button disabled={busy} onClick={() => void select(null)}>去掉本次封面</Button>}</div>
+        {candidates.length ? <div className="draft-cover-candidates">{candidates.map(cover => <article key={cover.hash} className="draft-cover-candidate" data-selected={state.selectedHash === cover.hash}>
           <img src={cover.src} alt={cover.alt_en} width={cover.width} height={cover.height} loading="lazy" />
           <div><h3>{cover.fileName}</h3><p lang="en">{cover.alt_en}</p>{cover.caption_en && <p lang="en" className="text-ink-3">{cover.caption_en}</p>}<p className="text-xs text-ink-3">{cover.width} × {cover.height} 像素</p><div className="mt-3 flex flex-wrap items-center gap-3"><Button tone={state.selectedHash === cover.hash ? 'secondary' : 'primary'} disabled={busy || state.selectedHash === cover.hash} onClick={() => void select(cover.hash)}>{state.selectedHash === cover.hash ? <><Check aria-hidden="true" />当前采用</> : '采用这张'}</Button><a className="text-sm text-accent" href={cover.src} download={cover.fileName}>下载图片</a>{state.selectedHash !== cover.hash && <Button disabled={busy} onClick={() => void remove(cover.hash)}>移除候选</Button>}</div></div>
-        </article>)}</div> : <p className="text-sm leading-7 text-ink-3">还没有封面候选。可以上传图片，也可以继续交付正文，之后由运营配图。</p>}
-        <div className="mt-5 flex flex-wrap gap-3">{state.selectedHash && <Button disabled={busy} onClick={() => void select(null)}>去掉本次封面</Button>}<Button disabled={busy} onClick={onDelivery}>继续手工交付</Button></div>
+        </article>)}</div> : <p className="text-sm leading-7 text-ink-3">上传封面，或直接交付正文，之后再配图。</p>}
       </Card>}
+      <details open={!selected} className="rounded-panel bg-surface ring-1 ring-line">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-ink">{selected ? '添加或替换封面' : '上传封面候选'}</summary>
+        <div className="border-t border-line p-4">
+          <p className="mb-4 text-sm leading-7 text-ink-3">上传后点击“采用这张”，将图片加入正文版本 {version} 的成品。</p>
+          <div className="draft-cover-upload">
+            <Field label="图片文件" hint="JPG、PNG 或 WebP，最大 4 MB。最多保留 8 张候选。"><Input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || !state} aria-label="封面图片文件" onChange={event => { changeInput({ file: event.target.files?.[0] ?? null }); setError(''); }} /></Field>
+            <Field label="图片说明（英文 ALT）" hint="用英文描述图片中实际呈现的内容。"><Input aria-label="封面图片说明（英文 ALT）" value={alt} maxLength={500} disabled={busy} onChange={event => changeInput({ alt: event.target.value })} placeholder="例如：Outdoor LED display mounted on a building" /></Field>
+            <Field label="英文图注（选填）"><Textarea aria-label="封面英文图注" value={caption} maxLength={1000} rows={2} disabled={busy} onChange={event => changeInput({ caption: event.target.value })} /></Field>
+          </div>
+          <Button className="mt-4" disabled={busy || !state || !file || !alt.trim() || state.candidates.length >= 8} onClick={() => void upload()}><ImagePlus aria-hidden="true" />{reading || actionBusy ? '正在保存候选…' : '上传为候选'}</Button>
+          {!!state && state.candidates.length >= 8 && <p className="mt-3 text-sm leading-7 text-ink-3">已有 8 张候选。移除一张未采用的候选后，可以继续上传。</p>}
+        </div>
+      </details>
     </>}
     {stage === 'delivery' && state && <Card title="确认当前成品" right={<Badge tone={confirmed ? 'ok' : 'warn'}>{confirmed ? '成品已确认' : '待确认成品'}</Badge>}>
       <div className="draft-delivery-summary">

@@ -51,8 +51,8 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
   useEffect(() => { setMobileOpen(false); }, [location.pathname, location.search]);
   const advanced: WorkbenchNavEntry[] = [
     { to: '/admin/studio/pitch', label: '买家问题', icon: 'guide' },
-    { to: '/admin/studio/published', label: '发布记录', icon: 'published' },
-    { to: '/admin/studio/planning', label: '选题建议', icon: 'ideas' },
+    { to: '/admin/studio/published', label: '上线后抽查', icon: 'published' },
+    { to: '/admin/studio/planning', label: '选题与旧页升级', icon: 'ideas' },
     { to: '/admin/studio?tab=tasks', label: '处理进度', icon: 'tasks' },
     { to: '/admin/studio?tab=sources', label: '信源与采集', icon: 'sources' },
     { to: '/admin/studio/social', label: '改写社媒稿' },
@@ -92,7 +92,7 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
       <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-surface/95 px-4 backdrop-blur sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label={collapsed ? '展开侧栏' : '收起侧栏'} onClick={() => setCollapsed(v => !v)}>{collapsed ? <PanelLeftOpen className="size-5"/> : <PanelLeftClose className="size-5"/>}</Button>
-          <Dialog open={mobileOpen} onOpenChange={setMobileOpen}><DialogTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden" aria-label="打开工作台导航"><Menu className="size-5"/></Button></DialogTrigger><DialogContent side="left" className="flex w-[min(320px,90vw)] flex-col gap-0 bg-sidebar p-3 pb-5"><DialogTitle className="sr-only">工作台导航</DialogTitle><DialogDescription className="sr-only">工作台、选题和稿件；其他入口在管理与工具中。</DialogDescription>{sidebar(false, true)}</DialogContent></Dialog>
+          <Dialog open={mobileOpen} onOpenChange={setMobileOpen}><DialogTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden" aria-label="打开工作台导航"><Menu className="size-5"/></Button></DialogTrigger><DialogContent side="left" className="flex w-[min(320px,90vw)] flex-col gap-0 bg-sidebar p-3 pb-5"><DialogTitle className="sr-only">工作台导航</DialogTitle><DialogDescription className="sr-only">工作台、新闻材料和稿件；其他入口在管理与工具中。</DialogDescription>{sidebar(false, true)}</DialogContent></Dialog>
           <span className="hidden text-xs text-ink-4 sm:inline">编辑台</span><ChevronRight className="hidden size-3 text-ink-4 sm:inline" aria-hidden="true"/><span className="truncate text-sm font-medium text-ink">{current?.label || '内容工作'}</span>
         </div>
         <Link to="/admin/studio?tab=tasks" className="flex shrink-0 items-center gap-1.5 text-xs text-ink-3 hover:text-accent"><CircleHelp className="size-4" aria-hidden="true"/><span>查看处理进度</span></Link>

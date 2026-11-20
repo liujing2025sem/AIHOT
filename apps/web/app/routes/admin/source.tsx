@@ -43,14 +43,15 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
   const { source: s, runs, items, stats, history } = loaderData;
   const { run, pending } = useAdminAction();
   const [draft, setDraft] = useState<Draft>(() => draftOf(s));
-  const [draftFor, setDraftFor] = useState(s.updated_at);
+  const savedConfig = JSON.stringify([s.id, draftOf(s)]);
+  const [draftFor, setDraftFor] = useState(savedConfig);
   const [preview, setPreview] = useState<AdminSourcePreview | null>(null);
   const [dialog, setDialog] = useState<null | "save" | "toggle">(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  if (draftFor !== s.updated_at) {
-    // The source changed (our own save or someone else's): start from the saved state.
+  if (draftFor !== savedConfig) {
+    // Refresh saved configuration; collection status changes retain the current edit.
     setDraft(draftOf(s));
-    setDraftFor(s.updated_at);
+    setDraftFor(savedConfig);
   }
   const base = `/api/admin/sources/${encodeURIComponent(s.id)}`;
 
@@ -302,7 +303,8 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
           const p = patch();
           if (!p) return false;
           const body: AdminSourceUpdate = { patch: p, version: new Date(s.updated_at).toISOString(), reason };
-          const r = await run("PATCH", base, body, { label: "save", success: "已保存" });
+          const r = await run<AdminSource>("PATCH", base, body, { label: "save", success: "已保存" });
+          if (r) setDraft(draftOf(r));
           return r !== null;
         }}
       />

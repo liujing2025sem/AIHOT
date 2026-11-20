@@ -57,7 +57,7 @@ export default function Workbench({ loaderData: data }: Route.ComponentProps) {
         {drafts.length ? <ul className="workbench-document-list" role="list">{drafts.slice(0, 6).map(draft => <li key={draft.id}><Link to={`/admin/studio/drafts/${draft.id}${draft.status === 'approved' ? '?stage=delivery' : ''}`}><Files aria-hidden="true" /><span><strong>{draft.title_zh || draft.title_en}</strong><span>版本 {draft.version}<Time at={draft.updated_at} /></span><span className="workbench-document-next">下一步：{draftNextSteps[draft.status] || '查看稿件状态'}</span></span><Badge tone={draft.status === 'approved' ? 'ok' : 'muted'}>{draftLabels[draft.status] || draft.status}</Badge></Link></li>)}</ul> : <p className="workbench-empty">还没有稿件。写下买家问题，或从新闻材料开始。</p>}
       </section>
       <section aria-labelledby="recent-pitches-title">
-        <header><h2 id="recent-pitches-title">已保存的选题</h2><Link to="/admin/studio/pitch">全部选题</Link></header>
+        <header><h2 id="recent-pitches-title">已保存的买家问题</h2><Link to="/admin/studio/pitch">全部买家问题</Link></header>
         {data.pitches.length ? <ul className="workbench-document-list" role="list">{data.pitches.slice(0, 6).map(pitch => <li key={pitch.id}><Link to={`/admin/studio/pitch?id=${encodeURIComponent(pitch.id)}`}><BookOpenText aria-hidden="true" /><span><strong>{pitch.title}</strong><span>{pitchLabels[pitch.status] || pitch.status}</span></span><ArrowUpRight aria-hidden="true" /></Link></li>)}</ul> : <p className="workbench-empty">保存的选题会显示在这里。</p>}
       </section>
     </div>
@@ -70,7 +70,7 @@ export default function Workbench({ loaderData: data }: Route.ComponentProps) {
         <Link to="/admin/studio?tab=tasks"><Layers3 aria-hidden="true" /><span><strong>处理进度</strong><span>{activeTasks.length ? `${activeTasks.length} 项任务可查看进度` : '查进度、取回结果、继续任务'}</span></span></Link>
         <Link to="/admin/studio/social"><Files aria-hidden="true" /><span><strong>改写社媒稿</strong><span>使用已有文章准备社媒内容</span></span></Link>
       </div>
-      <div className="workbench-secondary-links"><Link to="/admin/studio?tab=sources">信源与采集</Link><Link to="/admin/studio?tab=review">审稿设置</Link><Link to="/admin/content">内容诊断</Link><Link to="/admin/studio/published">发布记录</Link><Link to="/admin/channels">模型连接</Link><Link to="/admin/runs">运行记录</Link></div>
+      <div className="workbench-secondary-links"><Link to="/admin/studio?tab=sources">信源与采集</Link><Link to="/admin/studio?tab=review">审稿设置</Link><Link to="/admin/content">内容诊断</Link><Link to="/admin/studio/published">上线后抽查</Link><Link to="/admin/channels">模型连接</Link><Link to="/admin/runs">运行记录</Link></div>
     </details>
     {!data.generation.ready && <p role="status" className="workbench-service-note">生成暂未就绪：{data.generation.reason || '请检查模型连接。'} <Link to="/admin/channels">查看连接</Link></p>}
   </AdminPage>;

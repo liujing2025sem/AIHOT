@@ -40,6 +40,7 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-line-soft: var(--line-soft);
+  --color-control-border: var(--control-border);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
@@ -109,6 +110,7 @@
   --line: #dfe4e1;
   --line-strong: #d1d9d5;
   --line-soft: #e9ede9;
+  --control-border: #7c8b84;
   --accent: #176b75;
   --accent-ink: #145f68;
   --accent-soft: rgba(23, 107, 117, 0.08);
@@ -167,6 +169,7 @@
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.12);
   --line-soft: rgba(255, 255, 255, 0.06);
+  --control-border: #819397;
   --accent: #12ccd8;
   --accent-ink: #2ce2e8;
   --accent-soft: rgba(18, 204, 216, 0.12);

@@ -1,4 +1,5 @@
 import sanitizeHtml from 'sanitize-html';
+import { marked } from 'marked';
 
 /** Preserve approved article markup and omit scripts, event handlers and site-wide styles. */
 export function sanitizeReviewedHtml(html: string) {
@@ -12,4 +13,9 @@ export function sanitizeReviewedHtml(html: string) {
       article: ['cs-brief-*'], aside: ['cs-brief-*'], p: ['cs-brief-*'], figure: ['cs-figure'] },
     allowedSchemes: ['https', 'http'],
   });
+}
+
+/** Use one rendering path for the saved reading view and delivered English. */
+export function renderReviewedBody(source: string) {
+  return sanitizeReviewedHtml(marked.parse(source, { async: false }));
 }

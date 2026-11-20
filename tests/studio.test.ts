@@ -97,6 +97,27 @@ test('receive, edit, review and export persist; duplicate receives do not overwr
  assert.equal(d.status,'approved');assert.match((await exportStudioDraft(d.id,'html'))!.body,/LED driver sample plan/);assert.doesNotMatch((await exportStudioDraft(d.id,'html'))!.body,/人工改过/);assert.match((await exportStudioDraft(d.id,'review'))!.body,/人工改过/);
  await saveStudioDraft(d.id,{...edit,version:d.version,title_zh:'再次修改'},actor);assert.equal((await studioDraft(d.id))!.status,'draft');await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
 });
+test('draft GET renders complete Markdown and HTML safely without changing source or review state',async()=>{
+ const {task,response}=await input();await receiveStudioTask(task.id,response,actor);
+ const [row]=await sql`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','preview-test');
+ const headers={cookie:`${SESSION_COOKIE}=${token}`};
+ for(const sourceText of [
+  '## Layout\n\n**Check the drawing.**\n\n| Cabinet | Width |\n| --- | --- |\n| A | 960 mm |\n\n<script>window.previewAttack=true</script>',
+  '<h2>Layout</h2><p id="retained">Check <strong>all</strong> cabinets.</p><a href="javascript:alert(1)" onclick="alert(1)">Source</a><script>window.previewAttack=true</script>',
+ ]){
+  await sql`UPDATE studio_drafts SET document=jsonb_set(document,'{body_en}',${sql.json(sourceText)}) WHERE id=${row.id}`;
+  const before=await storedDraftState(row.id,task.id);
+  const result=await app.inject({url:`/api/admin/studio/drafts/${row.id}`,headers});
+  assert.equal(result.statusCode,200,result.body);
+  const preview=result.json();
+  assert.equal(preview.document.body_en,sourceText);
+  assert.match(preview.body_html,/<h2>Layout<\/h2>/);
+  assert.match(preview.body_html,/<strong>/);
+  assert.doesNotMatch(preview.body_html,/<script|onclick|javascript:|previewAttack/);
+  assert.deepEqual(await storedDraftState(row.id,task.id),before,'reading leaves source, version, history, task and receipts unchanged');
+ }
+});
 for(const previouslySaved of [false,true])test(`manual fragment PATCH can be reviewed and exported after refresh, previously saved: ${previouslySaved}`,async()=>{
  const {task,pack,response,keep}=await fragmentInput();
  const received=await receiveStudioTask(task.id,response,actor);
@@ -314,7 +335,7 @@ test('production browser recovers a legacy saved fragment through real API and P
    await checkbox.check();
   }
   await expect(page.getByRole('button',{name:'确认通过',exact:true})).toBeDisabled();
-  await page.getByRole('checkbox',{name:'已按当前英文主稿核对',exact:true}).check();
+  await page.getByRole('checkbox',{name:/我已核对当前英文稿（版本 \d+）/,exact:true}).check();
   await expect(page.getByRole('button',{name:'确认通过',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'确认通过',exact:true}).click();
   await expect(page.getByRole('button',{name:'继续配图',exact:true})).toBeVisible();
@@ -323,7 +344,7 @@ test('production browser recovers a legacy saved fragment through real API and P
   await page.getByRole('button',{name:'继续配图',exact:true}).click();
   const image=await sharp({create:{width:600,height:340,channels:3,background:'#224fbe'}}).png().toBuffer();
   await page.getByLabel('封面图片文件',{exact:true}).setInputFiles({name:'recovered-cover.png',mimeType:'image/png',buffer:image});
-  await page.getByLabel('封面英文替代文字',{exact:true}).fill('LED cabinet drawing for the recovered article');
+  await page.getByLabel('封面图片说明（英文 ALT）',{exact:true}).fill('LED cabinet drawing for the recovered article');
   await page.getByLabel('封面英文图注',{exact:true}).fill('A test illustration for manual delivery.');
   await page.getByRole('button',{name:'上传为候选',exact:true}).click();
   await expect(page.getByRole('button',{name:'采用这张',exact:true})).toBeEnabled();
@@ -331,7 +352,7 @@ test('production browser recovers a legacy saved fragment through real API and P
   assert.equal(covers.candidates.length,1);assert.equal(covers.selectedHash,null);assert.equal(covers.confirmed,false);
   await page.getByRole('button',{name:'采用这张',exact:true}).click();
   await expect(page.getByRole('button',{name:'当前采用',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'继续手工交付',exact:true}).click();
+  await page.getByRole('button',{name:'检查交付文件',exact:true}).click();
   await page.getByRole('button',{name:'确认当前成品',exact:true}).click();
   await expect(page.getByRole('link',{name:'下载交付包',exact:true})).toBeVisible();
   covers=(await studioCovers(row.id))!;

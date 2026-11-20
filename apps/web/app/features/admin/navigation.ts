@@ -16,12 +16,12 @@ export function isWorkbenchNavActive(pathname: string, search: string, target: s
 
 export const workbenchNavigation: WorkbenchNavEntry[] = [
   { to: '/admin/workbench', label: '工作台', icon: 'home' },
-  { to: '/admin/studio?tab=materials', label: '选题', icon: 'news' },
+  { to: '/admin/studio?tab=materials', label: '新闻材料', icon: 'news' },
   { to: '/admin/studio?tab=drafts', label: '稿件', icon: 'drafts' },
 ];
 
 export const studioPageLabels: Record<string, { title: string; description: string }> = {
-  materials: { title: '选题', description: '选用新闻材料，或从买家问题开始。' },
+  materials: { title: '新闻材料', description: '选择原文，准备单篇稿件或一期短讯。' },
   drafts: { title: '稿件', description: '编辑、审稿与交付。' },
   tasks: { title: '处理进度', description: '查看进度、取回结果或继续任务。' },
   sources: { title: '信源与采集', description: '管理材料来源和采集设置。' },

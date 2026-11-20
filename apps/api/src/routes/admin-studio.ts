@@ -11,6 +11,7 @@ import { registerAdminStudioBrief } from './admin-studio-brief.ts';
 import { studioDeliveryCapabilities } from '@aihot/backend/studio/studio-delivery';
 import { studioCovers, studioCoverAsset, uploadStudioCover, selectStudioCover, removeStudioCover, confirmStudioDelivery } from '@aihot/backend/studio/studio-covers';
 import { exportStudioManualPackage } from '@aihot/backend/studio/studio-manual-package';
+import { renderReviewedBody } from '@aihot/backend/studio/studio-reviewed-html';
 export function registerAdminStudio(app: FastifyInstance) {
   registerAdminStudioPlanning(app);
   registerAdminStudioPublishing(app);
@@ -35,7 +36,7 @@ export function registerAdminStudio(app: FastifyInstance) {
   app.get('/api/admin/studio/drafts/:id', adminHandler(async (req,reply) => {
     const id=param(req,'id');
     const draft=await studioDraft(id);
-    return orNotFound(req,reply,draft ? { ...draft, wordpress: await studioWordPressDetail(id), delivery: studioDeliveryCapabilities() } : null);
+    return orNotFound(req,reply,draft ? { ...draft, body_html: renderReviewedBody(draft.document.body_en), wordpress: await studioWordPressDetail(id), delivery: studioDeliveryCapabilities() } : null);
   }));
   app.patch('/api/admin/studio/drafts/:id', adminHandler(async (req,reply,admin) => orNotFound(req,reply,await saveStudioDraft(param(req,'id'),body(req),actorOf(admin)))));
   app.get('/api/admin/studio/drafts/:id/figures',adminHandler(async(req,reply)=>orNotFound(req,reply,await studioDraftFigures(param(req,'id')))));
