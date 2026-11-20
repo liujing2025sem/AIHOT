@@ -2,12 +2,13 @@ import { SITE } from "@aihot/site";
 import { useState } from "react";
 import { Link } from "react-router";
 import type { Route } from "./+types/source";
-import { REPLACEABLE_SOURCE_KINDS, type AdminSource, type AdminSourceDetail, type AdminSourcePreview, type AdminSourceUpdate } from "@aihot/contracts/admin";
+import { REPLACEABLE_SOURCE_KINDS, type AdminSourceDetail, type AdminSourcePreview, type AdminSourceUpdate } from "@aihot/contracts/admin";
 import { adminGet } from "../../lib/admin.server";
 import { useAdminAction } from "../../features/admin/action";
 import { bj, duration, num } from "../../features/admin/format";
 import { HEALTH_LABEL, KIND_LABEL, MODE_LABEL, TIER_LABEL, VISIBILITY_LABEL } from "../../features/admin/labels";
 import { AdminPage, Badge, Button, Card, DataTable, Dot, Empty, Field, healthTone, Input, Json, KV, ReasonDialog, Select, Stat, Textarea, Time } from "../../features/admin/ui";
+import { draftOf, patchPreview, rebaseSourceDraft, type Draft } from "./source-draft";
 
 
 /** X runs: pages read, and older stretches still to read (backlog) or given up (dropped). */
@@ -20,37 +21,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
 export const meta: Route.MetaFunction = ({ loaderData }) => [{ title: `${loaderData?.source.name ?? "信源"} · ${SITE.name} 后台` }];
 
-type Draft = Pick<AdminSource, "name" | "kind" | "interval_minutes" | "tier" | "participation_mode" | "signal_group_id" | "first_party" | "owner_entity_id" | "site_fulltext" | "syndicate_fulltext"> & { tags: string; config: string };
-
-function draftOf(s: AdminSource): Draft {
-  return {
-    name: s.name,
-    kind: s.kind,
-    interval_minutes: s.interval_minutes,
-    tier: s.tier,
-    participation_mode: s.participation_mode,
-    signal_group_id: s.signal_group_id,
-    first_party: s.first_party,
-    owner_entity_id: s.owner_entity_id,
-    site_fulltext: s.site_fulltext,
-    syndicate_fulltext: s.syndicate_fulltext,
-    tags: s.tags.join(", "),
-    config: JSON.stringify(s.config, null, 2),
-  };
-}
-
 export default function SourceDetail({ loaderData }: Route.ComponentProps) {
   const { source: s, runs, items, stats, history } = loaderData;
   const { run, pending } = useAdminAction();
   const [draft, setDraft] = useState<Draft>(() => draftOf(s));
-  const [draftFor, setDraftFor] = useState(s.updated_at);
+  const [savedSource, setSavedSource] = useState(s);
   const [preview, setPreview] = useState<AdminSourcePreview | null>(null);
   const [dialog, setDialog] = useState<null | "save" | "toggle">(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  if (draftFor !== s.updated_at) {
-    // The source changed (our own save or someone else's): start from the saved state.
-    setDraft(draftOf(s));
-    setDraftFor(s.updated_at);
+  if (savedSource.id !== s.id || savedSource.updated_at !== s.updated_at) {
+    setDraft(rebaseSourceDraft(draft, savedSource, s));
+    setSavedSource(s);
+    if (savedSource.id !== s.id) {
+      setPreview(null);
+      setDialog(null);
+      setConfigError(null);
+    }
   }
   const base = `/api/admin/sources/${encodeURIComponent(s.id)}`;
 
@@ -321,20 +307,4 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
       />
     </AdminPage>
   );
-}
-
-/** Field names that differ from the saved source (for the confirmation text). */
-function patchPreview(draft: Draft, s: AdminSource): Record<string, true> {
-  const out: Record<string, true> = {};
-  const saved = draftOf(s);
-  for (const k of Object.keys(draft) as Array<keyof Draft>) {
-    if (k === "config") {
-      try {
-        if (JSON.stringify(JSON.parse(draft.config)) !== JSON.stringify(s.config)) out.config = true;
-      } catch {
-        out.config = true;
-      }
-    } else if (String(draft[k] ?? "") !== String(saved[k] ?? "")) out[k] = true;
-  }
-  return out;
 }

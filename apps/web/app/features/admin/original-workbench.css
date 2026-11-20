@@ -18,6 +18,7 @@ body:has(.admin-workspace) [role="dialog"] {
   --line: #d7dfe9;
   --line-strong: #b7c4d4;
   --line-soft: #e8edf3;
+  --control-border: #74859b;
   --accent: #2c4fc4;
   --accent-ink: #243fa0;
   --accent-soft: #e9eefc;
@@ -197,7 +198,7 @@ body:has(.admin-workspace) [role="dialog"] {
 .workbench-login-brand div > span { display: block; margin-top: 4px; color: var(--ink-3); font-size: 13px; }
 .workbench-login h1 { font-size: 25px; font-weight: 650; line-height: 1.4; }
 .workbench-login-intro { margin-top: 10px; color: var(--ink-3); font-size: 14px; }
-.workbench-login-input { width: 100%; min-height: 44px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: #fff; font-size: 16px; color: var(--ink); }
+.workbench-login-input { width: 100%; min-height: 44px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--control-border); border-radius: var(--radius-control); background: #fff; font-size: 16px; color: var(--ink); }
 
 @media (max-width: 1100px) {
   .workbench-resume { grid-template-columns: minmax(0, 1fr); gap: 24px; }

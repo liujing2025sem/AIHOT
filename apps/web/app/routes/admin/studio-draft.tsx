@@ -434,27 +434,31 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
     <Card title="这篇文章要确认什么" className="mb-5 draft-decision-summary">
       <p className="text-sm font-semibold leading-6">这篇帮助读者解决：{row.editorial_context?.scope_question || row.editorial_context?.question || row.document.title_zh}</p>
       <p className="mt-2 text-sm leading-6">{row.review_sync?.status === 'stale' ? '英文已更新，中文全文对照暂未同步。请按下方原句和建议核对当前英文。' : reviewExcerpt(row.document.review_zh) || '当前没有中文正文，可查看英文稿与依据。'}</p>
+      {row.gate.blocked && <p className="mt-2 text-sm font-medium leading-6 text-hot">当前稿件有需要修改的问题，请先查看审稿问题。</p>}
       {remaining > 0 && <p className="mt-2 text-sm leading-6">还有 {remaining} 项需要处理。</p>}
       {!!row.editorial_context?.unanswered_questions.length && <div className="mt-3 rounded-control bg-amber/10 p-3 text-sm leading-6">
         <p className="font-medium">本次明确未回答</p>
         <ul className="list-disc pl-4">{row.editorial_context.unanswered_questions.map((question, i) => <li key={i}>{question}</li>)}</ul>
       </div>}
-      <Button className="mt-3" onClick={() => openDraft()}>展开完整稿件</Button>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button onClick={() => openDraft()}>编辑源稿与查看对照</Button>
+        <a href="#draft-review-issues" className="inline-flex min-h-12 items-center rounded-control px-2 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">查看审稿问题</a>
+      </div>
       <DraftRevisionStatus revision={row.revision_request} control={revision} disabled={pending !== null || dirty} />
     </Card>
 
     <EvidenceDesk document={d} snapshots={row.source_snapshots ?? []} onOpenSources={() => openDraft('source')} />
     <div className="draft-review-layout grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div className="order-2 min-w-0 space-y-5 xl:order-1">
+      <div className="min-w-0 space-y-5">
         {row.review_sync?.status==='stale'&&<div role="status" className="rounded-card border border-amber-ink/20 bg-amber-ink/5 p-4 text-sm leading-6 text-amber-ink">英文主稿已变更。中文对照是旧版，仅供参考；请核对当前英文后批准。保存与采纳修改都不会上线。</div>}
-        {!fulltextOpen && <section className="draft-manuscript-preview" aria-label="当前英文开篇预览">
-          <p className="draft-manuscript-caption">当前英文稿</p>
+        {!fulltextOpen && <section className="draft-manuscript-preview" aria-label="完整英文稿（只读）">
           <h2 lang="en">{d.title_en}</h2>
-          <div lang="en">{d.body_en.trim().split(/\n\s*\n/).filter(Boolean).slice(0, 3).map((paragraph, index) => <p key={index}>{quoteText(paragraph.replace(/^(?:#{1,6}|>|[-*])\s+/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')).slice(0, 650)}</p>)}</div>
-          <Button onClick={() => openDraft('en')}>阅读完整英文并编辑</Button>
+          <p className="text-sm text-ink-3">全文纯文本视图，保留源稿换行；表格与复杂 HTML 的发布排版请查看交付文件。</p>
+          <div lang="en" className="draft-english-body mt-4 max-w-[72ch] whitespace-pre-wrap [overflow-wrap:anywhere]">{d.body_en.split(/\r\n?|\n/).map(line => quoteText(line)).join('\n')}</div>
+          <Button className="mt-4" onClick={() => openDraft('en')}>编辑英文源稿</Button>
         </section>}
         <details id="draft-fulltext" open={fulltextOpen} onToggle={event => setFulltextOpen(event.currentTarget.open)}>
-          <summary ref={fulltextToggle} className="mb-3 cursor-pointer rounded-card border border-line bg-surface p-4 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">完整稿件与原文</summary>
+          <summary ref={fulltextToggle} className="mb-3 cursor-pointer rounded-card border border-line bg-surface p-4 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">{fulltextOpen ? '收起编辑，返回只读稿件' : '编辑源稿、中文对照与依据'}</summary>
           <Card title="审阅与编辑" right={<span>{dirty ? '有修改未保存' : '当前版本已保存'}</span>}>
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList aria-label="稿件阅读方式" className="w-full justify-start">
@@ -531,7 +535,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
         </Card>
       </div>
 
-      <aside className="order-1 min-w-0 space-y-5 xl:order-2" aria-label="审稿确认与交付">
+      <aside id="draft-review-issues" tabIndex={-1} className="min-w-0 scroll-mt-20 space-y-5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent" aria-label="审稿确认与交付">
         <Card title={<span className="inline-flex items-center gap-2">{row.gate.blocked ? <ShieldAlert className="size-4 text-hot" aria-hidden="true" /> : <FileCheck2 className="size-4 text-accent" aria-hidden="true" />}{row.gate.blocked ? '需要修改' : hasIssues ? '问题确认' : '核对稿件'}</span>} right={<Badge tone={row.gate.blocked ? 'bad' : !hasIssues ? 'muted' : remaining ? 'warn' : 'ok'}>{row.gate.blocked ? '人审待修改' : !hasIssues ? '本版没有待勾选项' : remaining ? '剩余 ' + remaining + ' 项' : '当前问题均已勾选'}</Badge>}>
           {hasIssues && <p className="mb-4 text-xs leading-6 text-ink-3">查看对应原文，再勾选确认。</p>}
           {row.gate.blocked && <p className="mb-4 rounded-control bg-hot-soft p-3 text-xs leading-6 text-hot">请先处理阻断问题，再确认通过。可以随时保存修改和核对进度。</p>}

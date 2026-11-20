@@ -1,8 +1,62 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { beijingDate, beijingTime } from "@aihot/contracts/time";
+import type { AdminSource, Timestamp } from "@aihot/contracts/admin";
+import { draftOf, patchPreview, rebaseSourceDraft } from "../app/routes/admin/source-draft.ts";
 
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+
+const editableSource: AdminSource = {
+  id: "draft-source", name: "Original source", kind: "rss", config: { url: "https://example.test/feed" },
+  tags: ["LED"], first_party: true, owner_entity_id: null, tier: "primary", participation_mode: "editorial",
+  signal_group_id: null, interval_minutes: 60, site_fulltext: false, syndicate_fulltext: false,
+  enabled: true, health: "ok", fail_count: 0, last_fetch_at: null, last_ok_at: null, last_error: null,
+  cursor: null, next_fetch_at: null, created_at: "2026-11-20T08:00:00Z" as Timestamp, updated_at: "2026-11-20T08:00:00Z" as Timestamp,
+};
+
+test("source pause and repeated refresh keep local edits without including enabled in the save draft", () => {
+  const draft = { ...draftOf(editableSource), name: "My unsaved name", config: '{"url":"https://example.test/new-feed"}' };
+  const paused = { ...editableSource, enabled: false, health: "paused", updated_at: "2026-11-20T08:01:00Z" as Timestamp };
+  const kept = rebaseSourceDraft(draft, editableSource, paused);
+  assert.equal(kept.name, draft.name);
+  assert.equal(kept.config, draft.config);
+  assert.equal("enabled" in kept, false);
+  assert.deepEqual(Object.keys(patchPreview(kept, paused)).sort(), ["config", "name"]);
+  assert.deepEqual(rebaseSourceDraft(kept, paused, { ...paused, updated_at: "2026-11-20T08:02:00Z" as Timestamp }), kept);
+});
+
+test("source refresh updates untouched fields and clean forms, retaining local or invalid JSON edits", () => {
+  const next = { ...editableSource, name: "Remote name", interval_minutes: 120, tags: ["LED", "DOOH"], updated_at: "2026-11-20T08:01:00Z" as Timestamp };
+  assert.deepEqual(rebaseSourceDraft(draftOf(editableSource), editableSource, next), draftOf(next));
+  const draft = { ...draftOf(editableSource), name: "Local name", config: "{unfinished" };
+  const kept = rebaseSourceDraft(draft, editableSource, next);
+  assert.equal(kept.name, "Local name");
+  assert.equal(kept.config, "{unfinished");
+  assert.equal(kept.interval_minutes, 120);
+  assert.equal(kept.tags, "LED, DOOH");
+});
+
+test("saving clears source dirty fields, and another source starts from its own saved values", () => {
+  const draft = { ...draftOf(editableSource), name: "Saved name", tags: " LED， DOOH " };
+  const saved = { ...editableSource, name: draft.name, tags: ["LED", "DOOH"], updated_at: "2026-11-20T08:01:00Z" as Timestamp };
+  assert.deepEqual(patchPreview(rebaseSourceDraft(draft, editableSource, saved), saved), {});
+  const other = { ...saved, id: "other-source", name: "Other source" };
+  assert.deepEqual(rebaseSourceDraft(draft, editableSource, other), draftOf(other));
+  assert.deepEqual(patchPreview(draftOf(saved), saved), {}, "explicit restore returns to the saved state");
+});
+
+test("an edited collector kind keeps its matching config when unrelated source fields refresh", () => {
+  const draft = { ...draftOf(editableSource), kind: "web-list" };
+  const next = { ...editableSource, config: { url: "https://example.test/remote-feed" }, updated_at: "2026-11-20T08:01:00Z" as Timestamp };
+  const kept = rebaseSourceDraft(draft, editableSource, next);
+  assert.equal(kept.kind, draft.kind);
+  assert.equal(kept.config, draft.config);
+  const configEdit = { ...draftOf(editableSource), config: '{"url":"https://example.test/local-feed"}' };
+  const changedKind = { ...next, kind: "web-list" };
+  const keptPair = rebaseSourceDraft(configEdit, editableSource, changedKind);
+  assert.equal(keptPair.kind, editableSource.kind);
+  assert.equal(keptPair.config, configEdit.config);
+});
 after(() => {
   if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
   else Reflect.deleteProperty(globalThis, "window");
