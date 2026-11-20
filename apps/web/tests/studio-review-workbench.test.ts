@@ -4,7 +4,6 @@ import { chromium, expect, type Page } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { renderReviewedBody } from '@aihot/backend/studio/studio-reviewed-html';
 
 type FixtureRevision = { status: string; version: number; goals: string[]; note: string; receipt_id?: number; error?: string };
 
@@ -19,6 +18,7 @@ function reviewFixture() {
     quote: '5760', reason: '请把这处计算结果与绑定原文对照。',
   });
   const draft = {
+    body_html: `<p>${body}</p>`,
     id: 'review-fixture', version: 7, status: 'in_review', updated_at: '2026-11-09T08:00:00Z',
     manual_edit_recovery: undefined as { available: boolean } | null | undefined,
     revision_request: null as FixtureRevision | null,
@@ -53,7 +53,7 @@ function reviewFixture() {
     if (url.pathname === '/api/admin/studio/capabilities') return { delivery: { mode: 'manual', wordpressWritesAllowed: false, draftPushAllowed: false, readOnlyRecoveryAllowed: true, message: '当前工作台采用手工交付。请下载已批准版本后，由运营上传。' } };
     if (url.pathname === '/api/admin/studio/drafts/review-fixture/covers') return { revision: 0, selectedHash: null, candidates: [], confirmed: false, confirmedVersion: null };
     if (url.pathname === '/api/admin/studio/publishing/settings') return { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
-    if (url.pathname === '/api/admin/studio/drafts/review-fixture' && req.method === 'GET') { reads++; return { ...draft, body_html: renderReviewedBody(draft.document.body_en) }; }
+    if (url.pathname === '/api/admin/studio/drafts/review-fixture' && req.method === 'GET') { reads++; return draft; }
     if (url.pathname.startsWith('/api/admin/studio/drafts/review-fixture') && req.method !== 'GET') {
       let text = ''; for await (const chunk of req) text += chunk;
       const input: Record<string, unknown> = text ? JSON.parse(text) : {};
@@ -65,6 +65,7 @@ function reviewFixture() {
         }
         const { version: _, ...fields } = input;
         Object.assign(draft.document, fields);
+        draft.body_html = draft.document.body_en;
         draft.status = 'draft';
         draft.version++;
         draft.manual_edit_recovery = null;
@@ -119,6 +120,7 @@ for (const width of [390, 768, 1440]) test('formatted reading preserves the comp
   const paragraphs = Array.from({ length: 85 }, (_, index) => `<p id="kept-${index}">Retained paragraph ${index + 1}: check the cabinet layout.</p>`).join('\n');
   const original = `## Installation checklist\n\n**Read the full drawing.**\n\n| Check | Value |\n| --- | --- |\n| Cabinet | 960 mm |\n\n${paragraphs}`;
   fixture.draft.document.body_en = original;
+  fixture.draft.body_html = '<h2>Installation checklist</h2><p><strong>Read the full drawing.</strong></p><table><thead><tr><th>Check</th><th>Value</th></tr></thead><tbody><tr><td>Cabinet</td><td>960 mm</td></tr></tbody></table>' + paragraphs;
   const web = await startWebServer(fixture.api); let browser;
   try {
     browser = await chromium.launch();
@@ -135,6 +137,8 @@ for (const width of [390, 768, 1440]) test('formatted reading preserves the comp
       const manuscript = await reading.boundingBox(), issues = await page.getByRole('complementary', { name: '审稿确认与交付' }).boundingBox();
       assert.ok(manuscript && issues && manuscript.y < issues.y, 'reading precedes decisions in the visual and DOM order');
     }
+    await captureReviewState(page, 'initial-layout', width, false);
+    await page.getByRole('button', { name: '阅读英文稿', exact: true }).click();
     await captureReviewState(page, 'formatted-reading', width, false);
     const body = await openEnglishDraft(page);
     await expect(body).toHaveValue(original);
@@ -366,6 +370,7 @@ test('clicking the active draft step keeps unsaved text when the server has a ne
     await body.fill(localText);
     fixture.draft.version++;
     fixture.draft.document.body_en = 'A newer server version.';
+    fixture.draft.body_html = '<p>A newer server version.</p>';
     const dialogs: string[] = [];
     page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
     await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '审稿', exact: true }).click();
@@ -734,6 +739,7 @@ for (const width of [1440, 390]) test('a stale Chinese review explains the Engli
   } });
   fixture.draft.document.body_en = '<p id="kept-source">A whole-cabinet layout is 5760 mm wide.</p>\n<p>Confirm cabinet alignment before installation.</p>';
   const savedBody = fixture.draft.document.body_en;
+  fixture.draft.body_html = savedBody;
   const web=await startWebServer(fixture.api);let browser;
   try{
     browser=await chromium.launch();const page=await browser.newPage({viewport:{width,height:900}});

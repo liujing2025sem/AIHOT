@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium, expect } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
-import { renderReviewedBody } from '../../../packages/backend/src/studio/studio-reviewed-html.ts';
 
 for (const width of [1440, 390]) test(`operator enables one-click, publishes an unapproved draft and corrects it at ${width}`, async () => {
   let settings = { mode: 'review', enabled: false, daily_limits: { brief: 1, article: 2, guide: 1, update: 0 } };
@@ -17,7 +16,7 @@ for (const width of [1440, 390]) test(`operator enables one-click, publishes an 
     if (req.method !== 'GET') writes.push({ path: url.pathname, body: input });
     if (url.pathname === '/api/admin/settings') return { contact: { wechatQr: null, feishuQr: null }, targets: [], budgets: [] };
     if (url.pathname === '/api/admin/studio/publishing/settings') { if (req.method === 'PUT') settings = input; return settings; }
-    if (url.pathname === '/api/admin/studio/drafts/mip') return { body_html: renderReviewedBody(review.content), id: 'mip', version: 3, status: 'draft', updated_at: '2026-11-08T15:00:00Z', document: { title_en: 'MiP package sizes', title_zh: 'MiP封装尺寸', review_zh: '内部审校', body_en: review.content, keyword_hypothesis: 'MiP LED', meta_description_en: 'MiP packaging', questions_zh: ['待工程回复'], evidence: [], source: { url: 'https://example.test/source', revision: 1, published_at: null } }, source_snapshot: { body_text: 'Source text', title: 'Source' }, material: { title: 'Source', body_text: 'Source text', revision: 1 }, gate: { blocked: true, findings: [], mandatoryReview: [] }, issues: { items: [], summary: { findingCount: 1, issueCount: 1, requiredCount: 1, recommendedCount: 0 } }, confirmed_issues: [], history: [], wordpress: { ready: false, message: '人审草稿通道未启用。', receipt: null } };
+    if (url.pathname === '/api/admin/studio/drafts/mip') return { body_html: review.content, id: 'mip', version: 3, status: 'draft', updated_at: '2026-11-08T15:00:00Z', document: { title_en: 'MiP package sizes', title_zh: 'MiP封装尺寸', review_zh: '内部审校', body_en: review.content, keyword_hypothesis: 'MiP LED', meta_description_en: 'MiP packaging', questions_zh: ['待工程回复'], evidence: [], source: { url: 'https://example.test/source', revision: 1, published_at: null } }, source_snapshot: { body_text: 'Source text', title: 'Source' }, material: { title: 'Source', body_text: 'Source text', revision: 1 }, gate: { blocked: true, findings: [], mandatoryReview: [] }, issues: { items: [], summary: { findingCount: 1, issueCount: 1, requiredCount: 1, recommendedCount: 0 } }, confirmed_issues: [], history: [], wordpress: { ready: false, message: '人审草稿通道未启用。', receipt: null } };
     if (url.pathname === '/api/admin/studio/drafts/mip/publish') return { state: 'private', message: '私密验收样例已保存。' };
     if (url.pathname === '/api/admin/studio/publishing/reviews') return { rows: [review], weekly: { reasons: [{ reason: 'attribution', count: 1 }] } };
     if (url.pathname === '/api/admin/studio/publishing/reviews/receipt-1/action') { if (input.action === 'correct') { review.title = input.title; review.content = input.content; } if (input.action === 'unpublish') review.status = 'draft'; if (input.action === 'ok') review.reviewed = true; return review; }

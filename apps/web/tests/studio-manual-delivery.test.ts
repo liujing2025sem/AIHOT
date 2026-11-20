@@ -4,7 +4,6 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { chromium, expect, type Locator, type Page } from '@playwright/test';
 import { fakeApi, startWebServer, visit } from './web-server.ts';
-import { renderReviewedBody } from '../../../packages/backend/src/studio/studio-reviewed-html.ts';
 
 // Original HTTP boundary with synthetic data. Real image validation and ZIP contents are backend tests.
 for (const width of [1440, 768, 390]) test(`manual delivery keeps upload, adoption and confirmation separate at ${width}`, async () => {
@@ -32,7 +31,7 @@ for (const width of [1440, 768, 390]) test(`manual delivery keeps upload, adopti
     if (url.pathname === '/api/admin/studio/pitches') return { rows: [{ id: 'original-pitch', title: '隔离样本：采购前如何确认 LED 箱体尺寸？', status: 'confirmed', version: 2, task_id: 'original-task' }] };
     if (url.pathname === '/api/admin/settings') return { contact: { wechatQr: null, feishuQr: null }, targets: [], budgets: [] };
     if (url.pathname === '/api/admin/studio/publishing/reviews') return { rows: [{ id: 'old-receipt', title: 'Previous publication', content: '<p>Previous content.</p>', kind: 'guide', status: 'published', postId: 91, url: 'https://example.test/previous', created_at: '2026-11-10T10:00:00Z', issues: [], canRollback: true, reviewed: false }], weekly: { reasons: [] } };
-    if (url.pathname === '/api/admin/studio/drafts/manual-fixture') return { ...draft, body_html: renderReviewedBody(draft.document.body_en) };
+    if (url.pathname === '/api/admin/studio/drafts/manual-fixture') return { ...draft, body_html: `<p>${draft.document.body_en}</p>` };
     if (url.pathname === '/api/admin/studio/drafts/manual-fixture/figures') return { issues: [], figures: [] };
     if (url.pathname === '/api/admin/studio/drafts/manual-fixture/covers' && request.method === 'GET') return covers;
     if (url.pathname.startsWith('/api/admin/studio/drafts/manual-fixture/') && request.method !== 'GET') {
@@ -232,7 +231,7 @@ function coverInputFixture() {
     if (index < 0) return;
     const draft = drafts[index], state = covers[index], endpoint = '/api/admin/studio/drafts/' + draft.id;
     if (request.method === 'GET') {
-      if (url.pathname === endpoint) { draftRead.requests++; await draftRead.wait; return { ...draft, body_html: renderReviewedBody(draft.document.body_en) }; }
+      if (url.pathname === endpoint) { draftRead.requests++; await draftRead.wait; return { ...draft, body_html: `<p>${draft.document.body_en}</p>` }; }
       if (url.pathname === endpoint + '/figures') return { figures: [], issues: [] };
       if (url.pathname === endpoint + '/covers') {
         coverRead.requests++;
