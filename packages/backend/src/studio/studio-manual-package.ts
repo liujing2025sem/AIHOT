@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { marked } from 'marked';
 import { z } from 'zod';
 import { sql } from '../db.ts';
 import { Conflict } from '../audit.ts';
 import { lockStudioPublication } from './studio.ts';
-import { sanitizeReviewedHtml } from './studio-reviewed-html.ts';
+import { renderReviewedBody } from './studio-reviewed-html.ts';
 import { storedStudioCovers, selectedStudioCover, readStudioCover, studioDeliveryConfirmed } from './studio-covers.ts';
 import { previewStudioDraftMedia } from './studio-draft-media.ts';
 import { studioUpgradeContext } from './studio-upgrade.ts';
@@ -59,7 +58,7 @@ export async function exportStudioManualPackage(id: string, input: unknown) {
     const figureHtml = figures.map(figure => `<figure><img src="${figure.file}" alt="${escape(figure.alt_en)}">${figure.caption_en ? `<figcaption>${escape(figure.caption_en)}</figcaption>` : ''}</figure>`).join('\n');
     const bodyMarkdown = `${publication.body}\n${figureHtml ? '\n'+figureHtml+'\n' : ''}`;
     const markdown = `# ${publication.title}\n\n${bodyMarkdown}`;
-    const content = sanitizeReviewedHtml(marked.parse(bodyMarkdown, { async: false }) as string);
+    const content = renderReviewedBody(bodyMarkdown);
     const coverHtml = selected ? `<figure><img src="cover.png" alt="${escape(selected.alt_en)}">${selected.caption_en ? `<figcaption>${escape(selected.caption_en)}</figcaption>` : ''}</figure>` : '';
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(publication.title)}</title><meta name="description" content="${escape(publication.meta_description)}"><style>body{max-width:72ch;margin:40px auto;padding:20px;font:18px/1.75 Georgia,serif;color:#000}img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #ccd3df;padding:8px}a{color:#2c4fc4}</style></head><body><article><h1>${escape(publication.title)}</h1>${coverHtml}${content}</article></body></html>`;
     files['article.html']=Buffer.from(html);files['article.md']=Buffer.from(markdown);files['content.html']=Buffer.from(content);

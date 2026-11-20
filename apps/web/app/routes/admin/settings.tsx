@@ -57,10 +57,10 @@ function BudgetRow({ b }: { b: AdminSettings["budgets"][number] }) {
   const changed = v.perMinute !== b.per_minute || v.perHour !== b.per_hour || v.perDay !== b.per_day;
   return (
     <tr className="border-b border-line/70 last:border-0">
-      <td className="px-3 py-2 font-mono text-[12.5px]">{b.service}</td>
+      <th id={`budget-${b.service}`} scope="row" className="px-3 py-2 text-left font-mono text-[12.5px] font-normal">{b.service}</th>
       {(["perMinute", "perHour", "perDay"] as const).map((k) => (
         <td key={k} className="px-3 py-2">
-          <Input type="number" min={0} className="!w-24 !py-1 text-right" value={v[k]} onChange={(e) => setV({ ...v, [k]: Number(e.target.value) })} />
+          <Input aria-labelledby={`budget-${b.service} budget-${k}`} type="number" min={0} className="!w-24 !py-1 text-right" value={v[k]} onChange={(e) => setV({ ...v, [k]: Number(e.target.value) })} />
         </td>
       ))}
       <td className="num px-3 py-2 text-right text-ink-3">{num(b.used_hour)} / {num(b.used_day)}</td>
@@ -130,9 +130,9 @@ export default function SettingsAdmin({ loaderData: s }: Route.ComponentProps) {
             <thead>
               <tr className="border-b border-line text-left text-[12px] text-ink-3">
                 <th className="px-3 py-2 font-medium">服务</th>
-                <th className="px-3 py-2 font-medium">每分钟</th>
-                <th className="px-3 py-2 font-medium">每小时</th>
-                <th className="px-3 py-2 font-medium">每天</th>
+                <th id="budget-perMinute" scope="col" className="px-3 py-2 font-medium">每分钟</th>
+                <th id="budget-perHour" scope="col" className="px-3 py-2 font-medium">每小时</th>
+                <th id="budget-perDay" scope="col" className="px-3 py-2 font-medium">每天</th>
                 <th className="px-3 py-2 text-right font-medium">已用</th>
                 <th />
               </tr>

@@ -4,7 +4,7 @@ import type { Route } from "./+types/audit";
 import type { AdminAudit, AdminAuditRow } from "@aihot/contracts/admin";
 import { adminGet } from "../../lib/admin.server";
 import { bj } from "../../features/admin/format";
-import { AdminPage, Card, DataTable, Input, Json, Pager } from "../../features/admin/ui";
+import { AdminPage, Button, Card, DataTable, Field, Input, Json, Pager } from "../../features/admin/ui";
 
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -25,9 +25,10 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
   const [sp] = useSearchParams();
   return (
     <AdminPage title="审计记录" subtitle="所有人工操作：谁、何时、改了什么、为什么。">
-      <Form method="get" className="mb-4 flex max-w-xl gap-2">
-        <Input name="action" defaultValue={sp.get("action") ?? ""} placeholder="操作前缀，例如 content. 或 source." aria-label="按操作筛选" />
-        <Input name="subject" defaultValue={sp.get("subject") ?? ""} placeholder="对象，例如 source:openai-blog" aria-label="按对象筛选" />
+      <Form method="get" action="/admin/audit" className="mb-4 grid max-w-3xl items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+        <Field label="操作"><Input name="action" defaultValue={sp.get("action") ?? ""} placeholder="例如 content. 或 source." /></Field>
+        <Field label="对象"><Input name="subject" defaultValue={sp.get("subject") ?? ""} placeholder="例如 source:openai-blog" /></Field>
+        <Button type="submit">筛选</Button>
       </Form>
       <Card pad={false}>
         <DataTable

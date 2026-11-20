@@ -1,0 +1,117 @@
+{
+  "schema": "aihot.a2a.v1",
+  "task": "AIHOT-USABILITY-20261120",
+  "author_model": "GPT-6 Astra Pro",
+  "reviewer_requested": "Opus 5.5",
+  "TASK": "Reduce repeated reading/editing/configuration/cover friction and submit a reviewable PR.",
+  "TRUTH": {
+    "repository": "https://github.com/liujing2025sem/AIHOT",
+    "base_sha": "76392e3ee8f983d3271846c3160e076dae82ee68",
+    "candidate_ref": "codex/aihot-usability-20261120",
+    "candidate_sha_resolution": "Read the current PR head before review.",
+    "related_pr_27_head": "d9ae9ecdc0024bdb977d0284362541870ef7030e",
+    "production_runtime": "Not accessed in this task."
+  },
+  "SCOPE": [
+    "formatted saved English reading",
+    "issue navigation",
+    "input/accessibility",
+    "source and channel drafts",
+    "cover completion",
+    "consistent names and contextual brief settings"
+  ],
+  "FORBIDDEN": [
+    "production deployment",
+    "paid model calls",
+    "CMS writes",
+    "change original 6098/MiP",
+    "merge before review",
+    "defense/main added-code ratio above 0.20"
+  ],
+  "INPUT": [
+    "README.md",
+    "AGENTS.md",
+    "docs/LIVE.md",
+    "user-supplied Impeccable audit",
+    "git history through #33"
+  ],
+  "STEPS": [
+    "Read the matching human handoff",
+    "Resolve current PR head",
+    "Review five implementation groups",
+    "Read same-head CI results and screenshots",
+    "Return concrete findings and merge recommendation"
+  ],
+  "OUTPUT": [
+    "docs/handoff/aihot-usability-20261120.md",
+    "this JSON",
+    "PR diff and GitHub Checks"
+  ],
+  "INVARIANTS": [
+    "view changes never write source or call models",
+    "source edits save original body_en strings",
+    "preview belongs to saved row version",
+    "draft and cover version checks persist",
+    "inactive channel key drafts remain in memory only",
+    "same original rendering/sanitization for preview and exports"
+  ],
+  "ACCEPTANCE": [
+    "typecheck",
+    "web build",
+    "standalone tests",
+    "full browser tests",
+    "backend tests",
+    "existing container and smoke checks",
+    "Opus UX review"
+  ],
+  "STOP": [
+    "any write to source from read-only controls",
+    "version/source mismatch",
+    "new defense ratio above 0.20"
+  ],
+  "maturity_at_creation": "STATIC_PASS",
+  "pipeline_evidence": "Read latest same-head Check workflow on the PR; do not reuse old green checks.",
+  "local_evidence": {
+    "typecheck": "PASS",
+    "web_build": "PASS",
+    "standalone": "471/471 PASS",
+    "ssr_navigation": "12/12 PASS",
+    "impeccable_detector": "[]",
+    "browser": "BLOCKED: Chromium socket() Operation not permitted; no further local browser attempt",
+    "production": "not_run"
+  },
+  "defense_budget": {
+    "basis": "Added effective TS/TSX runtime lines after exact same-file movement/whitespace cancellation; exclude imports, comments, empty/punctuation-only lines, tests, CSS and docs.",
+    "runtime_lines": 115,
+    "defense_lines": 3,
+    "main_lines": 112,
+    "ratio": 0.026785714285714284,
+    "limit": 0.2,
+    "items": [
+      "active toast duplicate guard",
+      "disconnected issue trigger fallback",
+      "existing sanitizer composition"
+    ]
+  },
+  "integration": {
+    "pr_27_overlap": [
+      "apps/web/app/routes/admin/studio.tsx",
+      "apps/web/tests/studio-shell.test.ts"
+    ],
+    "preserve": [
+      "independent-event inspection",
+      "brief thresholds",
+      "selection settings visibility",
+      "zero-call navigation"
+    ]
+  },
+  "least_certain": [
+    "Discoverability of saved-version reading after unsaved source edits",
+    "Real 6098/MiP long tables, images and operator time on the target instance",
+    "Integration with still-draft PR #27"
+  ],
+  "skills": [
+    "Impeccable context/distill/clarify/harden/adapt + detector",
+    "Modern Web Guidance forms/accessibility/form-factor-adaptation/motion"
+  ]
+}

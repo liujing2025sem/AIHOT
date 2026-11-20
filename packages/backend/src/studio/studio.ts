@@ -3,7 +3,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import postgres from 'postgres';
-import { marked } from 'marked';
 import { sql, type Db } from '../db.ts';
 import { audit, auditHistory, Conflict } from '../audit.ts';
 import { collectSource } from '../sources/collect.ts';
@@ -26,7 +25,7 @@ import { applyDraftRevision, revisionGoalSchema, revisionGoalLabels, revisionRes
 import { enqueue, ensureQueue, QUEUES } from '../jobs/queue.ts';
 import { failedReceiptId, failureKind } from '../providers/receipts.ts';
 import { publicStudioTitle, studioUpgradeContext } from './studio-upgrade.ts';
-import { sanitizeReviewedHtml } from './studio-reviewed-html.ts';
+import { renderReviewedBody } from './studio-reviewed-html.ts';
 import { previewStudioDraftMedia } from './studio-draft-media.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialIssues, type EditorialConfirmation } from './editorial-issues.ts';
 import { responseSchema, type Packet } from '@aihot/contracts/studio-handoff';
@@ -586,7 +585,7 @@ export async function exportStudioDraft(id: string, format: string, version?: nu
     const publication = approvedPublication(approved);
     const markdown = `# ${publication.title}\n\n${publication.body}\n\nMeta description: ${publication.meta_description}\n`;
     if (format === 'json') return { type: 'application/json', extension: 'json', body: JSON.stringify({ id, version: row.version, publication }, null, 2) };
-    if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${sanitizeReviewedHtml(marked.parse(markdown, { async: false }) as string)}</article></html>` };
+    if (format === 'html') return { type: 'text/html; charset=utf-8', extension: 'html', body: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chipshow · Reviewed English draft</title><style>body{max-width:850px;margin:48px auto;padding:20px;font:16px/1.8 system-ui;color:#263238}a{color:#176b75}img{max-width:100%}</style><article>${renderReviewedBody(markdown)}</article></html>` };
     return { type: 'text/markdown; charset=utf-8', extension: 'md', body: markdown };
   });
 }

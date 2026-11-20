@@ -5,11 +5,12 @@ import { SITE } from "@aihot/site";
 import { adminGet } from "../../lib/admin.server";
 import { useAdminAction } from "../../features/admin/action";
 import { AdminPage, Badge, Button, Card, Field, Input } from "../../features/admin/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/primitives/tabs";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   return adminGet<AdminChannels>(request, "/api/admin/channels");
 }
-export const meta = () => [{ title: `API 渠道 · ${SITE.name} 后台` }];
+export const meta = () => [{ title: `模型连接 · ${SITE.name} 后台` }];
 export const headers = () => ({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
 
 function ChannelEditor({ channel }: { channel: AdminChannel }) {
@@ -24,10 +25,14 @@ function ChannelEditor({ channel }: { channel: AdminChannel }) {
   const [result, setResult] = useState<AdminChannelTest | null>(null);
   const dirty = baseUrl !== channel.baseUrl || model !== channel.model || key.trim() !== "" || enabled !== channel.enabled || deleteKey;
   const save = async (activate: boolean) => {
-    const saved = await run("PUT", `/api/admin/channels/${channel.id}`, {
+    const saved = await run<AdminChannels>("PUT", `/api/admin/channels/${channel.id}`, {
       baseUrl, model, key, enabled, deleteKey, activate, reason: activate ? "启用并切换 Studio API 渠道" : "修改 API 渠道配置",
     }, { success: activate ? "渠道已切换，默认模型的新请求使用此配置" : "渠道已保存" });
-    if (saved) { setKey(""); setDeleteKey(false); setResult(null); }
+    if (saved) {
+      const current = saved.channels.find((c) => c.id === channel.id)!;
+      setBaseUrl(current.baseUrl); setModel(current.model); setEnabled(current.enabled);
+      setKey(""); setDeleteKey(false); setResult(null);
+    }
   };
   const test = async (kind: "models" | "completion") => {
     setResult(null);
@@ -81,16 +86,21 @@ export default function Channels() {
   const data = useLoaderData<typeof loader>();
   const { run, busy } = useAdminAction();
   const [selected, setSelected] = useState<AdminChannelId>(data.activeId ?? "opencode-go");
-  const channel = data.channels.find((c) => c.id === selected)!;
   return (
-    <AdminPage title="API 渠道" subtitle="保存服务地址、模型与密钥，为 Studio 默认调用选择 API 服务。">
+    <AdminPage title="模型连接" subtitle="配置服务地址、模型与密钥，选择采编使用的服务。">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-panel border border-line bg-surface p-4"><div><p className="text-sm font-semibold">API 生成：{data.modelCallsEnabled ? '已开启' : '已暂停'}</p><p className="mt-1 text-xs text-ink-3">开启后，手动生成和已启用的采编任务可使用服务商额度。Codex 文件接棒不受此开关影响。</p></div><Button busy={busy} onClick={()=>void run('PUT','/api/admin/channels/generation',{enabled:!data.modelCallsEnabled},{success:data.modelCallsEnabled?'已暂停 API 生成':'已开启 API 生成'})}>{data.modelCallsEnabled?'暂停生成':'开启生成'}</Button></div>
-      <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="API 渠道">
-        {data.channels.map((c) => <button key={c.id} type="button" role="tab" aria-selected={selected === c.id} onClick={() => setSelected(c.id)} className={`rounded-control px-4 py-2 text-[13px] ${selected === c.id ? "bg-ink text-bg" : "bg-surface text-ink-2 ring-1 ring-line"}`}>{c.name}{c.active ? " · 当前" : ""}</button>)}
-      </div>
       {!data.modelCallsEnabled && <p className="mb-4 text-[13px] text-ink-3">当前生成总开关关闭：可以保存配置和检查模型列表，实际生成暂停。</p>}
       {data.activeId === null && <p className="mb-4 text-[13px] text-ink-3">尚未切换渠道，现有调用继续使用原环境配置。点击“保存并使用此渠道”后生效。</p>}
-      <ChannelEditor key={JSON.stringify(channel)} channel={channel} />
+      <Tabs value={selected} onValueChange={(value) => setSelected(value as AdminChannelId)}>
+        <TabsList aria-label="API 渠道" className="flex flex-wrap justify-start">
+          {data.channels.map((channel) => <TabsTrigger key={channel.id} value={channel.id}>{channel.name}{channel.active ? " · 当前" : ""}</TabsTrigger>)}
+        </TabsList>
+        {data.channels.map((channel) => (
+          <TabsContent key={channel.id} value={channel.id} forceMount hidden={selected !== channel.id}>
+            <ChannelEditor channel={channel} />
+          </TabsContent>
+        ))}
+      </Tabs>
     </AdminPage>
   );
 }

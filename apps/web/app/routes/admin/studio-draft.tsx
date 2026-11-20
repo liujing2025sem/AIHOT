@@ -81,6 +81,7 @@ type UpgradeContext = {
   changes: { operation: string; paragraph: string; reason: string; original_text?: string | null; replacement_text?: string | null }[];
 };
 type Detail = {
+  body_html: string;
   delivery?: DeliveryCapability;
   pitch_id?: string | null;
   editorial_context?: { question: string; scope_question?: string; unanswered_questions: string[]; additions?: string[] } | null;
@@ -291,8 +292,17 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
   const [d, setD] = useState(row.document), [tab, setTab] = useState('en');
   const documentInput = useRef(row.document);
   const [englishReviewed,setEnglishReviewed]=useState(false);
-  const [fulltextOpen, setFulltextOpen] = useState(false);
-  const fulltextToggle = useRef<HTMLElement>(null);
+  const [editingEnglish, setEditingEnglish] = useState(false);
+  const fulltextHeading = useRef<HTMLElement>(null);
+  const manuscriptBody = useRef<HTMLDivElement>(null);
+  const issuePanel = useRef<HTMLElement>(null);
+  const [returnTarget, setReturnTarget] = useState<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    manuscriptBody.current?.querySelectorAll('table').forEach((table, index) => {
+      table.tabIndex = 0;
+      table.setAttribute('aria-label', `Article table ${index + 1}`);
+    });
+  }, [row.body_html, editingEnglish, tab]);
   const [location, setLocation] = useState<{ field: string; finding?: Finding } | null>(null);
   const [revisionGoals, setRevisionGoals] = useState<string[]>(['clarify_buyer_answer']);
   const [metadataOpen, setMetadataOpen] = useState('');
@@ -318,18 +328,23 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
     : dirty ? '保存修改后再核对并审核。'
     : row.gate.blocked ? '先处理上方需要修改的问题。'
     : !allConfirmed ? '还有待确认的问题，全部核对后可审核。'
-    : row.review_sync?.status === 'stale' && !englishReviewed ? '请先勾选“已按当前英文主稿核对”，再确认审核通过。'
+    : row.review_sync?.status === 'stale' && !englishReviewed ? '请核对当前英文稿，再勾选版本确认。'
     : null;
   const openDraft = (readingTab?: 'en' | 'zh' | 'source') => {
-    if (readingTab) setTab(readingTab);
-    setFulltextOpen(true);
-    fulltextToggle.current?.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
-    fulltextToggle.current?.focus({ preventScroll: true });
+    setTab(readingTab ?? 'en');
+    setEditingEnglish(false);
+    fulltextHeading.current?.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+    fulltextHeading.current?.focus({ preventScroll: true });
   };
-  const locate = (f?: Finding) => {
+  const openIssues = () => {
+    issuePanel.current?.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+    issuePanel.current?.focus({ preventScroll: true });
+  };
+  const locate = (f: Finding | undefined, trigger: HTMLButtonElement) => {
     const targetField = f?.field ?? 'body_en';
     setStage('review');
-    setFulltextOpen(true);
+    setEditingEnglish(true);
+    setReturnTarget(trigger);
     setTab(targetField === 'source.body_text'||targetField.startsWith('source[') ? 'source' : targetField.endsWith('_zh') ? 'zh' : 'en');
     if (targetField === 'meta_description_en' || targetField === 'keyword_hypothesis') setMetadataOpen('metadata');
     setLocation({ field: targetField, finding: f });
@@ -375,7 +390,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
         {!suggestions.length && <div className="mt-3 space-y-2">
           {first?.reason && <p className="break-words text-xs leading-6 text-ink-2">{first.reason}</p>}
           <p className="break-words text-xs leading-6 text-ink-2"><span className="font-medium">处理建议：</span>{Object.hasOwn(issueRemedies, i.ruleId) ? issueRemedies[i.ruleId] : '按提示对照绑定原文与当前稿件。证据不足时补齐依据，或修改可编辑的表述后保存，再重新核对。'}</p>
-          <Button size="sm" onClick={() => locate(first)}><LocateFixed aria-hidden="true" />{sourceFinding ? '查看对应原文' : first ? '定位并核对' : '打开英文稿核对'}</Button>
+          <Button size="sm" onClick={event => locate(first, event.currentTarget)}><LocateFixed aria-hidden="true" />{sourceFinding ? '查看对应原文' : first ? '定位并核对' : '打开英文稿核对'}</Button>
         </div>}
         {suggestions.map(s=><div key={s.id} className="mt-3 space-y-2 border-t border-line pt-3">
           <p className="text-xs font-medium text-ink">建议修改英文主稿</p>
@@ -393,7 +408,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
               {i.occurrences.map((f, index) => <div key={index} className="mt-3 border-l-2 border-line pl-3">
                 <p className="text-xs leading-6 text-ink-2">{f.reason}</p>
                 <blockquote className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-control bg-bg-sunk p-2.5 text-xs leading-6 text-ink-3">{quoteText(f.quote)}</blockquote>
-                <Button size="sm" tone="ghost" className="mt-1" onClick={() => locate(f)}><LocateFixed aria-hidden="true" />定位到稿件</Button>
+                <Button size="sm" tone="ghost" className="mt-1" onClick={event => locate(f, event.currentTarget)}><LocateFixed aria-hidden="true" />定位到稿件</Button>
                 <p className="mt-1 break-all text-[11px] text-ink-4">规则 {f.ruleId} · {f.severity} · {f.field} · {f.start}–{f.end}</p>
               </div>)}
             </AccordionContent>
@@ -424,7 +439,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
     <ArticleWorkflow current={stage} draftId={row.id} directionTo={row.pitch_id ? '/admin/studio/pitch?id=' + encodeURIComponent(row.pitch_id) : '/admin/studio/pitch'} onStage={setStage} stageHeadingRef={stageHeadingRef} />
     <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-xs text-ink-3">
       <span className="inline-flex items-center gap-2"><FileText className="size-4 text-accent" aria-hidden="true" />中文核对，英文交付</span>
-      <span>原信源日期：{d.source.published_at ?? '尚待核实'}</span>
+      <span>来源发布日期：{d.source.published_at ?? '尚待核实'}</span>
       <a href={d.source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-medium text-accent"><Link2 className="size-3.5" aria-hidden="true" />打开原始来源</a>
       {row.material?.revision !== d.source.revision && <span className="text-hot">原文版本已变化，请重新建立采编任务核对。</span>}
     </div>
@@ -439,23 +454,20 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
         <p className="font-medium">本次明确未回答</p>
         <ul className="list-disc pl-4">{row.editorial_context.unanswered_questions.map((question, i) => <li key={i}>{question}</li>)}</ul>
       </div>}
-      <Button className="mt-3" onClick={() => openDraft()}>展开完整稿件</Button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button onClick={() => openDraft()}>阅读英文稿</Button>
+        {hasIssues && <Button onClick={openIssues}>核对问题 · {remaining} 项待处理</Button>}
+      </div>
       <DraftRevisionStatus revision={row.revision_request} control={revision} disabled={pending !== null || dirty} />
     </Card>
 
     <EvidenceDesk document={d} snapshots={row.source_snapshots ?? []} onOpenSources={() => openDraft('source')} />
     <div className="draft-review-layout grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div className="order-2 min-w-0 space-y-5 xl:order-1">
+      <div className="min-w-0 space-y-5">
         {row.review_sync?.status==='stale'&&<div role="status" className="rounded-card border border-amber-ink/20 bg-amber-ink/5 p-4 text-sm leading-6 text-amber-ink">英文主稿已变更。中文对照是旧版，仅供参考；请核对当前英文后批准。保存与采纳修改都不会上线。</div>}
-        {!fulltextOpen && <section className="draft-manuscript-preview" aria-label="当前英文开篇预览">
-          <p className="draft-manuscript-caption">当前英文稿</p>
-          <h2 lang="en">{d.title_en}</h2>
-          <div lang="en">{d.body_en.trim().split(/\n\s*\n/).filter(Boolean).slice(0, 3).map((paragraph, index) => <p key={index}>{quoteText(paragraph.replace(/^(?:#{1,6}|>|[-*])\s+/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')).slice(0, 650)}</p>)}</div>
-          <Button onClick={() => openDraft('en')}>阅读完整英文并编辑</Button>
-        </section>}
-        <details id="draft-fulltext" open={fulltextOpen} onToggle={event => setFulltextOpen(event.currentTarget.open)}>
-          <summary ref={fulltextToggle} className="mb-3 cursor-pointer rounded-card border border-line bg-surface p-4 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">完整稿件与原文</summary>
-          <Card title="审阅与编辑" right={<span>{dirty ? '有修改未保存' : '当前版本已保存'}</span>}>
+        <section id="draft-fulltext" ref={fulltextHeading} tabIndex={-1} aria-label="完整稿件与原文">
+          <Card title="完整稿件与原文" right={<span>{dirty ? '有修改未保存' : '当前版本已保存'}</span>}>
+          {returnTarget && <Button className="mb-3" onClick={() => { if (!returnTarget.isConnected) { openIssues(); return; } returnTarget.scrollIntoView({ block: 'center', behavior: scrollBehavior() }); returnTarget.focus({ preventScroll: true }); }}>回到这项问题</Button>}
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList aria-label="稿件阅读方式" className="w-full justify-start">
               <TabsTrigger value="en">英文正文</TabsTrigger>
@@ -469,11 +481,20 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
               <Field label="待核实问题（每行一项）"><Textarea readOnly={busy} value={d.questions_zh.join('\n')} onChange={e => change('questions_zh', e.target.value)} className="min-h-28 leading-6" /></Field>
             </TabsContent>
             <TabsContent value="en">
-              <p className="mb-4 text-xs leading-6 text-ink-3">在这里修改待交付的英文正文，保留限定条件、日期和出处。</p>
-              {field('title_en', 'English title')}
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-ink-3">已保存版本 {row.version}{dirty ? ' · 本地修改尚未保存' : ''}</p>
+                <Button onClick={() => setEditingEnglish(value => !value)}>{editingEnglish ? '返回阅读' : '编辑源稿'}</Button>
+              </div>
               {row.upgrade_context && <UpgradeChanges context={row.upgrade_context} />}
-              <p id="draft-body-edit-help" className="mb-3 text-xs leading-6 text-ink-3">沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。</p>
-              {field('body_en', '英文正文（源稿）', true)}
+              {editingEnglish ? <>
+                {field('title_en', 'English title')}
+                <p id="draft-body-edit-help" className="mb-3 text-xs leading-6 text-ink-3">沿用现有 Markdown 或 HTML 格式，保留来源链接。分片稿只修改新增或计划调整的内容；原文保留段和外层格式保持不变。</p>
+                {field('body_en', '英文正文（源稿）', true)}
+              </> : <article lang="en" className="draft-manuscript-preview" aria-label="已保存英文稿">
+                <h2>{row.document.title_en}</h2>
+                <div ref={manuscriptBody} className="prose draft-manuscript-body" dangerouslySetInnerHTML={{ __html: row.body_html }} />
+              </article>}
+              {hasIssues && <Button className="my-4" onClick={openIssues}>继续核对问题</Button>}
               <Accordion type="single" collapsible value={metadataOpen} onValueChange={setMetadataOpen}>
                 <AccordionItem value="metadata">
                   <AccordionTrigger>搜索摘要与消息状态</AccordionTrigger>
@@ -515,7 +536,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
             </TabsContent>
           </Tabs>
           </Card>
-        </details>
+        </section>
 
         <Card>
           <Accordion type="multiple">
@@ -531,7 +552,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
         </Card>
       </div>
 
-      <aside className="order-1 min-w-0 space-y-5 xl:order-2" aria-label="审稿确认与交付">
+      <aside ref={issuePanel} tabIndex={-1} className="min-w-0 space-y-5" aria-label="审稿确认与交付">
         <Card title={<span className="inline-flex items-center gap-2">{row.gate.blocked ? <ShieldAlert className="size-4 text-hot" aria-hidden="true" /> : <FileCheck2 className="size-4 text-accent" aria-hidden="true" />}{row.gate.blocked ? '需要修改' : hasIssues ? '问题确认' : '核对稿件'}</span>} right={<Badge tone={row.gate.blocked ? 'bad' : !hasIssues ? 'muted' : remaining ? 'warn' : 'ok'}>{row.gate.blocked ? '人审待修改' : !hasIssues ? '本版没有待勾选项' : remaining ? '剩余 ' + remaining + ' 项' : '当前问题均已勾选'}</Badge>}>
           {hasIssues && <p className="mb-4 text-xs leading-6 text-ink-3">查看对应原文，再勾选确认。</p>}
           {row.gate.blocked && <p className="mb-4 rounded-control bg-hot-soft p-3 text-xs leading-6 text-hot">请先处理阻断问题，再确认通过。可以随时保存修改和核对进度。</p>}
@@ -570,7 +591,7 @@ function Editor({ row, stage, stageHeadingRef, note, setNote }: { row: Detail; s
             <Button className="mb-3 w-full" disabled={busy || dirty || (!revisionGoals.length && !note.trim())} onClick={() => void sendReview('request_revision', { revision_goals: revisionGoals, note }, '已提交 AI 修订请求。完成后请重新审稿。')}>请求 AI 修订</Button>
             {!revisionGoals.length && !note.trim() && <p className="mb-3 text-xs text-ink-3">请选择修改目标，或填写审稿意见。</p>}
           </details>
-          {row.review_sync?.status==='stale'&&<label className="mb-3 flex items-start gap-2 text-xs leading-6"><Checkbox checked={englishReviewed} onCheckedChange={value=>setEnglishReviewed(value===true)} disabled={busy||dirty} aria-label="已按当前英文主稿核对" className="mt-1" />已按当前英文主稿核对，未以旧中文代替审稿</label>}
+          {row.review_sync?.status==='stale'&&<label className="mb-3 flex items-start gap-2 text-xs leading-6"><Checkbox checked={englishReviewed} onCheckedChange={value=>setEnglishReviewed(value===true)} disabled={busy||dirty} aria-label={`我已核对当前英文稿（版本 ${row.version}）`} className="mt-1" />我已核对当前英文稿（版本 {row.version}）</label>}
           <div className="flex flex-wrap gap-2">
             {row.status === 'draft' && <Button tone={dirty ? 'secondary' : 'primary'} className="w-full" disabled={busy || dirty} onClick={() => void sendReview('submit', { note }, '已提交审稿。')}>提交审稿</Button>}
             {row.status === 'in_review' && <Button tone={dirty ? 'secondary' : 'primary'} className="w-full" disabled={approvalHold !== null} aria-describedby="approval-hint" onClick={() => void sendReview('approve', { note, confirmations, ...(row.review_sync?.status === 'stale' ? { english_reviewed: englishReviewed } : {}) }, '审核通过，可以导出。')}>确认通过</Button>}
