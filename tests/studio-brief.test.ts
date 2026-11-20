@@ -54,6 +54,19 @@ test('authenticated compose API produces one review-only draft, double clicks re
   const login = await passwordLogin(config.adminPassword!, '/admin', 'test');
   const cookie = `${SESSION_COOKIE}=${login.token}`, principal = (await sessionPrincipal(cookie))!;
   assert.equal((await app.inject({ method: 'POST', url: '/api/admin/studio/briefs', headers: { cookie }, payload: { article_ids: ids } })).statusCode, 403);
+  const selectionQuery = new URLSearchParams();
+  for (const id of ids) selectionQuery.append('article_ids', id);
+  const inspectionUrl = `/api/admin/studio/briefs/inspection?${selectionQuery}`;
+  assert.equal((await app.inject({ method: 'GET', url: inspectionUrl })).statusCode, 401, 'selection inspection is private');
+  const beforeInspection = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM studio_tasks`;
+  const inspection = await app.inject({ method: 'GET', url: inspectionUrl, headers: { cookie } });
+  assert.equal(inspection.statusCode, 200, inspection.body);
+  assert.equal(inspection.headers['cache-control'], 'no-store');
+  assert.deepEqual(inspection.json().counts, { selected: 5, independent_events: 5, eligible_independent_events: 5, additional_events_needed: 0 });
+  assert.equal(inspection.json().can_compose, true);
+  assert.equal(inspection.json().materials.every((item: { code: string }) => item.code === 'eligible'), true);
+  assert.equal(modelCalls, 0, 'read-only inspection never invokes the writing model');
+  assert.equal((await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM studio_tasks`)[0].n, beforeInspection[0].n, 'inspecting creates no task');
   const post = () => app.inject({ method: 'POST', url: '/api/admin/studio/briefs', headers: { cookie, 'x-csrf-token': principal.csrf }, payload: { article_ids: ids } });
   const [first, second] = await Promise.all([post(), post()]);
   assert.equal(first.statusCode, 202, first.body); assert.equal(second.statusCode, 202, second.body);
@@ -75,6 +88,12 @@ test('authenticated compose API produces one review-only draft, double clicks re
   await sql`UPDATE articles SET revision=revision+1 WHERE id=${ids[4]}`;
   await assert.rejects(reviewStudioDraft(draft.id, { version: draft.version, action: 'approve', english_reviewed: true,
     confirmations: draft.issues.items.filter(item => item.confirmable).map(item => ({ issueId: item.id, fingerprint: item.fingerprint })) }, actor), /原文已更新/);
+  await sql`UPDATE articles SET body_status='unconfirmed' WHERE id=${ids[4]}`;
+  const changedInspection = await app.inject({ method: 'GET', url: inspectionUrl, headers: { cookie } });
+  assert.equal(changedInspection.statusCode, 200);
+  assert.equal(changedInspection.json().can_compose, false);
+  assert.ok(changedInspection.json().materials[4].issues.some((issue: { code: string }) => issue.code === 'missing_body'));
+  assert.equal(modelCalls, 1, 'rechecking changed materials never repeats a model call');
 });
 
 test('dedupe leaving fewer than five events becomes HOLD; uncertain model attempt is not retried', async t => {
