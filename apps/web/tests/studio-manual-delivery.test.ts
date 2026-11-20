@@ -148,19 +148,26 @@ for (const width of [1440, 768, 390]) test(`manual delivery keeps upload, adopti
     await page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('button', { name: '配图', exact: true }).click();
     await expect(page.getByRole('navigation', { name: '当前稿件流程' }).getByRole('link', { name: '选题' })).toHaveAttribute('href', '/admin/studio/pitch?id=original-pitch');
     await page.getByLabel('封面图片文件', { exact: true }).setInputFiles({ name: 'cabinet.png', mimeType: 'image/png', buffer: Buffer.from(image.split(',')[1], 'base64') });
-    await page.getByLabel('封面英文替代文字', { exact: true }).fill(coverAlt);
+    await page.getByLabel('图片说明（英文 ALT）', { exact: true }).fill(coverAlt);
     await page.getByRole('button', { name: '上传为候选', exact: true }).click();
     await expect(page.getByRole('button', { name: '采用这张', exact: true })).toBeVisible();
     assert.equal(covers.selectedHash, null, 'upload only adds a candidate');
     assert.equal(draft.status, 'approved', 'upload does not alter text approval');
     await page.getByRole('button', { name: '采用这张', exact: true }).click();
     await expect(page.getByRole('button', { name: '当前采用', exact: true })).toBeDisabled();
+    const uploadDetails = page.locator('details').filter({ has: page.getByText('上传封面候选', { exact: false }) });
+    await expect(uploadDetails.getByLabel('图片说明（英文 ALT）', { exact: true })).toBeHidden();
+    await uploadDetails.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(uploadDetails.getByLabel('图片说明（英文 ALT）', { exact: true })).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(uploadDetails.getByLabel('图片说明（英文 ALT）', { exact: true })).toBeHidden();
     assert.equal(covers.confirmed, false, 'adoption requires product confirmation');
     assert.equal(draft.status, 'approved', 'adoption retains text approval');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await expect.poll(() => page.getByRole('img', { name: coverAlt, exact: true }).evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     await screenshot('cover-selected');
-    await page.getByRole('button', { name: '继续手工交付', exact: true }).click();
+    await page.getByRole('button', { name: '检查交付文件', exact: true }).click();
     await expect(page.getByRole('link', { name: '下载交付包', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '确认当前成品', exact: true }).click();
     await expect(page.getByRole('link', { name: '下载交付包', exact: true })).toHaveAttribute('href', '/api/admin/studio/drafts/manual-fixture/export?format=bundle&version=4&coverRevision=3');
@@ -287,7 +294,7 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     const flow = page.getByRole('navigation', { name: '当前稿件流程' });
     await flow.getByRole('button', { name: '配图', exact: true }).click();
     const file = page.getByLabel('封面图片文件', { exact: true });
-    const alt = page.getByLabel('封面英文替代文字', { exact: true });
+    const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
     const caption = page.getByLabel('封面英文图注', { exact: true });
     const image = await syntheticCover(page);
     const altText = 'Synthetic cabinet panel with a light border';
@@ -304,7 +311,7 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     assert.equal(dialogs.length, 0, 'the current step retains its buffer without a leave decision');
     for (const navigate of [
       () => flow.getByRole('button', { name: '交付', exact: true }).click(),
-      () => page.getByRole('button', { name: '继续手工交付', exact: true }).click(),
+      () => page.getByRole('button', { name: '检查交付文件', exact: true }).click(),
       () => page.getByRole('link', { name: '返回稿件', exact: true }).click(),
       () => page.evaluate(() => history.back()),
     ]) {
@@ -325,7 +332,7 @@ for (const width of [1440, 390]) test(`unuploaded cover inputs survive cancelled
     assert.equal(fixture.writes.length, 0, 'cancelled navigation never uploads or confirms');
 
     discard = true;
-    await page.getByRole('button', { name: '继续手工交付', exact: true }).click();
+    await page.getByRole('button', { name: '检查交付文件', exact: true }).click();
     await expect(flow.getByRole('button', { name: '交付', exact: true })).toHaveAttribute('aria-current', 'step');
     const afterDiscard = dialogs.length;
     await flow.getByRole('button', { name: '配图', exact: true }).click();
@@ -369,7 +376,7 @@ for (const width of [1440, 390]) test(`a pending cover upload blocks navigation 
     page.on('dialog', async dialog => { dialogs.push(dialog.type()); await dialog.accept(); });
     await visit(page, web.origin + '/admin/studio/drafts/cover-input-0?stage=cover');
     const file = page.getByLabel('封面图片文件', { exact: true });
-    const alt = page.getByLabel('封面英文替代文字', { exact: true });
+    const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
     const caption = page.getByLabel('封面英文图注', { exact: true });
     await file.setInputFiles(await syntheticCover(page)); await alt.fill('Synthetic panel during upload'); await caption.fill('Keep this caption until upload succeeds.');
     await page.evaluate(() => {
@@ -418,7 +425,7 @@ test('cover upload failures retain the file and both descriptions until a confir
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     await visit(page, web.origin + '/admin/studio/drafts/cover-input-0?stage=cover');
     const file = page.getByLabel('封面图片文件', { exact: true });
-    const alt = page.getByLabel('封面英文替代文字', { exact: true });
+    const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
     const caption = page.getByLabel('封面英文图注', { exact: true });
     const image = await syntheticCover(page);
     await file.setInputFiles(image); await alt.fill('Synthetic panel retained after a failed upload'); await caption.fill('Retain this caption until the upload is confirmed.');
@@ -470,7 +477,7 @@ test('a confirmed cover upload allows departure while the candidate refresh is s
     page.on('dialog', async dialog => { dialogs.push(dialog.type()); await dialog.dismiss(); });
     await visit(page, web.origin + '/admin/studio/drafts/cover-input-0?stage=cover');
     const file = page.getByLabel('封面图片文件', { exact: true });
-    const alt = page.getByLabel('封面英文替代文字', { exact: true });
+    const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
     await file.setInputFiles(await syntheticCover(page)); await alt.fill('Synthetic saved panel');
     fixture.coverRead.wait = refresh.promise;
     await page.getByRole('button', { name: '上传为候选', exact: true }).click();
@@ -495,7 +502,7 @@ test('a failed candidate refresh reports the saved upload accurately and leaves 
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     await visit(page, web.origin + '/admin/studio/drafts/cover-input-0?stage=cover');
     const file = page.getByLabel('封面图片文件', { exact: true });
-    const alt = page.getByLabel('封面英文替代文字', { exact: true });
+    const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
     await file.setInputFiles(await syntheticCover(page)); await alt.fill('Synthetic saved panel');
     fixture.coverRead.status = 500;
     await page.getByRole('button', { name: '上传为候选', exact: true }).click();
@@ -527,7 +534,7 @@ test('cover protection works with Tab, Enter and Space at 820px and 200% CSS zoo
       assert.fail('The intended control was not reachable by Tab.');
     };
     const file = page.getByLabel('封面图片文件', { exact: true });
-    const alt = page.getByLabel('封面英文替代文字', { exact: true });
+    const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
     const caption = page.getByLabel('封面英文图注', { exact: true });
     await expect(file).toBeEnabled();
     await tabTo(file);
@@ -606,7 +613,7 @@ for (const { width, zoom } of [{ width: 1440, zoom: 1 }, { width: 390, zoom: 1 }
       const source = page.getByRole('link', { name: '打开原始来源', exact: true });
       await expect(source).toBeFocused();
       pendingRead.resolve();
-      const alt = page.getByLabel('封面英文替代文字', { exact: true });
+      const alt = page.getByLabel('图片说明（英文 ALT）', { exact: true });
       await expect(alt).toBeEnabled();
       await expect(source).toBeFocused();
       await expect(page.getByLabel('封面图片文件', { exact: true })).toBeVisible();

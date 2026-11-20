@@ -98,7 +98,7 @@ export default function SelectBenchRun({ loaderData: d }: Route.ComponentProps) 
                   <Fragment key={r.case_id}>
                     <tr className="cursor-pointer border-b border-line/70 hover:bg-bg-sunk/50" onClick={() => setOpen(open === r.case_id ? null : r.case_id)}>
                       <td className="max-w-[420px] px-3 py-2.5">
-                        <div className="line-clamp-2 text-ink">{r.title}</div>
+                        <button type="button" aria-expanded={open === r.case_id} aria-controls={`selectbench-case-${encodeURIComponent(r.case_id)}`} className="min-h-10 text-left font-medium text-accent hover:underline" onClick={(event) => { event.stopPropagation(); setOpen(open === r.case_id ? null : r.case_id); }}><span className="line-clamp-2">{r.title}</span></button>
                         <div className="mt-0.5 text-[11.5px] text-ink-4">{r.stratum ?? "—"} · {r.case_id}</div>
                       </td>
                       <td className="px-3 py-2.5"><Badge tone={GOLD[r.gold]?.[1] ?? "muted"}>{GOLD[r.gold]?.[0] ?? r.gold}</Badge></td>
@@ -107,7 +107,7 @@ export default function SelectBenchRun({ loaderData: d }: Route.ComponentProps) 
                     {open === r.case_id && (
                       <tr className="border-b border-line/70 bg-bg-sunk/40">
                         <td colSpan={2 + d.run.models.length} className="px-3 py-3">
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <div id={`selectbench-case-${encodeURIComponent(r.case_id)}`} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             {d.run.models.map((m) => {
                               const x = r.by_model[m];
                               return (

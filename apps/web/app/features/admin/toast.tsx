@@ -1,5 +1,5 @@
 // A tiny toast stack for admin command results (no dependency, one instance in the admin layout).
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 
 type Tone = "ok" | "error" | "info";
@@ -18,6 +18,7 @@ function emit() {
 }
 
 export function toast(text: string, tone: Tone = "info") {
+  if (items.some((item) => item.text === text && item.tone === tone)) return;
   const id = ++seq;
   items = [...items, { id, text, tone }].slice(-4);
   emit();
@@ -29,6 +30,7 @@ export function toast(text: string, tone: Tone = "info") {
 
 export function Toaster() {
   const [list, setList] = useState<Item[]>([]);
+  const reduceMotion = useReducedMotion();
   useEffect(() => {
     listeners.push(setList);
     return () => {
@@ -41,11 +43,11 @@ export function Toaster() {
         {list.map((t) => (
           <motion.div
             key={t.id}
-            layout
-            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            layout={!reduceMotion}
+            initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.25, 1, 0.5, 1] }}
             className={`pointer-events-auto max-w-md rounded-card px-4 py-2.5 text-[13.5px] shadow-lg ring-1 backdrop-blur ${
               t.tone === "error" ? "bg-hot text-white ring-hot/40" : t.tone === "ok" ? "bg-ink text-bg ring-line-strong" : "bg-surface text-ink ring-line-strong"
             }`}
