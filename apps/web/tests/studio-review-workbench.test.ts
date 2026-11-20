@@ -124,7 +124,7 @@ for (const width of [390, 768, 1440]) test('formatted reading preserves the comp
   const web = await startWebServer(fixture.api); let browser;
   try {
     browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
     await visit(page, web.origin + '/admin/studio/drafts/review-fixture');
     const reading = page.getByRole('article', { name: '已保存英文稿' });
     await expect(reading.getByRole('heading', { name: 'Installation checklist' })).toBeVisible();
@@ -139,6 +139,7 @@ for (const width of [390, 768, 1440]) test('formatted reading preserves the comp
     }
     await captureReviewState(page, 'initial-layout', width, false);
     await page.getByRole('button', { name: '阅读英文稿', exact: true }).click();
+    await expect(reading.getByRole('table', { name: 'Article table 1' })).toBeInViewport();
     await captureReviewState(page, 'formatted-reading', width, false);
     const body = await openEnglishDraft(page);
     await expect(body).toHaveValue(original);
