@@ -1,4 +1,4 @@
-import type { Packet, Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Packet, Response } from '@aihot/contracts/studio-handoff';
 import { ENTITIES } from '@aihot/industry/taxonomy';
 import sourceConfig from '../../../../industry/sources.json' with { type: 'json' };
 import { pitchDraftFindings } from './studio-company-facts.ts';

@@ -26,10 +26,12 @@ import { applyDraftRevision, revisionGoalSchema, revisionGoalLabels, revisionRes
 import { enqueue, ensureQueue, QUEUES } from '../jobs/queue.ts';
 import { failedReceiptId, failureKind } from '../providers/receipts.ts';
 import { publicStudioTitle, studioUpgradeContext } from './studio-upgrade.ts';
-import { sanitizeReviewedHtml } from './studio-wordpress.ts';
+import { sanitizeReviewedHtml } from './studio-reviewed-html.ts';
 import { previewStudioDraftMedia } from './studio-draft-media.ts';
 import { buildEditorialIssues, validateEditorialConfirmations, type EditorialIssues, type EditorialConfirmation } from './editorial-issues.ts';
-import { packetSchema, responseSchema, validateResponse, writingHandoffFiles, responseFormat, sha256, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import { responseSchema, type Packet } from '@aihot/contracts/studio-handoff';
+import { sha256 } from '../lib/ids.ts';
+import { packetSchema, validateResponse, writingHandoffFiles, responseFormat } from './studio-handoff.ts';
 import { writingPolicyBundle } from './writing-policy-bundle.ts';
 import { studioDeliveryCapabilities } from './studio-delivery.ts';
 
@@ -342,9 +344,19 @@ export async function applyStudioReviewEdit(id:string,input:unknown,actor:string
     return {id,version:row.version+1,status:'draft',gate:nextGate};
   });
 }
+const reviewDraftSchema = z.object({
+  version: z.number().int().positive(),
+  action: z.enum(['submit', 'approve', 'request_revision', 'update_confirmations', 'recover_revision', 'keep_revision_original', 'return', 'confirm'])
+    .transform(action => action === 'return' ? 'request_revision' : action === 'confirm' ? 'update_confirmations' : action),
+  note: z.string().max(3000).default(''),
+  revision_goals: z.array(revisionGoalSchema).max(3).default([]),
+  english_reviewed: z.boolean().optional(),
+  confirmations: z.array(z.object({ issueId: z.string(), fingerprint: z.string() }).strict()).default([]),
+}).strict();
+
 export async function reviewStudioDraft(id: string, input: unknown, actor: string) {
-  const b = z.object({ version: z.number().int().positive(), action: z.enum(['submit','approve','return','confirm','recover_revision','keep_revision_original']), note: z.string().max(3000).default(''), revision_goals:z.array(revisionGoalSchema).max(3).default([]), english_reviewed:z.boolean().optional(), confirmations:z.array(z.object({issueId:z.string(),fingerprint:z.string()}).strict()).default([]) }).strict().parse(input);
-  if(b.action==='return'){
+  const b = reviewDraftSchema.parse(input);
+  if(b.action==='request_revision'){
     if(!b.revision_goals.length&&!b.note.trim())invalid('请选择一个修改目标；补充说明可留空。');
     await ensureQueue(QUEUES.studioRevision);
   }
@@ -375,7 +387,7 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
     if (b.action === 'submit' && row.status !== 'draft') invalid('只有草稿可以提交审稿。');
     if (b.action === 'approve' && row.status !== 'in_review') invalid('请先提交审稿，再确认通过。');
     if(previous&&previous.version===row.version&&['queued','running','unknown'].includes(previous.status))invalid('修订尚未结束，请核对修订结果，或选择保留原稿继续。');
-    if(b.action==='return'){
+    if(b.action==='request_revision'){
       const [lock]=await tx`SELECT pg_try_advisory_xact_lock(hashtextextended(${`studio-revision:${id}`},0)) AS acquired`;
       if(!lock.acquired)invalid('上次修订仍在收尾，原稿可继续审核；暂不发起新的付费修订。');
       const [unresolved]=await tx`SELECT id FROM receipts WHERE subject LIKE ${`studio-revision:${id}:%`} AND purpose='studio_revision' AND status IN ('pending','unknown') LIMIT 1`;
@@ -387,6 +399,7 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
       await audit(actor,'studio.draft.return',`studio-draft:${id}`,b.note||null,{status:row.status,version:row.version},{status:'draft',version:nextVersion,revision},{db:tx});
       return {id,status:'draft',version:nextVersion,revision_request:revision,queued:true};
     }
+    const updatingConfirmations = b.action === 'update_confirmations';
     let confirmations: EditorialConfirmation[] = [];
     let unchangedConfirmations = false;
     let sourceDate: { publicationTime: string | null; utcOffset: string } | undefined;
@@ -401,7 +414,7 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
       if(b.action==='approve'&&gate.blocked)invalid('存在否决项，必须修改内容后重新审核：'+gate.findings.filter(f=>f.severity==='BLOCK').map(f=>f.ruleId+' '+f.quote).join('；'));
       const issues=buildEditorialIssues(packet,doc,gate);
       const prior=await priorConfirmations(id,issues,tx);
-      const checked=validateEditorialConfirmations(issues,{confirmations:b.confirmations},b.action==='confirm'?[]:prior);
+      const checked=validateEditorialConfirmations(issues,{confirmations:b.confirmations},updatingConfirmations?[]:prior);
       if (checked.errors.length) invalid('逐项确认已失效或对象不符，请刷新后核对。');
       if (b.action==='approve'&&!checked.canApprove) invalid(`请逐项确认风险提示及逐字检查后再审核通过；尚缺${checked.missingIssueIds.length}项。`);
       if (b.action==='approve') {
@@ -415,14 +428,16 @@ export async function reviewStudioDraft(id: string, input: unknown, actor: strin
       }
       confirmations=checked.confirmed;
       const confirmationKeys=(items:EditorialConfirmation[])=>JSON.stringify(items.map(item=>JSON.stringify([item.issueId,item.fingerprint])).sort());
-      unchangedConfirmations=b.action==='confirm'&&confirmationKeys(confirmations)===confirmationKeys(prior);
+      unchangedConfirmations=updatingConfirmations&&confirmationKeys(confirmations)===confirmationKeys(prior);
       for (const e of doc.evidence) if (!(packet.brief||packet.pitch?packet.articles:[article]).some(a=>a.body_text?.includes(e.quote)||a.title.includes(e.quote))) invalid('证据引用不在原文中，请重新核对。');
     }
-    const status = unchangedConfirmations ? row.status : b.action === 'confirm' ? row.status==='approved'?'in_review':row.status : b.action === 'submit' ? 'in_review' : b.action === 'approve' ? 'approved' : 'draft';
+    const status = unchangedConfirmations ? row.status : updatingConfirmations ? row.status==='approved'?'in_review':row.status : b.action === 'submit' ? 'in_review' : b.action === 'approve' ? 'approved' : 'draft';
     const nextVersion=unchangedConfirmations?row.version:row.version+1;
     if(!unchangedConfirmations)await tx`UPDATE studio_drafts SET status=${status},version=version+1,updated_by=${actor},updated_at=now(),
-      reviewed_by=${b.action === 'approve' ? actor : b.action === 'confirm'&&status==='approved' ? row.reviewed_by : null},reviewed_at=${b.action === 'approve' ? new Date() : b.action === 'confirm'&&status==='approved' ? row.reviewed_at : null} WHERE id=${id}`;
-    await audit(actor, `studio.draft.${b.action}`, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: nextVersion, document_hash:documentIdentity(row.document),confirmations,...(b.english_reviewed?{english_reviewed_hash:englishReviewHash(row.document)}:{}),...(sourceDate?{source_date:sourceDate}:{}),...(briefDates?{brief_source_dates:briefDates}:{}) }, { db: tx });
+      reviewed_by=${b.action === 'approve' ? actor : updatingConfirmations&&status==='approved' ? row.reviewed_by : null},reviewed_at=${b.action === 'approve' ? new Date() : updatingConfirmations&&status==='approved' ? row.reviewed_at : null} WHERE id=${id}`;
+    // Audit event names also identify historical confirmation records.
+    const auditAction = updatingConfirmations ? 'studio.draft.confirm' : `studio.draft.${b.action}`;
+    await audit(actor, auditAction, `studio-draft:${id}`, b.note || null, { status: row.status, version: row.version }, { status, version: nextVersion, document_hash:documentIdentity(row.document),confirmations,...(b.english_reviewed?{english_reviewed_hash:englishReviewHash(row.document)}:{}),...(sourceDate?{source_date:sourceDate}:{}),...(briefDates?{brief_source_dates:briefDates}:{}) }, { db: tx });
     return { id, status, version: nextVersion };
   });
 }

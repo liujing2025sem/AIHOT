@@ -213,21 +213,21 @@ test('pitch desk keeps raw text private and generates only after explicit outlin
     const page=await browser.newPage({viewport:{width:390,height:844}});
     const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
     await visit(page,web.origin+'/admin/studio');
-    await expect(page.getByRole('link',{name:'写专业文章',exact:true})).toHaveAttribute('href','/admin/studio/pitch');
+    await expect(page.getByRole('link',{name:'写下买家问题',exact:true})).toHaveAttribute('href','/admin/studio/pitch');
     await visit(page,web.origin+'/admin/studio/pitch?question_id='+questionId);
-    const question=page.getByRole('textbox',{name:'问题或命题',exact:true});
-    const preview=page.getByRole('button',{name:'预览脱敏',exact:true}),save=page.getByRole('button',{name:'保存并开始备料',exact:true});
-    const consent=page.getByRole('checkbox',{name:'我已核对，脱敏文本可以保存'});
+    const question=page.getByRole('textbox',{name:'买家问题',exact:true});
+    const preview=page.getByRole('button',{name:'检查客户信息',exact:true}),save=page.getByRole('button',{name:'保存并查找资料',exact:true});
+    const consent=page.getByRole('checkbox',{name:'已核对，可以保存这个问题'});
     await expect(question).toHaveValue(savedTitle);
     await question.fill(raw);await preview.click();
     await expect(page.getByText('邮箱 1 处',{exact:false})).toBeVisible();
-    await expect(save).toBeDisabled();
+    await expect(save).toBeHidden();
     await consent.check();await expect(save).toBeEnabled();
-    await question.fill(raw+'?');await expect(save).toBeDisabled();
+    await question.fill(raw+'?');await expect(save).toBeHidden();
     await preview.click();await consent.check();await save.click();
     await page.waitForURL('**/admin/studio/pitch?id='+id);
-    await expect(page.getByRole('heading',{name:'后台正在备料'})).toBeVisible();
-    await expect(page.getByRole('heading',{name:'证据不足'})).toBeVisible({timeout:9000});
+    await expect(page.getByRole('heading',{name:'正在准备资料与大纲'})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'待补依据'})).toBeVisible({timeout:9000});
     await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toHaveCount(0);
     await expect(page.getByText('公司事实黑名单未配置。',{exact:false})).toBeVisible();
     assert.deepEqual(writes,[{method:'POST',path:redact,body:{question:raw}},{method:'POST',path:redact,body:{question:raw+'?'}},
@@ -285,7 +285,7 @@ test('pitch desk keeps raw text private and generates only after explicit outlin
     await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toHaveCount(0);
 
     reuse=true;
-    await page.getByRole('link',{name:'新命题',exact:true}).click();
+    await page.getByRole('link',{name:'新选题',exact:true}).click();
     await question.fill(savedTitle);await preview.click();await consent.check();await save.click();
     await page.waitForURL('**/admin/studio?tab=tasks#task-'+taskId);
     await expect(page.locator('#task-'+taskId)).toBeVisible();
@@ -342,7 +342,7 @@ function operatorDeskFixture(options: { duplicate?: boolean } = {}) {
   return { api, writes, generation, draft, briefTaskId, briefDraft };
 }
 
-for (const width of [1440, 390]) test(`operator sidebar has one current destination and a safe review shortcut at ${width}`, async () => {
+for (const width of [1440, 768, 390]) test(`operator sidebar has one current destination and a safe review shortcut at ${width}`, async () => {
   const fixture = operatorDeskFixture();
   const web = await startWebServer(fixture.api); let browser;
   try {
@@ -350,35 +350,37 @@ for (const width of [1440, 390]) test(`operator sidebar has one current destinat
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     await visit(page, web.origin + '/admin/studio');
-    await expect(page.getByRole('heading', { name: '今日选稿', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '选题', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '继续审稿', exact: true })).toHaveAttribute('href', '/admin/studio/drafts/' + fixture.draft.id);
     const trigger = page.getByRole('button', { name: '打开工作台导航', exact: true });
     const dialog = page.getByRole('dialog');
-    if (width === 390) {
+    if (width < 1024) {
       await trigger.click(); await expect(dialog).toBeVisible();
     }
-    for (const name of ['今日选稿', '专业内容', '我的稿件', '发布记录']) await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: '今日选稿', exact: true })).toHaveAttribute('aria-current', 'page');
+    const nav = page.getByRole('navigation', { name: width < 1024 ? '移动工作台导航' : '工作台导航', exact: true });
+    for (const name of ['工作台', '选题', '稿件']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+    await expect(nav.getByRole('link', { name: '选题', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
-    await expect(page.getByRole('link', { name: '专业内容', exact: true })).toHaveAttribute('href', '/admin/studio/pitch');
-    await expect(page.getByRole('link', { name: '发布记录', exact: true })).toHaveAttribute('href', '/admin/studio/published');
-    if (width === 390) {
+    await nav.getByRole('button', { name: '管理与工具' }).click();
+    await expect(nav.getByRole('link', { name: '买家问题', exact: true })).toHaveAttribute('href', '/admin/studio/pitch');
+    await expect(nav.getByRole('link', { name: '发布记录', exact: true })).toHaveAttribute('href', '/admin/studio/published');
+    if (width < 1024) {
       await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
       await trigger.click();
     }
-    await page.getByRole('link', { name: '我的稿件', exact: true }).click();
+    await nav.getByRole('link', { name: '稿件', exact: true }).click();
     await page.waitForURL(url => url.pathname === '/admin/studio' && url.searchParams.get('tab') === 'drafts');
-    if (width === 390) { await expect(dialog).toHaveCount(0); await trigger.click(); }
-    await expect(page.getByRole('link', { name: '我的稿件', exact: true })).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByRole('link', { name: '今日选稿', exact: true })).not.toHaveAttribute('aria-current', 'page');
+    if (width < 1024) { await expect(dialog).toHaveCount(0); await trigger.click(); }
+    await expect(nav.getByRole('link', { name: '稿件', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: '选题', exact: true })).not.toHaveAttribute('aria-current', 'page');
     await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
-    if (width === 390) await page.keyboard.press('Escape');
+    if (width < 1024) await page.keyboard.press('Escape');
 
     await visit(page, web.origin + '/admin/studio?tab=drafts&status=in_review');
-    if (width === 390) await trigger.click();
-    await expect(page.getByRole('link', { name: '我的稿件', exact: true })).toHaveAttribute('aria-current', 'page');
+    if (width < 1024) await trigger.click();
+    await expect(nav.getByRole('link', { name: '稿件', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('a[aria-current="page"]:visible')).toHaveCount(1);
-    if (width === 390) await page.keyboard.press('Escape');
+    if (width < 1024) await page.keyboard.press('Escape');
     await visit(page, web.origin + '/admin/studio');
     await page.getByRole('checkbox', { name: '选择 LED announcement 1', exact: true }).check();
     assert.deepEqual(fixture.writes, [], 'navigation, existing-draft discovery and selecting material never start a model or publication command');
@@ -394,8 +396,10 @@ for (const width of [1440, 390]) test(`selected material actions keep single-dra
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    const inspectionRequests: string[] = [];
+    page.on('request', request => { if (new URL(request.url()).pathname === '/api/admin/studio/briefs/inspection') inspectionRequests.push(request.url()); });
     await visit(page, web.origin + '/admin/studio');
-    const selected = page.getByRole('region', { name: '已选素材操作', exact: true });
+    const selected = page.getByRole('region', { name: '已选素材操作', exact: true, includeHidden: true });
     const generate = selected.getByRole('button', { name: '一键评估并成稿', exact: true });
     const compose = selected.getByRole('button', { name: '合成一期短讯', exact: true });
     for (let number = 1; number <= 4; number++) {
@@ -403,9 +407,30 @@ for (const width of [1440, 390]) test(`selected material actions keep single-dra
       await expect(generate).toBeEnabled(); await expect(compose).toHaveCount(0);
     }
     await expect(selected).toBeVisible(); await expect(selected).toContainText(/已选\s*4\s*条/);
+    const options = selected.getByRole('button', { name: '选稿设置', exact: true });
+    const dialog = page.getByRole('dialog');
+    await options.click();
+    await expect(dialog).toContainText('专业长文从“买家问题”开始。生成后进入待审。');
+    await page.waitForTimeout(350); // Exceed the 240 ms debounce to catch inspections below five selections.
+    await expect(dialog.getByRole('status')).toHaveCount(0);
+    await expect(selected).not.toContainText('初步识别');
+    assert.deepEqual(inspectionRequests, [], 'one to four selections do not request a brief inspection');
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(options).toBeFocused();
     await page.getByRole('checkbox', { name: '选择 LED announcement 5', exact: true }).check();
     await expect(selected).toContainText(/已选\s*5\s*条/); await expect(generate).toHaveCount(0); await expect(compose).toBeEnabled();
     await expect(selected).toContainText(/初步识别 5 个事件，其中 5 个可用于短讯/);
+    await options.click();
+    await expect(dialog.getByRole('status')).toContainText('初步识别 5 个事件，5 个符合短讯选材条件。');
+    const checkedRequests = inspectionRequests.length;
+    await dialog.getByRole('button', { name: '移除 LED announcement 5', exact: true }).click();
+    await expect(dialog.getByRole('status')).toHaveCount(0);
+    await expect(selected).not.toContainText('初步识别');
+    await page.waitForTimeout(350);
+    assert.equal(inspectionRequests.length, checkedRequests, 'returning to four selections clears the brief report without another inspection');
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(options).toBeFocused();
+    await expect(generate).toBeEnabled(); await expect(compose).toHaveCount(0);
+    await page.getByRole('checkbox', { name: '选择 LED announcement 5', exact: true }).check();
+    await expect(compose).toBeEnabled();
     await page.getByRole('checkbox', { name: '选择 缺正文的公告', exact: true }).check();
     await expect(selected).toContainText(/已选\s*6\s*条/); await expect(compose).toBeDisabled();
     await expect(selected).toContainText(/缺.*正文|正文.*缺|先补齐/);
@@ -443,12 +468,12 @@ for (const width of [1440, 390]) test(`selected material actions keep single-dra
   } finally { await browser?.close(); await web.stop(); }
 });
 
-test('operator sees duplicate-event advice and can repair selection without creating any writing task', async () => {
+for (const width of [1440, 390]) test(`operator sees duplicate-event advice and can repair selection without creating any writing task at ${width}`, async () => {
   const fixture = operatorDeskFixture({ duplicate: true });
   const web = await startWebServer(fixture.api); let browser;
   try {
     browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const page = await browser.newPage({ viewport: { width, height: 844 } });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     await visit(page, web.origin + '/admin/studio');
     for (let number = 1; number <= 5; number++) await page.getByRole('checkbox', { name: `选择 LED announcement ${number}`, exact: true }).check();
@@ -574,7 +599,7 @@ test('pitch v2 saves padded default headings consistently and only retries the c
     await expect(find).toBeEnabled();
     await expect(page.getByRole('textbox',{name:'补充证据链接：'+gap})).toBeHidden();
     await find.click();
-    await expect(page.getByRole('heading',{name:'后台正在备料'})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'正在准备资料与大纲'})).toBeVisible();
     await expect(page.getByRole('heading',{name:'选择方向与大纲'})).toBeVisible({timeout:9000});
     await page.getByRole('button',{name:'核对依据',exact:true}).click();
     await expect(page.getByRole('heading',{name:'有直接证据 · 1 题'})).toBeVisible();
@@ -599,14 +624,16 @@ test('pitch v2 saves padded default headings consistently and only retries the c
     const chosenHeading = '下单前的实际尺寸核对';
     await page.getByRole('textbox',{name:'第 1 处改动的小节标题',exact:true}).fill(chosenHeading);
     await page.getByRole('radio',{name:/Billboard Size Guide/}).check();
+    await page.getByText('补充写作要求（选填）',{exact:true}).click();
     await page.getByRole('checkbox',{name:'增加条件对照表',exact:true}).check();
-    await expect(page.getByRole('textbox',{name:'补充逻辑（选填）',exact:true})).toHaveValue('');
+    await expect(page.getByRole('textbox',{name:'写作要求（选填）',exact:true})).toHaveValue('');
     assert.equal(writes.length,1,'selecting a direction, outline and additions does not create a task or call a writer');
     await page.getByRole('button',{name:'保存选择，稍后生成',exact:true}).click();
     await expect(page.getByText('选择已保存，刷新后可继续。',{exact:true})).toBeVisible();
     assert.deepEqual(writes[1],{path:url+'/choices',body:{version:8,choice_revision:0,article_ids:['page','reference'],selected_title:'Billboard Size Guide',
       outline:[{id:'change-0',heading:chosenHeading,include:true},{id:'change-1',heading:change[2].heading,include:true},{id:'change-2',heading:change[3].heading,include:false}],additions:['comparison'],note:''}});
     await page.reload();
+    await page.getByText('补充写作要求（选填）',{exact:true}).click();
     await expect(page.getByRole('checkbox',{name:'增加条件对照表',exact:true})).toBeChecked();
     await expect(page.getByRole('checkbox',{name:'保留改动：额外的换算附录'})).not.toBeChecked();
     await expect(page.getByRole('textbox',{name:'第 1 处改动的小节标题',exact:true})).toHaveValue(chosenHeading);
@@ -653,7 +680,7 @@ test('pitch v2 saves padded default headings consistently and only retries the c
     await expect(page.getByRole('link',{name:'继续原采编任务 →'})).toHaveAttribute('href','/admin/studio?tab=tasks#task-old-task');
     assert.equal(writes.length,5);
     await page.getByRole('button',{name:'改用片段采编（新备料）'}).click();
-    await expect(page.getByRole('heading',{name:'后台正在备料'})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'正在准备资料与大纲'})).toBeVisible();
     assert.deepEqual(writes.at(-1),{path:pitches+'/old-unknown/upgrade',body:{version:1}});
     await open('no-change');
     await expect(page.getByRole('heading',{name:'无需升级',exact:true})).toBeVisible();
@@ -698,7 +725,7 @@ test('missing evidence offers a concrete scope choice with omissions and needs n
     await expect(page.getByText('未证实的德国仓现货案例',{exact:true})).toBeVisible();
     assert.deepEqual(writes,[],'scope suggestions do not silently change the buyer question');
     await page.getByRole('button',{name:'选择此范围，准备大纲',exact:true}).click();
-    await expect(page.getByRole('heading',{name:'后台正在备料',exact:true})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'正在准备资料与大纲',exact:true})).toBeVisible();
     assert.deepEqual(writes,[{path:url+'/scope',body:{version:1,scope_id:'supported-order-checks'}}]);
     await expect(page.getByRole('button',{name:'生成英文稿',exact:true})).toHaveCount(0);
     await page.reload();

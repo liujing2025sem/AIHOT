@@ -13,10 +13,10 @@ import {importLink,type Prep} from './studio-pitch.ts';
 import {studioMaterial,studioGenerationStatus,studioTask,receiveStudioTask} from './studio.ts';
 import {companyFactRules} from './studio-company-facts.ts';
 import {discoverPitchEvidence} from './studio-pitch-research.ts';
-import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,editorialAdditions,operatorFactInputSchema,type OperatorFact,type Pitch} from '../../../../scripts/editorial-pitch-lib.ts';
-import {packetSchema} from '../../../../scripts/editorial-pilot-lib.ts';
+import {buyerQuestionsSchema,editPlanSchema,pageUpdatePlanSchema,fragmentPlanSchema,fragmentSchema,operatorFactInputSchema,type OperatorFact,type Pitch} from '@aihot/contracts/studio-pitch';
+import {packetSchema} from './studio-handoff.ts';
 import {writingPolicyBundle} from './writing-policy-bundle.ts';
-import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,revisionCharacterLimit,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
+import {splitPage,answerEvidence,evidenceFactQuote,pixelInputEvidence,calculateFact,validateEditPlan,validateFragment,assembleFragments,revisionCharacterLimit,editorialAdditions,type Fact,type Paragraph,type EditOperation} from './studio-pitch-fragments.ts';
 
 function invalid(s:string):never{throw Object.assign(new Error(s),{statusCode:400});}
 const prompt=(name:string)=>readFileSync(new URL(`../../../../industry/prompts/${name}.md`,import.meta.url),'utf8');

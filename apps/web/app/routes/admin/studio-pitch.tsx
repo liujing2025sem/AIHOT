@@ -18,7 +18,7 @@ type OutputType = keyof typeof outputLabels;
 type FinalOutput = Exclude<OutputType, 'auto'>;
 const outputChoices: FinalOutput[] = ['update', 'guide', 'short'];
 const isFinalOutput = (value: string): value is FinalOutput => outputChoices.some(choice => choice === value);
-const statusLabels = { unprepared: '未备料', preparing: '备料中', ready: '待确认', insufficient: '证据不足', failed: '备料失败', confirmed: '已确认' };
+const statusLabels = { unprepared: '待查资料', preparing: '查找资料中', ready: '待确认', insufficient: '待补依据', failed: '资料准备未完成', confirmed: '已确认' };
 type Status = keyof typeof statusLabels;
 
 type Brief = { output_type: OutputType; existing_url: string; links: string[] };
@@ -126,7 +126,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-export const meta = () => [{ title: '命题采编 · Chipshow Studio' }];
+export const meta = () => [{ title: '买家问题 · Chipshow Studio' }];
 
 function httpUrl(value: string) {
   try {
@@ -172,24 +172,15 @@ function BriefFields({ output, setOutput, url, setUrl, links, setLinks, disabled
   </fieldset>;
 }
 
-function Progress({ current }: { current: number }) {
-  return <ol aria-label="命题进度" className="pitch-preparation-progress">
-    {['写题', '备料', '确认', '成稿'].map((step, i) => <li key={step} aria-current={i === current ? 'step' : undefined}
-      className={i === current ? 'font-semibold text-accent' : i < current ? 'text-ink-2' : 'text-ink-3'}>
-      {i < current ? '✓ ' : ''}{step}
-    </li>)}
-  </ol>;
-}
-
 function History({ rows, activeId }: { rows: PitchRow[]; activeId?: string }) {
-  return <Card title="已保存的命题">
+  return <Card title="已保存的选题">
     {rows.length ? <ul className="max-h-80 divide-y divide-line overflow-y-auto">
       {rows.map(row => <li key={row.id} className="flex min-w-0 flex-wrap items-start gap-2 py-2 first:pt-0 last:pb-0">
         <Link to={pitchLink(row.id)} aria-current={activeId === row.id ? 'page' : undefined}
           className="min-w-24 flex-1 break-words text-sm text-accent aria-[current=page]:font-semibold">{row.title}</Link>
         <Badge tone={row.status === 'insufficient' || row.status === 'failed' ? 'warn' : 'muted'}>{statusLabels[row.status]}</Badge>
       </li>)}
-    </ul> : <p className={muted}>还没有命题。写下一个要回答的问题就能开始。</p>}
+    </ul> : <p className={muted}>保存的选题会显示在这里。</p>}
   </Card>;
 }
 
@@ -233,29 +224,29 @@ function NewPitch({ question, missing }: { question: SavedQuestion | null; missi
       {blocked ? <p role="alert" className={warning}>{missing ? '问题地图里找不到这条记录。' : '这条问题已暂停。'} <Link to={desk} className="text-accent">另写一个题目</Link></p> :
         <div className="space-y-4">
           {question && <p className={muted}>已从问题地图带入题目，可以修改后再预览。</p>}
-          <Field label="问题或命题" hint="原话不会随命题保存，只在点击预览时送往脱敏接口。">
-            <Textarea aria-label="问题或命题" disabled={busy} maxLength={4000} value={raw} onChange={e => { setRaw(e.target.value); setPreview(null); setChecked(false); }}
+          <Field label="买家问题" hint="先检查姓名、邮箱等客户信息，再保存处理后的问题。">
+            <Textarea aria-label="买家问题" disabled={busy} maxLength={4000} value={raw} onChange={e => { setRaw(e.target.value); setPreview(null); setChecked(false); }}
               placeholder="输入一个客户问题，或写下你希望文章回答的问题" />
           </Field>
-          <Button tone="primary" disabled={busy || !raw.trim()} busy={pending === 'POST ' + base + '/pitch/redact'} onClick={() => void redact()}>预览脱敏</Button>
+          <Button tone={preview ? 'secondary' : 'primary'} disabled={busy || !raw.trim()} busy={pending === 'POST ' + base + '/pitch/redact'} onClick={() => void redact()}>检查客户信息</Button>
           {preview && <div className="space-y-2 rounded-control bg-bg-sunk p-3">
-            <p className="text-sm font-semibold">脱敏预览</p>
+            <p className="text-sm font-semibold">检查后的问题</p>
             <p className="whitespace-pre-wrap break-words text-sm">{preview.text || '没有可保存的内容。'}</p>
             <p className={muted}>{preview.redactions.length ? preview.redactions.map(item => (redactionLabels[item.kind] ?? item.kind) + ' ' + item.count + ' 处').join(' · ') : '未识别到需要替换的内容。'} 如仍有客户信息，请先改写原话，再重新预览。</p>
             {questionError && <p className={warning}>{questionError}</p>}
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" className="mt-1" checked={checked} disabled={busy || !!questionError} onChange={e => setChecked(e.target.checked)} />
-              我已核对，脱敏文本可以保存
+            <label htmlFor="pitch-privacy-confirmed" className="flex min-h-12 items-start gap-2 py-3 text-sm">
+              <input id="pitch-privacy-confirmed" type="checkbox" className="mt-1" checked={checked} disabled={busy || !!questionError} onChange={e => setChecked(e.target.checked)} />
+              已核对，可以保存这个问题
             </label>
           </div>}
         </div>}
     </Card>
-    {!blocked && <Card title="告诉系统要准备什么">
+    {!blocked && checked && <Card title="文章设置">
       <BriefFields output={output} setOutput={setOutput} url={url} setUrl={setUrl} links={links} setLinks={setLinks} disabled={busy} />
       {error && <p className="mt-3 text-sm text-ink-3">{error}</p>}
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button tone="primary" disabled={busy || !checked || !!error} onClick={() => void save()}>保存并开始备料</Button>
-        <p className={muted}>保存后，后台开始找素材和拟大纲。</p>
+        <Button tone="primary" disabled={busy || !checked || !!error} onClick={() => void save()}>保存并查找资料</Button>
+        <p className={muted}>同时准备文章大纲。</p>
       </div>
     </Card>}
   </div>;
@@ -505,13 +496,12 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
       {prep.scope && <div className="mt-3 rounded-control bg-bg-sunk p-3 text-sm leading-6">
         <p>你已选择的回答范围：{prep.scope.question}</p>
         {!!prep.scope.omitted_questions.length && <><p className="mt-2 font-medium">本次暂不回答</p><ul className="list-disc pl-4">{prep.scope.omitted_questions.map((question, i) => <li key={i}>{question}</li>)}</ul></>}
-        <details className="mt-2"><summary className={disclosure}>查看原始命题</summary><p>{prep.scope.original_question}</p></details>
+        <details className="mt-2"><summary className={disclosure}>查看原始问题</summary><p>{prep.scope.original_question}</p></details>
       </div>}
       <p className="mt-2 text-sm leading-6 text-ink-3">系统已准备方向与大纲。选中适合的写法，确认后才生成英文全文。</p>
-      <p className="mt-2 text-xs leading-6 text-ink-3">补充对照表或核对清单，只改变表达方式；未核实的库存、交期与客户案例不会成为事实。</p>
     </Card>
     <Card title="选择方向与大纲" right={<Badge tone="accent">{statusLabels.ready}</Badge>}>
-      <nav aria-label="备料检查" className="mb-4 grid grid-cols-3 gap-1 rounded-control bg-bg-sunk p-1">
+      <nav aria-label="资料与大纲" className="mb-4 grid grid-cols-3 gap-1 rounded-control bg-bg-sunk p-1">
         {tabs.map(({ id, label }) => <Button key={id} size="sm" tone={panel === id ? 'primary' : 'ghost'} aria-pressed={panel === id}
           className="min-w-0 px-1 sm:px-2" onClick={() => setPanel(id)}>{label}</Button>)}
       </nav>
@@ -582,16 +572,18 @@ function Confirmation({ pitch, prep, onConfirmed }: { pitch: PitchRow; prep: Pre
       {panel === 3 && <EngineerReview prep={prep} conservative={conservative} setConservative={setConservative}
         name={name} setName={setName} reply={reply} setReply={setReply} busy={busy} />}
       </div>
-      <fieldset disabled={busy} className="mt-5 min-w-0 space-y-3 border-t border-line pt-4">
-        <legend className="text-sm font-semibold">补充要求（可多选，也可全留空）</legend>
-        <p className={muted}>用已有证据把内容组织得更好。勾选后不会开始生成正文。</p>
+      <details className="mt-5 border-t border-line pt-2">
+        <summary className="min-h-12 cursor-pointer rounded-control py-3 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">补充写作要求（选填）</summary>
+      <fieldset disabled={busy} className="min-w-0 space-y-3 pb-2">
+        <legend className="sr-only">补充写作要求</legend>
         <div className="flex flex-wrap gap-3">{(Object.keys(additionLabels) as Addition[]).map(key => <label key={key} className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={additions.includes(key)} onChange={e => setAdditions(items => e.target.checked ? [...items, key] : items.filter(item => item !== key))} />{additionLabels[key]}
         </label>)}</div>
-        <Field label="补充逻辑（选填）" hint="有特别的表达要求再写。不填也能完成采编；此处内容不作为事实来源。">
-          <Textarea aria-label="补充逻辑（选填）" maxLength={2000} rows={2} value={note} onChange={e => setNote(e.target.value)} />
+        <Field label="写作要求（选填）" hint="用于调整表达；事实依据请放在材料中。">
+          <Textarea aria-label="写作要求（选填）" maxLength={2000} rows={2} value={note} onChange={e => setNote(e.target.value)} />
         </Field>
       </fieldset>
+      </details>
     </Card>
 
     <Card title="确认将要生成的内容">
@@ -825,8 +817,8 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
       onRetryQueued={fragment => setRetryReceipt({ fragment, submittedAt: Date.now() })} />}
   </div>;
 
-  if (preparing) return <Card title="后台正在备料" right={<Badge tone="accent">备料中</Badge>}>
-    <p role="status" className={muted}>系统正在查找素材、对照已有页面并拟定大纲。可以离开，回来后从已保存的命题继续。</p>
+  if (preparing) return <Card title="正在准备资料与大纲" right={<Badge tone="accent">查找资料中</Badge>}>
+    <p role="status" className={muted}>正在查找素材、对照已有页面并拟定大纲。可以离开，回来后从已保存的选题继续。</p>
     {prep?.started_at && <p className="mt-2 text-xs text-ink-3">开始时间：<Time at={prep.started_at} /></p>}
     <Button className="mt-3" disabled={state !== 'idle'} onClick={() => void revalidate()}>刷新状态</Button>
   </Card>;
@@ -862,11 +854,9 @@ function PitchWork({ pitch }: { pitch: Pitch }) {
 
 export default function StudioPitch({ loaderData }: Route.ComponentProps) {
   const { history, pitch, question, questionId } = loaderData;
-  const step = !pitch ? 0 : pitch.task_id || pitch.status === 'confirmed' ? 3 : pitch.status === 'ready' || pitch.prep?.v2?.conclusion === 'no_change' ? 2 : 1;
-  return <AdminPage title="命题采编" subtitle="输入一次题目，系统找资料。你选方向与大纲，确认后生成全文。"
-    actions={<><ButtonLink to={desk} tone={pitch ? 'primary' : 'ghost'}>新命题</ButtonLink><ButtonLink to="/admin/workbench">返回工作台</ButtonLink></>}>
+  return <AdminPage title="买家问题" subtitle="写下问题，确认方向后生成英文稿。"
+    actions={<><ButtonLink to={desk} tone="ghost">新选题</ButtonLink><Link to="/admin/workbench" className="inline-flex min-h-12 items-center text-sm font-medium text-accent">返回工作台</Link></>}>
     <ArticleWorkflow current="direction" directionTo={pitch ? pitchLink(pitch.id) : desk} draftId={pitch?.prep?.v2?.assembled?.draft_id ?? undefined} />
-    <Progress current={step} />
     {pitch ? <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] lg:items-start">
       <aside className="contents lg:block lg:space-y-4">
         <div className="order-1 min-w-0"><BriefSummary pitch={pitch} /></div>

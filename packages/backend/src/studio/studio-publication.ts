@@ -1,4 +1,4 @@
-import type { Response } from '../../../../scripts/editorial-pilot-lib.ts';
+import type { Response } from '@aihot/contracts/studio-handoff';
 import { editorialDirection, assertPublicEnglish } from '../../../../site/editorial.ts';
 
 type Draft = Response['drafts'][number];

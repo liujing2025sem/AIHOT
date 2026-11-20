@@ -3,13 +3,15 @@ import { z } from 'zod';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { newsVersions } from '../../../../industry/news-eligibility.ts';
 import { editorialVersionSourceIds } from '../../../../site/editorial-sources.ts';
-import { packetSchema, sha256, validateResponse, writingHandoffFiles, type Packet } from '../../../../scripts/editorial-pilot-lib.ts';
+import { briefGenerationSchema, type BriefSelection, type Packet } from '@aihot/contracts/studio-handoff';
+import { sha256 } from '../lib/ids.ts';
+import { packetSchema, validateResponse, writingHandoffFiles } from './studio-handoff.ts';
 import { sql, type Db } from '../db.ts';
 import { audit, Conflict } from '../audit.ts';
 import { enqueue, QUEUES, type JobData } from '../jobs/queue.ts';
 import { chatJson } from '../providers/llm.ts';
 import { createStudioTask, studioTask, receiveStudioTask, studioGenerationStatus } from './studio.ts';
-import { briefGenerationSchema, buildBriefResponse, type BriefSelection } from './studio-brief-content.ts';
+import { buildBriefResponse } from './studio-brief-content.ts';
 import { assessBriefMaterials, type BriefSelectionInspection } from './studio-brief-inspection.ts';
 
 const invalid = (message: string): never => { throw Object.assign(new Error(message), { statusCode: 400 }); };

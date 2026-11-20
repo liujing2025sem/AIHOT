@@ -8,6 +8,8 @@ import { fakeApi, startWebServer, visit, type WebServer } from './web-server.ts'
 
 let web: WebServer;
 const writes: string[] = [];
+let homeDrafts = [{ id: 'draft-fixture', title_zh: '尺寸指南测试稿', title_en: 'Synthetic dimensions guide', status: 'in_review', version: 2, updated_at: '2026-11-08T08:00:00Z' }];
+let homeTasks: { id: string; state: string }[] = [];
 const fixtureMaterials = [
   { id: 'source-fixture', title: 'LED cabinet reference', analysis: { category: 'displays-projects', item_type: 'tutorial_explainer', reason_zh: '列出安装前需要核对的箱体尺寸和接口条件。' } },
   { id: 'source-unassessed', title: '尚待评估的显示材料', analysis: null },
@@ -30,9 +32,9 @@ const api = fakeApi((url, _res, req) => {
   if (url.pathname === '/api/admin/studio/pitches') return { rows: [{ id: 'pitch-fixture', title: '买家如何核对箱体尺寸？', version: 2, status: 'ready', task_id: null }] };
   if (url.pathname === '/api/admin/studio') return {
     rows: fixtureMaterials,
-    total: fixtureMaterials.length, page: 1, stats: { materials: fixtureMaterials.length, body_ready: fixtureMaterials.length - 1 }, sources: [], tasks: [],
+    total: fixtureMaterials.length, page: 1, stats: { materials: fixtureMaterials.length, body_ready: fixtureMaterials.length - 1 }, sources: [], tasks: homeTasks,
     generation: { ready: false, reason: 'Synthetic model unavailable' },
-    drafts: [{ id: 'draft-fixture', title_zh: '尺寸指南测试稿', title_en: 'Synthetic dimensions guide', status: 'in_review', version: 2, updated_at: '2026-11-08T08:00:00Z' }],
+    drafts: homeDrafts,
   };
 });
 
@@ -40,7 +42,7 @@ test('original workbench home resumes API drafts and exposes original tools with
   const response = await fetch(web.origin + '/admin/workbench');
   assert.equal(response.status, 200);
   const html = await response.text();
-  for (const text of ['尺寸指南测试稿', '买家如何核对箱体尺寸？', '今日选稿', '选题与旧页升级', '采编任务', '社媒派生', '内容诊断', '模型连接']) assert.ok(html.includes(text), text);
+  for (const text of ['尺寸指南测试稿', '买家如何核对箱体尺寸？', '新闻材料', '选题与旧页升级', '处理进度', '改写社媒稿', '内容诊断', '模型连接']) assert.ok(html.includes(text), text);
   assert.match(html, /href="\/admin\/studio\/drafts\/draft-fixture"/);
   assert.match(html, /href="\/admin\/studio\/pitch\?id=pitch-fixture"/);
   assert.deepEqual(writes, []);
@@ -49,12 +51,27 @@ test('original workbench home resumes API drafts and exposes original tools with
 before(async () => { web = await startWebServer(api); });
 after(() => web.stop());
 
+test('home resumes an English-only draft, a saved pitch and waiting database tasks', async t => {
+  const original = homeDrafts;
+  t.after(() => { homeDrafts = original; homeTasks = []; });
+  homeDrafts = [{ ...original[0], title_zh: '' }];
+  let html = await (await fetch(web.origin + '/admin/workbench')).text();
+  assert.match(html, /<h2[^>]*id="resume-title"[^>]*lang="en"[^>]*>Synthetic dimensions guide<\/h2>/);
+  homeDrafts = [];
+  homeTasks = [{ id: 'task-existing', state: 'waiting' }];
+  html = await (await fetch(web.origin + '/admin/workbench')).text();
+  assert.match(html, /<h2[^>]*id="resume-title"[^>]*>买家如何核对箱体尺寸？<\/h2>/);
+  assert.match(html, /href="\/admin\/studio\/pitch\?id=pitch-fixture"[^>]*>继续选题</);
+  assert.match(html, /项未完成任务/);
+  assert.deepEqual(writes, []);
+});
+
 test('editor desk SSR contains real material selection and existing-draft entry without starting work', async () => {
   const response = await fetch(web.origin + '/admin/studio');
   assert.equal(response.status, 200);
   assert.match(response.headers.get('Cache-Control') ?? '', /\bno-store\b/);
   const html = await response.text();
-  for (const text of ['今日选稿', '专业内容', '我的稿件', '发布记录', '继续审稿', 'LED cabinet reference']) assert.ok(html.includes(text), text);
+  for (const text of ['选题', '写下买家问题', '稿件', '继续审稿', 'LED cabinet reference']) assert.ok(html.includes(text), text);
   assert.match(html, /href="\/admin\/studio\/drafts\/draft-fixture"/);
   assert.match(html, /role="checkbox"[^>]*aria-label="选择 LED cabinet reference"|aria-label="选择 LED cabinet reference"[^>]*role="checkbox"/);
   assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);

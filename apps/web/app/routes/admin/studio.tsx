@@ -119,7 +119,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
   const isBriefSelection = selected.length >= 5;
   const selectedIds = selected.map(a => a.id).join('\u0000');
   const selectedVersion = selected.map(a => `${a.id}:${a.revision ?? ''}:${a.body_status}:${a.body_length ?? ''}:${a.published_at ?? ''}`).join('|');
-  const currentInspection = inspection?.article_ids.join('\u0000') === selectedIds ? inspection : null;
+  const currentInspection = isBriefSelection && inspection?.article_ids.join('\u0000') === selectedIds ? inspection : null;
   const firstInspectionProblem = currentInspection?.materials.find(item => item.issues.length)?.issues[0];
   const inspectionHold = isBriefSelection ? inspectionError || (!currentInspection ? '正在核对独立事件与来源…' : !currentInspection.can_compose
     ? firstInspectionProblem ? `${firstInspectionProblem.message_zh} ${firstInspectionProblem.action_zh}` : `还差 ${currentInspection.counts.additional_events_needed} 个可用独立事件，请补选近期材料。` : null) : null;
@@ -133,7 +133,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
   }, [data.rows]);
   useEffect(() => {
     setInspection(null); setInspectionError('');
-    if (binding || !selectedIds || tab !== 'materials') return;
+    if (binding || !isBriefSelection || tab !== 'materials') return;
     const controller = new AbortController();
     let active = true;
     const timer = setTimeout(async () => {
@@ -151,7 +151,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
       }
     }, 240);
     return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [binding, selectedIds, selectedVersion, tab, inspectionRefresh]);
+  }, [binding, isBriefSelection, selectedIds, selectedVersion, tab, inspectionRefresh]);
   useEffect(() => () => { stopRef.current = true; }, []);
   const extract = async () => {
     if (busy || extractingRef.current || !selected.length || selected.length > 12) return;
@@ -214,7 +214,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
       if(result){setSelected([]);setOptionsOpen(false);setSp(new URLSearchParams({tab:'tasks',brief_task:result.task_id}));}
     } finally {generatingRef.current=false;}
   };
-  return <AdminPage title={page.title} subtitle={page.description} actions={<ButtonLink tone="primary" to="/admin/studio/pitch"><BookOpenText className="size-4" aria-hidden="true"/>写专业文章</ButtonLink>}>
+  return <AdminPage title={page.title} subtitle={page.description} actions={<>{tab === 'drafts' && <ButtonLink to="/admin/studio/published">发布记录</ButtonLink>}<ButtonLink to="/admin/studio/pitch"><BookOpenText className="size-4" aria-hidden="true"/>写下买家问题</ButtonLink></>}>
     {tab === 'materials' && !binding && nextDraft && <section className="mb-6 flex flex-wrap items-center gap-4 rounded-panel border border-accent/20 bg-accent-softer p-5" aria-label="继续已有稿件"><span className="grid size-11 shrink-0 place-items-center rounded-card bg-surface text-accent"><FileCheck2 className="size-6" aria-hidden="true"/></span><div className="min-w-0 flex-1 basis-40"><p className="text-xs font-medium text-accent">已有稿件，随时继续</p><h2 className="mt-1 text-base font-semibold text-ink">{nextDraft.title_zh || nextDraft.title_en}</h2><p className="mt-1 text-xs text-ink-3">核对文章和证据，无需重新生成。</p></div><ButtonLink to={`/admin/studio/drafts/${nextDraft.id}`}><span>继续审稿</span><ArrowRight className="size-4" aria-hidden="true"/></ButtonLink></section>}
     {generationStep && <p role="status" aria-live="polite" className="mb-4 rounded-card bg-accent-soft p-4 text-sm text-accent">{generationStep}</p>}
     {tab==='review'&&data.planningMetrics&&<Card title="本期选题成效" className="mb-5">
@@ -268,7 +268,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
           </article>;
         })}
       </div>
-      {!data.rows.length && <section className="rounded-panel border border-dashed border-line-strong bg-surface px-6 py-12 text-center"><Newspaper className="mx-auto mb-3 size-8 text-ink-4" aria-hidden="true"/><h2 className="text-base font-semibold text-ink">{sp.get('q') || sp.get('source') || sp.get('quality') ? '这个筛选下还没有材料' : '从第一条行业信息开始'}</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-ink-3">可以更换筛选条件，或查看信源与采集；如果已有买家问题，也可以直接写专业文章。</p><div className="mt-5 flex flex-wrap justify-center gap-3"><ButtonLink to="/admin/studio?tab=sources">信源与采集</ButtonLink><ButtonLink to="/admin/studio/pitch">从买家问题开始</ButtonLink></div></section>}
+      {!data.rows.length && <section className="rounded-panel border border-dashed border-line-strong bg-surface px-6 py-12 text-center"><Newspaper className="mx-auto mb-3 size-8 text-ink-4" aria-hidden="true"/><h2 className="text-base font-semibold text-ink">{sp.get('q') || sp.get('source') || sp.get('quality') ? '这个筛选下还没有材料' : '从第一条行业信息开始'}</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-ink-3">更换筛选条件、查看信源，或直接写下买家问题。</p><div className="mt-5 flex flex-wrap justify-center gap-3"><ButtonLink to="/admin/studio?tab=sources">信源与采集</ButtonLink></div></section>}
       <div className="mt-5 flex flex-wrap justify-between gap-3 text-xs text-ink-3"><span>共 {data.total} 条 · 第 {data.page} 页</span><span className="flex gap-4">{data.page > 1 && <Link to={'?' + new URLSearchParams({...Object.fromEntries(sp), page: String(data.page - 1)})}>上一页</Link>}{data.page * 30 < data.total && <Link to={'?' + new URLSearchParams({...Object.fromEntries(sp), page: String(data.page + 1)})}>下一页</Link>}</span></div>
       {selected.length > 0 && <section role="region" aria-label="已选素材操作" className="fixed inset-x-3 bottom-3 z-40 rounded-panel border border-line-strong bg-surface p-4 shadow-[0_8px_32px_rgba(0,0,0,0.12)] sm:inset-x-6 lg:left-[calc(var(--studio-sidebar-width)+2rem)] lg:right-8">
         <div className="flex flex-wrap items-center gap-3">
@@ -279,7 +279,7 @@ export default function Studio({ loaderData: data }: Route.ComponentProps) {
         </div>
         {((!binding && generationHold) || missingBodies > 0) && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs leading-5 text-amber-ink" role="status"><span>{binding && missingBodies ? '还缺 ' + missingBodies + ' 条正文，请先补齐。' : generationHold}</span>{missingBodies > 0 && <Button size="sm" type="button" disabled={busy} onClick={() => void extract()}>补齐所选正文 / 日期</Button>}{isBriefSelection && firstInspectionProblem && <Button size="sm" type="button" tone="ghost" onClick={() => setOptionsOpen(true)}>查看并处理问题</Button>}{inspectionError && <Button size="sm" type="button" tone="ghost" onClick={() => setInspectionRefresh(count => count + 1)}>重新核对</Button>}{!data.generation.ready && !binding && <Link to="/admin/channels" className="text-accent">检查模型连接 →</Link>}</div>}
       </section>}
-      <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}><DialogContent className="space-y-4" onCloseAutoFocus={event => { const target = optionsTrigger.current?.isConnected ? optionsTrigger.current : document.querySelector<HTMLInputElement>('input[name="q"]'); if (target) { event.preventDefault(); target.focus(); } }}><DialogTitle>所选材料与写作设置</DialogTitle><DialogDescription>5–12 条材料可合成 1 篇短讯，先核对独立事件、出处和 14/30 天时效。1–4 条可逐条成稿；专业长文使用左侧“专业内容”。全部先进入待审。</DialogDescription>
+      <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}><DialogContent className="space-y-4" onCloseAutoFocus={event => { const target = optionsTrigger.current?.isConnected ? optionsTrigger.current : document.querySelector<HTMLInputElement>('input[name="q"]'); if (target) { event.preventDefault(); target.focus(); } }}><DialogTitle>所选材料与写作设置</DialogTitle><DialogDescription>5–12 条材料可合成 1 篇短讯，先核对独立事件、出处和 14/30 天时效。1–4 条可逐条成稿；专业长文从“买家问题”开始。生成后进入待审。</DialogDescription>
         {!binding && currentInspection && <div className="rounded-control bg-bg-sunk p-3 text-sm" role="status"><p>初步识别 {currentInspection.counts.independent_events} 个事件，{currentInspection.counts.eligible_independent_events} 个符合短讯选材条件。</p>{currentInspection.duplicates.map(group => <p key={group.article_ids.join('|')} className="mt-2 text-xs leading-5 text-amber-ink">同一事件线索：{group.article_ids.map(id => currentInspection.materials.find(item => item.article_id === id)?.title ?? id).join(' / ')}。依据：{group.matched_by.map(basis => duplicateBasisLabels[basis] ?? basis).join('、')}。请核对后只保留一条。</p>)}</div>}
         <ul className="max-h-64 divide-y divide-line overflow-y-auto">{selected.map(a => {const checkedMaterial = currentInspection?.materials.find(item => item.article_id === a.id);return <li key={a.id} className="flex items-start gap-2 py-3 text-sm"><span className="min-w-0 flex-1 break-words">{a.title}<span className="mt-1 block text-xs text-ink-4">{checkedMaterial?.date_basis === 'observed_version' ? '依据新版本观察时间' : checkedMaterial?.window_days ? `新闻时效窗口 ${checkedMaterial.window_days} 天` : bodyReady(a) ? '正文可读' : '缺少正文'}</span>{checkedMaterial?.issues.map(issue => <span key={issue.code} className="mt-1 block text-xs leading-5 text-amber-ink">{issue.message_zh} 建议：{issue.action_zh}</span>)}{checkedMaterial?.issues.some(issue => ['missing_date','invalid_date','future_date','invalid_url'].includes(issue.code)) && <Link to={`/admin/studio/materials/${a.id}`} className="mt-1 inline-block text-xs text-accent">打开材料详情核对</Link>}</span><Button size="sm" tone="ghost" disabled={busy} aria-label={'移除 ' + a.title} onClick={() => setSelected(items => items.filter(item => item.id !== a.id))}>移除</Button></li>;})}</ul>
         <Button disabled={busy || !selected.length} onClick={() => { setOptionsOpen(false); void extract(); }}>{extracting ? '正在补齐…' : '补齐所选正文 / 日期'}</Button>

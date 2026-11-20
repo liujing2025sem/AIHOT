@@ -11,7 +11,8 @@ import { preparePublicationCopy } from '@aihot/backend/studio/studio-publishing-
 import { fragmentSchema } from '../scripts/editorial-pitch-lib.ts';
 import { checkedUpdatePatch, publicStudioTitle, studioUpgradeContext, updateBaselineHash } from '@aihot/backend/studio/studio-upgrade';
 import { wpUpdateTarget, wpWrite, type WpPost } from '@aihot/backend/studio/studio-publishing-wordpress';
-import { pushStudioWordPressDraft, sanitizeReviewedHtml, studioWordPressReceipt, WordPressError } from '@aihot/backend/studio/studio-wordpress';
+import { sanitizeReviewedHtml } from '@aihot/backend/studio/studio-reviewed-html';
+import { pushStudioWordPressDraft, studioWordPressReceipt, WordPressError } from '@aihot/backend/studio/studio-wordpress';
 
 const actor='test:publishing', suffix=tag();
 after(async()=>{await stopBoss();await closeDb();});
@@ -173,9 +174,10 @@ test('bound upgrade identity protects the published original and patches only re
   const revised = '<p id="rounding">Use whole cabinet counts and verify the resulting resolution.</p>';
   const baseline = '<section class="existing-theme">\n<!-- retained theme marker -->' + keep + '\n' + old + '</section>';
   const url = 'https://wp.example.test/size-guide/';
-  const packet = { articles: [{ binding: { url } }], pitch: { output_type: 'update', existing_url: url,
+  const packet = { articles: [{ title: 'Screen dimension guide', binding: { url, article_id: 'original', revision: 3 } }], pitch: { output_type: 'update', existing_url: url,
     fragments_plan: { source_html: baseline, original_title: 'Screen dimension guide',
       paragraphs: [{ id: 'p1', html: keep, text: 'Existing guide section' }, { id: 'p2', html: old, text: 'Use whole cabinet counts.' }],
+      facts: [{ kind: 'page', article_id: 'original', revision: 3 }],
       edit_plan: [{ op: 'keep', paragraph: 'p1', facts: [] }, { op: 'revise', paragraph: 'p2', facts: [], reason: 'Clarify rounding' }],
       fragments: [{ op_index: 1, html_en: revised, zh_review: '核对取整', used_facts: ['f1'] }],
     } } } as unknown as Parameters<typeof studioUpgradeContext>[0];
@@ -184,7 +186,19 @@ test('bound upgrade identity protects the published original and patches only re
   const context = studioUpgradeContext(packet)!;
   assert.equal(context.delivery, 'shadow_draft');
   assert.equal(context.target_existing_url, url);
-  assert.equal(context.changes.length, 1);
+  assert.equal(context.source_revision, 3);
+  assert.deepEqual(context.changes, [{
+    operation: 'revise', paragraph: 'p2', reason: 'Clarify rounding',
+    original_text: 'Use whole cabinet counts.',
+    replacement_text: 'Use whole cabinet counts and verify the resulting resolution.',
+  }]);
+  const staleBinding = structuredClone(packet);
+  staleBinding.articles[0].binding.revision++;
+  assert.equal(studioUpgradeContext(staleBinding)?.changes[0].original_text, null);
+  assert.equal(studioUpgradeContext(staleBinding)?.changes[0].replacement_text, null);
+  const mismatchedParagraph = structuredClone(packet);
+  mismatchedParagraph.pitch!.fragments_plan!.paragraphs[1].html = '<p>Unrelated source paragraph.</p>';
+  assert.equal(studioUpgradeContext(mismatchedParagraph)?.changes[0].original_text, null);
   assert.match(context.notice, /请勿在 WordPress 直接发布/);
   const confirmation = { target_post_id: 6098, baseline_sha256: context.baseline_sha256! };
   const result = checkedUpdatePatch(packet, keep + revised, original, confirmation);

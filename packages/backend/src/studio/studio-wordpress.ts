@@ -1,16 +1,19 @@
 import { createHash } from 'node:crypto';
 import { marked } from 'marked';
-import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { audit, Conflict } from '../audit.ts';
 import { config, credential } from '../config.ts';
 import { sql, type Tx } from '../db.ts';
 import { lockStudioPublication } from './studio.ts';
+import { sanitizeReviewedHtml } from './studio-reviewed-html.ts';
 import { publicStudioTitle, studioUpgradeContext } from './studio-upgrade.ts';
 import { wpFigures, wpUpdateTarget, type PublishedFigure } from './studio-publishing-wordpress.ts';
 import type { PublicationIssue } from './studio-publishing-content.ts';
 import { requireStudioWordPressWrite, studioDeliveryCapabilities } from './studio-delivery.ts';
+import { WordPressError, wordpressClient, type WordPressSettings as Settings } from './studio-wordpress-client.ts';
+
+export { WordPressError, wordpressClient } from './studio-wordpress-client.ts';
 
 const shortCategory = 'industry-news';
 const consumerTag = 'consumer-display';
@@ -54,14 +57,13 @@ export function wordpressSettings(requireDraftValve = true) {
     const password = credential('integrations', 'WP_APP_PASSWORD')?.trim();
     if (base.protocol === 'https:' && !base.username && !base.password && !base.search && !base.hash && user && !user.includes(':') && password) {
       base.pathname = base.pathname.replace(/\/*$/, '/');
-      return { ready: true as const, base, user, password };
+      return { ready: true, base, user, password } satisfies Settings;
     }
   } catch {
     // Configuration errors never echo URLs or credential values.
   }
   return { ready: false as const, message: '请让维护人检查 WordPress 的 HTTPS 站点、用户名和应用密码配置。' };
 }
-type Settings = Extract<ReturnType<typeof wordpressSettings>, { ready: true }>;
 export const studioWordPressSlug = (id: string) => 'aihot-studio-' + createHash('sha256').update(id).digest('hex').slice(0, 24);
 const slugOf = studioWordPressSlug;
 const settings = wordpressSettings;
@@ -116,43 +118,6 @@ function matchesExpected(post: z.infer<typeof postSchema>, expected: NonNullable
     (expected.featured_media === undefined || post.featured_media === expected.featured_media);
 }
 const termsSchema = z.array(z.object({ id: idSchema, slug: z.string() }));
-export class WordPressError extends Error {
-  readonly status?: number;
-  constructor(status?: number) {
-    super(status ? `WordPress 返回 HTTP ${status}，请让维护人检查站点、权限或访问限制。`
-      : '无法确认 WordPress 返回的结果，请让维护人检查连接和 REST 设置。');
-    this.status = status;
-  }
-}
-export function wordpressClient(target: Settings, options?: { perRequestTimeout: true }) {
-  const authorization = 'Basic ' + Buffer.from(`${target.user}:${target.password}`).toString('base64');
-  const signal = AbortSignal.timeout(15_000);
-  return async (path: string, query: Record<string, string>, payload?: object, method?: 'OPTIONS'): Promise<unknown> => {
-    // Authenticated reads use POST with a GET override below. A payload is an actual write.
-    if (payload !== undefined) requireStudioWordPressWrite();
-    const url = new URL(`wp-json/wp/v2/${path}`, target.base);
-    url.search = new URLSearchParams(query).toString();
-    // Chipshow's CDN cached authenticated GETs and ignored query parameters (real post 9597).
-    // WordPress's documented POST method override keeps reads uncached with the same permissions.
-    const freshRead = !payload && !method;
-    try {
-      const res = await fetch(url, {
-        method: method ?? 'POST', redirect: 'manual', cache: 'no-store',
-        signal: options ? AbortSignal.timeout(15_000) : signal,
-        headers: { Authorization: authorization, Accept: 'application/json', ...(freshRead ? { 'X-HTTP-Method-Override': 'GET', 'Cache-Control': 'no-cache, no-store' } : {}), ...(payload && !(payload instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
-        body: payload instanceof FormData ? payload : payload ? JSON.stringify(payload) : undefined,
-      });
-      if (!res.ok) {
-        await res.body?.cancel().catch(() => {});
-        throw new WordPressError(res.status);
-      }
-      return await res.json();
-    } catch (error) {
-      // Do not attach the request, response body, underlying error or credentials to logs or receipts.
-      throw error instanceof WordPressError ? error : new WordPressError();
-    }
-  };
-}
 const client = wordpressClient;
 type Request = ReturnType<typeof client>;
 const mediaKey: Record<Push['section'], string> = {
@@ -202,20 +167,6 @@ async function recoverDraft(request: Request, slug: string) {
   if (!parsed.success) throw new WordPressError();
   const matches = parsed.data.filter(post => post.slug === slug);
   return matches.length === 1 ? matches[0]?.id : undefined;
-}
-
-/** One safe HTML projection for reviewed export and WP. No theme-wide CSS, scripts or event handlers. */
-export function sanitizeReviewedHtml(html: string) {
-  return sanitizeHtml(html, {
-    allowedTags: [...new Set([...sanitizeHtml.defaults.allowedTags, 'section', 'aside', 'article', 'figure', 'figcaption', 'img'])],
-    allowedAttributes: { ...sanitizeHtml.defaults.allowedAttributes, '*': ['id'],
-      a: ['href', 'title', 'name', 'rel', 'target'],
-      section: ['class', 'id'], div: ['class', 'id'], article: ['class', 'id'], aside: ['class', 'id'], p: ['class', 'id'],
-      figure: ['class'], img: ['src', 'alt', 'width', 'height', 'loading'], th: ['scope', 'colspan'], td: ['colspan'] },
-    allowedClasses: { section: ['cs-brief', 'cs-brief-*'], div: ['cs-brief', 'cs-brief-*'],
-      article: ['cs-brief-*'], aside: ['cs-brief-*'], p: ['cs-brief-*'], figure: ['cs-figure'] },
-    allowedSchemes: ['https', 'http'],
-  });
 }
 
 export async function pushStudioWordPressDraft(id: string, raw: unknown, actor: string) {

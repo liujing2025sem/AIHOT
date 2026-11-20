@@ -2,9 +2,9 @@
 import { CATEGORIES } from '@aihot/industry/taxonomy';
 import { evaluateNewsEligibility, type NewsEligibility, type NewsKind } from '../../../../industry/news-eligibility.ts';
 import { editorialVersionSourceIds } from '../../../../site/editorial-sources.ts';
-import { sha256 } from '../../../../scripts/editorial-pilot-lib.ts';
+import { sha256 } from '../lib/ids.ts';
 import type { BriefMaterial } from './studio-brief.ts';
-import type { BriefSelection } from './studio-brief-content.ts';
+import type { BriefSelection } from '@aihot/contracts/studio-handoff';
 
 type IssueCode = 'missing_article' | 'missing_body' | 'invalid_url' | 'duplicate' | Exclude<NewsEligibility['reason'], 'eligible'>;
 type DuplicateBasis = 'event_id' | 'canonical_url' | 'title' | 'body';

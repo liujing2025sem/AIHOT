@@ -305,7 +305,7 @@ test('production browser recovers a legacy saved fragment through real API and P
   assert.equal(stale.status(),409,await stale.text());
   assert.deepEqual(await storedDraftState(row.id,task.id),recovered,'a repeated old version cannot overwrite the recovered document');
   await page.getByRole('button',{name:'提交审稿',exact:true}).click();
-  await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'确认通过',exact:true})).toBeVisible();
   draft=await read();
   for(const issue of draft.issues.items){
    assert.equal(issue.confirmable,true,JSON.stringify(issue));
@@ -313,14 +313,14 @@ test('production browser recovers a legacy saved fragment through real API and P
    if(!await checkbox.isVisible())await page.getByRole('button',{name:/其他待确认/}).click();
    await checkbox.check();
   }
-  await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'确认通过',exact:true})).toBeDisabled();
   await page.getByRole('checkbox',{name:'已按当前英文主稿核对',exact:true}).check();
-  await expect(page.getByRole('button',{name:'确认审核通过',exact:true})).toBeEnabled();
-  await page.getByRole('button',{name:'确认审核通过',exact:true}).click();
-  await expect(page.getByRole('button',{name:'继续配封面',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'确认通过',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'确认通过',exact:true}).click();
+  await expect(page.getByRole('button',{name:'继续配图',exact:true})).toBeVisible();
   draft=await read();assert.equal(draft.status,'approved');
   const approvedVersion=draft.version;
-  await page.getByRole('button',{name:'继续配封面',exact:true}).click();
+  await page.getByRole('button',{name:'继续配图',exact:true}).click();
   const image=await sharp({create:{width:600,height:340,channels:3,background:'#224fbe'}}).png().toBuffer();
   await page.getByLabel('封面图片文件',{exact:true}).setInputFiles({name:'recovered-cover.png',mimeType:'image/png',buffer:image});
   await page.getByLabel('封面英文替代文字',{exact:true}).fill('LED cabinet drawing for the recovered article');
@@ -961,8 +961,51 @@ test('withdrawing one confirmation from an approved draft revokes approval and e
  for(let i=0;i<21;i++){await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations:[...confirmations].reverse(),note:i===20?'已再次核对':''},actor);d=(await studioDraft(row.id))!;}
  assert.equal(d.version,approvedVersion);assert.equal(d.status,'approved');assert.equal(d.reviewed_by,actor);
  assert.ok(await exportStudioDraft(d.id,'json'));
- await reviewStudioDraft(d.id,{version:d.version,action:'confirm',confirmations:confirmations.slice(1)},actor);d=(await studioDraft(d.id))!;
- assert.equal(d.status,'in_review');assert.equal(d.reviewed_by,null);await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
+ await reviewStudioDraft(d.id,{version:d.version,action:'update_confirmations',confirmations:confirmations.slice(1)},actor);d=(await studioDraft(d.id))!;
+ assert.equal(d.status,'in_review');assert.equal(d.version,approvedVersion+1);assert.equal(d.reviewed_by,null);await assert.rejects(exportStudioDraft(d.id,'md'),/审稿/);
+});
+
+test('review API queues explicit revision requests and accepts legacy clients', async t => {
+ const modelCalls=config.modelCallsEnabled;
+ config.modelCallsEnabled=false;
+ t.after(()=>{config.modelCallsEnabled=modelCalls;});
+ const {token}=await passwordLogin(config.adminPassword!,'/admin','review-revision-test');
+ const cookie=SESSION_COOKIE+'='+token,headers={cookie,'x-csrf-token':(await sessionPrincipal(cookie))!.csrf};
+ for(const action of ['request_revision','return'] as const){
+  const {task,response}=await input();
+  await receiveStudioTask(task.id,response,actor);
+  const [row]=await sql<{id:string}[]>`SELECT id FROM studio_drafts WHERE task_id=${task.id}`;
+  const draft=(await studioDraft(row!.id))!;
+  await reviewStudioDraft(draft.id,{version:draft.version,action:'submit'},actor);
+  const submitted=(await studioDraft(draft.id))!;
+  const confirmations=submitted.issues.items.filter(item=>item.confirmable).map(({id,fingerprint})=>({issueId:id,fingerprint}));
+  const approved=(await reviewStudioDraft(draft.id,{version:submitted.version,action:'approve',confirmations},actor))!;
+  const url='/api/admin/studio/drafts/'+draft.id;
+  const view=await app.inject({url,headers});
+  assert.equal(view.statusCode,200,view.body);
+  assert.equal(view.json().version,approved.version);
+  assert.equal(view.json().status,'approved');
+  assert.equal(view.json().revision_request,null);
+  const payload={version:approved.version,action,revision_goals:['shorten']};
+  const sent=await app.inject({method:'POST',url:url+'/review',headers,payload});
+  assert.equal(sent.statusCode,200,sent.body);
+  const requested=sent.json();
+  assert.equal(requested.version,approved.version+1);
+  assert.equal(requested.status,'draft');
+  assert.equal(requested.queued,true);
+  assert.equal(requested.revision_request.status,'queued');
+  assert.deepEqual(requested.revision_request.goals,['shorten']);
+  const current=(await studioDraft(draft.id))!;
+  assert.equal(current.reviewed_by,null);
+  assert.equal(current.reviewed_at,null);
+  assert.equal(current.document.body_en,draft.document.body_en);
+  const stale=await app.inject({method:'POST',url:url+'/review',headers,payload});
+  assert.equal(stale.statusCode,409,stale.body);
+  const jobs=await sql`SELECT data,retry_limit FROM pgboss.job WHERE name='studio.revision' AND data->>'draftId'=${draft.id}`;
+  assert.equal(jobs.length,1);
+  assert.equal(jobs[0]!.data.version,requested.version);
+  assert.equal(jobs[0]!.retry_limit,0);
+ }
 });
 
 test('bound source snapshot remains the review target when live material changes',async()=>{

@@ -78,7 +78,7 @@ function packageWorkbench(options) {
     const [mode, type] = line.slice(0, tab).split(' ');
     return [line.slice(tab + 1), { mode, type }];
   }));
-  const archive = git('archive', '--format=zip', commit);
+  const archive = git('-c', 'core.autocrlf=false', 'archive', '--format=zip', commit);
   const source = unzipSync(archive);
   const zipEntries = Object.create(null);
   const inventory = [];
